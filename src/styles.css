@@ -1,0 +1,170 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-pendente-bg: var(--status-pendente-bg);
+  --color-status-pendente-fg: var(--status-pendente-fg);
+  --color-status-aprovado-bg: var(--status-aprovado-bg);
+  --color-status-aprovado-fg: var(--status-aprovado-fg);
+  --color-status-rejeitado-bg: var(--status-rejeitado-bg);
+  --color-status-rejeitado-fg: var(--status-rejeitado-fg);
+  --color-status-inativo-bg: var(--status-inativo-bg);
+  --color-status-inativo-fg: var(--status-inativo-fg);
+  --color-status-analise-bg: var(--status-analise-bg);
+  --color-status-analise-fg: var(--status-analise-fg);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --shadow-card: 0 2px 8px rgba(15, 45, 82, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(15, 45, 82, 0.12);
+}
+
+:root {
+  /* Brand — DETRAN/Pró-Saúde */
+  --background: oklch(0.98 0.005 240);
+  --foreground: oklch(0.22 0.03 250);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.03 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.03 250);
+
+  --primary: oklch(0.4 0.12 250);          /* #1B4F8A */
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-light: oklch(0.5 0.13 250);    /* #2D6CC0 */
+  --primary-dark: oklch(0.28 0.1 250);     /* #0F2D52 */
+
+  --secondary: oklch(0.96 0.01 240);
+  --secondary-foreground: oklch(0.28 0.05 250);
+  --muted: oklch(0.96 0.01 240);
+  --muted-foreground: oklch(0.55 0.03 250);
+  --accent: oklch(0.94 0.02 245);
+  --accent-foreground: oklch(0.28 0.05 250);
+
+  --success: oklch(0.5 0.15 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.62 0.18 50);
+  --warning-foreground: oklch(0.99 0 0);
+  --destructive: oklch(0.52 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --info: oklch(0.5 0.14 235);
+  --info-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.91 0.01 240);
+  --input: oklch(0.91 0.01 240);
+  --ring: oklch(0.5 0.13 250);
+
+  /* Status badges */
+  --status-pendente-bg: oklch(0.96 0.04 70);
+  --status-pendente-fg: oklch(0.45 0.16 50);
+  --status-aprovado-bg: oklch(0.95 0.04 150);
+  --status-aprovado-fg: oklch(0.4 0.14 150);
+  --status-rejeitado-bg: oklch(0.95 0.04 25);
+  --status-rejeitado-fg: oklch(0.45 0.18 25);
+  --status-inativo-bg: oklch(0.93 0.005 240);
+  --status-inativo-fg: oklch(0.45 0.02 250);
+  --status-analise-bg: #fff7ed;
+  --status-analise-fg: #d75c00;
+
+  --radius: 0.75rem;
+
+  --sidebar: oklch(0.28 0.1 250);
+  --sidebar-foreground: oklch(0.96 0.01 240);
+  --sidebar-primary: oklch(0.5 0.13 250);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.34 0.1 250);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(0.34 0.08 250);
+  --sidebar-ring: oklch(0.5 0.13 250);
+
+  --chart-1: oklch(0.5 0.13 250);
+  --chart-2: oklch(0.5 0.15 150);
+  --chart-3: oklch(0.62 0.18 50);
+  --chart-4: oklch(0.52 0.22 25);
+  --chart-5: oklch(0.5 0.14 235);
+}
+
+.dark {
+  --background: oklch(0.18 0.02 250);
+  --foreground: oklch(0.96 0.01 240);
+  --card: oklch(0.22 0.03 250);
+  --card-foreground: oklch(0.96 0.01 240);
+  --popover: oklch(0.22 0.03 250);
+  --popover-foreground: oklch(0.96 0.01 240);
+  --primary: oklch(0.6 0.13 250);
+  --primary-foreground: oklch(0.15 0.02 250);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 14%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html, body {
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { letter-spacing: -0.01em; }
+}
+
+@layer components {
+  .pendency-banner {
+    border-left: 4px solid oklch(0.75 0.16 90);
+    background: oklch(0.98 0.04 95);
+    color: oklch(0.32 0.08 70);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+}
