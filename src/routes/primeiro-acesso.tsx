@@ -2,9 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ShieldCheck, CheckCircle2, Search, Info, AlertTriangle, UserPlus, FileText, Upload, Check, X, Pencil } from "lucide-react";
 import { Field, inputCls } from "@/components/Stepper";
+import { Switch } from "@/components/ui/switch";
 import { baseImportadaGerdab, formatCurrency } from "@/lib/mock-data";
 import { UploadBox } from "./servidor.requerimento.novo-plano";
 import { maskCPF, maskCurrency, maskRG, maskMatricula } from "@/lib/utils";
+import { saveTitularCadastro } from "@/lib/prosaude-storage";
 import {
   parseCurrency,
   isCpfComplete,
@@ -43,6 +45,8 @@ type Dependente = {
   vigencia?: string;
   tipoLaudo?: string;
 };
+
+type FlowType = "ativacao" | "inclusao" | null;
 
 function PrimeiroAcesso() {
   const [flow, setFlow] = useState<FlowType>(null);
@@ -266,6 +270,7 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
     proposta: "",
     modalidade: "",
     vigencia: "",
+    empresarial: false,
   });
 
   const isPensionista = titular.situacao.startsWith("Titular de pensão");
@@ -415,6 +420,25 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
   const totalDepsValue = deps.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0);
   const valorTitularNum = parseCurrency(valorTitular);
   const valorTotalGrupo = valorTitularNum + totalDepsValue;
+
+  const handleSubmit = () => {
+    saveTitularCadastro({
+      titular,
+      plano: {
+        operadora: plano.operadora,
+        outraOperadora: plano.outraOperadora,
+        administradora: plano.administradora,
+        proposta: plano.proposta,
+        modalidade: plano.modalidade,
+        vigencia: plano.vigencia,
+        valorTitular: valorTitularNum,
+        empresarial: plano.empresarial,
+      },
+      dependentes: deps,
+      updatedAt: new Date().toISOString(),
+    });
+    onDone();
+  };
 
   const renderResumoValores = () => (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 mt-4">
@@ -652,6 +676,28 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
                   onChange={e => setPlano({...plano, administradora: e.target.value})} 
                 />
               </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <Field label="Empresarial">
+                <div className={`${inputCls} flex items-center justify-between`}>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={plano.empresarial}
+                      onCheckedChange={(checked) => setPlano({ ...plano, empresarial: checked })}
+                    />
+                    <span className="text-sm">{plano.empresarial ? "Sim" : "Não"}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Este é um plano empresarial?</span>
+                </div>
+              </Field>
+              {plano.empresarial && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 flex gap-2">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <p>
+                    Planos empresariais exigem o envio da fatura técnica no momento do envio de comprovantes de pagamento, pois o boleto empresarial isolado não permite identificar os valores individuais dos beneficiários.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Valor Titular (R$)" required>
@@ -1005,7 +1051,7 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
           {step === 0 ? "Cancelar" : "Voltar"}
         </button>
         <button 
-          onClick={() => (step < steps.length - 1 ? handleNext() : onDone())} 
+          onClick={() => (step < steps.length - 1 ? handleNext() : handleSubmit())} 
           disabled={showDepForm}
           className="flex-1 bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-medium disabled:opacity-50"
         >
