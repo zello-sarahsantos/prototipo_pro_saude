@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { Stepper, StepNav, Field, inputCls } from "@/components/Stepper";
-import { Upload, CheckCircle2, User, Info, FileText } from "lucide-react";
+import { Upload, CheckCircle2, User, Info, FileText, UserPlus, X } from "lucide-react";
 import { OPERADORAS } from "@/lib/form-options";
 import { servidorAtual, dependentes, formatCurrency, calcularReembolso, statusLabels } from "@/lib/mock-data";
+import { DOCUMENTOS_POR_TIPO_DEPENDENTE } from "@/lib/form-options";
+import { IncluirDependenteForm, type IncluirDependenteValue } from "@/components/IncluirDependenteForm";
+import { saveRequerimentoMudancaPlano } from "@/lib/prosaude-storage";
 
 export const Route = createFileRoute("/servidor/requerimento/novo-plano")({
   component: NovoPlano,
@@ -24,6 +27,12 @@ interface DependentData {
   motivoRemocao?: string;
   dataRemocao?: string;
 }
+
+type NewDependentBlock = {
+  id: string;
+  saved: boolean;
+  value?: IncluirDependenteValue;
+};
 
 function NovoPlano() {
   const [step, setStep] = useState(0);
@@ -52,6 +61,8 @@ function NovoPlano() {
     )
   );
 
+  const [newDependentBlocks, setNewDependentBlocks] = useState<NewDependentBlock[]>([]);
+
   const isPensionista = servidorAtual.cargo.startsWith("Pensionista");
 
   const handleDeclarationChange = (index: number, checked: boolean) => {
@@ -59,6 +70,17 @@ function NovoPlano() {
   };
 
   const allDeclarationsChecked = Object.values(declarationsChecked).every(Boolean);
+  const hasPendingNewDependents = newDependentBlocks.some((b) => !b.saved);
+
+  const handleSubmit = () => {
+    saveRequerimentoMudancaPlano({
+      newPlanData,
+      dependentsData,
+      novosDependentes: newDependentBlocks.filter((b) => b.saved && b.value).map((b) => b.value),
+      updatedAt: new Date().toISOString(),
+    });
+    setDone(true);
+  };
 
   if (done) {
     return (
@@ -96,12 +118,15 @@ function NovoPlano() {
       {step === 3 && !isPensionista && <StepDependentes 
         dependentsData={dependentsData}
         setDependentsData={setDependentsData}
+        newDependentBlocks={newDependentBlocks}
+        setNewDependentBlocks={setNewDependentBlocks}
       />}
       {step === 3 && isPensionista && <StepPensionistaDependentes />}
       {step === 4 && <StepDocs dependentsData={dependentsData} />}
       {step === 5 && <StepRevisao 
         dependentsData={dependentsData}
         newPlanData={newPlanData}
+        newDependentBlocks={newDependentBlocks}
         declarationsChecked={declarationsChecked}
         onDeclarationChange={handleDeclarationChange}
         allDeclarationsChecked={allDeclarationsChecked}
@@ -111,11 +136,11 @@ function NovoPlano() {
         onPrev={step > 0 ? () => setStep(step - 1) : undefined}
         onNext={() => {
           if (step < steps.length - 1) setStep(step + 1);
-          else setDone(true);
+          else handleSubmit();
         }}
         nextLabel={step === steps.length - 1 ? "Enviar para análise da GERDAB" : "Próximo"}
         isLast={step === steps.length - 1}
-        disabled={step === steps.length - 1 && !allDeclarationsChecked}
+        disabled={step === steps.length - 1 && (!allDeclarationsChecked || hasPendingNewDependents)}
       />
     </div>
   );
@@ -270,9 +295,13 @@ function StepNovoPlano({ data, setData }: {
 function StepDependentes({
   dependentsData,
   setDependentsData,
+  newDependentBlocks,
+  setNewDependentBlocks,
 }: {
   dependentsData: Record<string, DependentData>;
-  setDependentsData: (data: Record<string, DependentData>) => void;
+  setDependentsData: Dispatch<SetStateAction<Record<string, DependentData>>>;
+  newDependentBlocks: NewDependentBlock[];
+  setNewDependentBlocks: Dispatch<SetStateAction<NewDependentBlock[]>>;
 }) {
   const ativos = dependentes.filter(d => d.status === "ativo");
   
@@ -459,6 +488,61 @@ function StepDependentes({
           </div>
         );
       })}
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <button
+          type="button"
+          onClick={() => {
+            const id = `nd-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            setNewDependentBlocks([...newDependentBlocks, { id, saved: false }]);
+          }}
+          className="w-full border border-border rounded-md py-2.5 text-sm font-medium hover:bg-muted flex items-center justify-center gap-2"
+        >
+          <UserPlus className="h-4 w-4" />
+          + Incluir dependente
+        </button>
+
+        {newDependentBlocks.length > 0 && (
+          <div className="space-y-3">
+            {newDependentBlocks.map((b, idx) => (
+              <div key={b.id} className="border border-primary/20 bg-primary/5 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase text-primary">
+                    Novo dependente {idx + 1}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setNewDependentBlocks(newDependentBlocks.filter((x) => x.id !== b.id))}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Remover dependente"
+                    title="Remover"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {b.saved && b.value ? (
+                  <div className="bg-card rounded-xl p-4 border border-border space-y-2 text-sm">
+                    <Row k="Nome" v={b.value.nome || "—"} />
+                    <Row k="Tipo" v={b.value.parentesco} />
+                    <Row k="Plano" v={b.value.mesmoPlano === "sim" ? "Mesmo do titular" : "Plano diferente do titular"} />
+                    <Row k="Documentos" v={`${DOCUMENTOS_POR_TIPO_DEPENDENTE[b.value.parentesco].length} anexos`} />
+                  </div>
+                ) : (
+                  <IncluirDependenteForm
+                    submitLabel="Adicionar dependente"
+                    onSubmit={(value) =>
+                      setNewDependentBlocks(
+                        newDependentBlocks.map((x) => (x.id === b.id ? { ...x, saved: true, value } : x)),
+                      )
+                    }
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -540,12 +624,14 @@ function StepDocs({ dependentsData }: { dependentsData: Record<string, Dependent
 function StepRevisao({ 
   dependentsData, 
   newPlanData,
+  newDependentBlocks,
   declarationsChecked,
   onDeclarationChange,
   allDeclarationsChecked,
 }: {
   dependentsData: Record<string, DependentData>;
   newPlanData: any;
+  newDependentBlocks: NewDependentBlock[];
   declarationsChecked: Record<number, boolean>;
   onDeclarationChange: (index: number, checked: boolean) => void;
   allDeclarationsChecked: boolean;
@@ -629,6 +715,21 @@ function StepRevisao({
           </div>
         </div>
       </div>
+
+      {newDependentBlocks.filter((b) => b.saved && b.value).length > 0 && (
+        <div className="bg-card rounded-xl p-4 border border-border space-y-3">
+          <h3 className="text-sm font-semibold">Novos Dependentes Incluídos</h3>
+          <div className="space-y-2 text-xs">
+            {newDependentBlocks.filter((b) => b.saved && b.value).map((b) => (
+              <div key={b.id} className="bg-muted/50 rounded-lg p-3">
+                <Row k="Nome" v={b.value!.nome} />
+                <Row k="Tipo" v={b.value!.parentesco} />
+                <Row k="Plano" v={b.value!.mesmoPlano === "sim" ? "Mesmo do titular" : "Plano diferente do titular"} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Resumo dos dependentes */}
       {!isPensionista && ativos.length > 0 && (

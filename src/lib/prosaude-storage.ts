@@ -1,5 +1,6 @@
 export const PROSAUDE_STORAGE_KEYS = {
   titularCadastro: "prosaude_titular_cadastro",
+  requerimentoMudancaPlano: "prosaude_requerimento_mudanca_plano",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -31,6 +32,29 @@ export function loadTitularCadastro(): TitularCadastro | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as TitularCadastro;
+  } catch {
+    return null;
+  }
+}
+
+export type RequerimentoMudancaPlanoDraft = {
+  newPlanData: Record<string, unknown>;
+  dependentsData: Record<string, unknown>;
+  novosDependentes: unknown[];
+  updatedAt: string;
+};
+
+export function saveRequerimentoMudancaPlano(draft: RequerimentoMudancaPlanoDraft) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.requerimentoMudancaPlano, JSON.stringify(draft));
+}
+
+export function loadRequerimentoMudancaPlano(): RequerimentoMudancaPlanoDraft | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.requerimentoMudancaPlano);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as RequerimentoMudancaPlanoDraft;
   } catch {
     return null;
   }
