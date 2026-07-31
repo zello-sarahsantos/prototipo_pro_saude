@@ -14,20 +14,22 @@ const statusNotificaveis: Partial<Record<StatusComprovante, (nome: string) => st
   aprovado_com_ressalva: (nome) => `Comprovante de ${nome} foi aprovado com ressalva.`,
   recusado: (nome) => `Comprovante de ${nome} foi recusado.`,
   retroativo_aguardando_gerencia: (nome) => `Retroativo de ${nome} está aguardando aprovação da Gerência.`,
+  retroativo_devolvido: (nome) => `A Gerência devolveu o retroativo de ${nome} ao Analista para ajuste.`,
   retroativo_aprovado: (nome) => `Retroativo de ${nome} foi aprovado pela Gerência.`,
+  retroativo_recusado: (nome) => `Retroativo de ${nome} foi recusado pela Gerência.`,
 };
 
 /**
  * Deriva notificações do servidor a partir do status mais recente de cada beneficiário
- * na competência atual — sem backend, calculado a partir dos dados mock/localStorage já
- * usados em `/servidor/pagamentos`.
+ * na competência atual (ou de qualquer retroativo em andamento) — sem backend, calculado
+ * a partir dos dados mock/localStorage já usados em `/servidor/pagamentos`.
  */
 export function getNotificacoesPagamento(): NotificacaoPagamento[] {
   const comprovantes = getComprovantesUnificados();
-  const daCompetenciaAtual = comprovantes.filter((c) => c.competencia === competenciaAtual);
+  const relevantes = comprovantes.filter((c) => c.competencia === competenciaAtual || c.isRetroativo);
 
   return beneficiariosPagamento.flatMap((b) => {
-    const doBeneficiario = daCompetenciaAtual.filter((c) => c.beneficiarioIds.includes(b.id));
+    const doBeneficiario = relevantes.filter((c) => c.beneficiarioIds.includes(b.id));
     const maisRecente = doBeneficiario[doBeneficiario.length - 1];
     if (!maisRecente) return [];
 

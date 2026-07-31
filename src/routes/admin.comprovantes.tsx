@@ -1,6 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { X, Eye, CheckCircle2, AlertTriangle, RotateCcw, Ban, ArrowUpCircle } from "lucide-react";
+import {
+  X,
+  Eye,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCcw,
+  Ban,
+  ArrowUpCircle,
+  Undo2,
+} from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { DocPreview } from "@/components/DocPreview";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
@@ -10,6 +19,7 @@ import {
   beneficiariosPagamento,
   formatCompetencia,
   analistaReferencia,
+  gerenteReferencia,
   type Comprovante,
   type StatusComprovante,
   type AcaoComprovante,
@@ -30,11 +40,25 @@ type Tab = "comprovantes" | "retroativos" | "historico";
 
 const statusPorTab: Record<Tab, StatusComprovante[]> = {
   comprovantes: ["em_analise"],
-  retroativos: ["retroativo_aguardando_analista", "retroativo_aguardando_gerencia"],
-  historico: ["aprovado", "aprovado_com_ressalva", "recusado", "retroativo_aprovado", "correcao_solicitada"],
+  retroativos: ["retroativo_aguardando_analista", "retroativo_devolvido", "retroativo_aguardando_gerencia"],
+  historico: [
+    "aprovado",
+    "aprovado_com_ressalva",
+    "recusado",
+    "retroativo_aprovado",
+    "retroativo_recusado",
+    "correcao_solicitada",
+  ],
 };
 
-type SubFormTipo = "ressalva" | "correcao" | "recusar";
+// Status em que o Analista (1ª alçada) atua — inclui o retroativo devolvido pela Gerência
+const statusAcaoAnalista: StatusComprovante[] = [
+  "em_analise",
+  "retroativo_aguardando_analista",
+  "retroativo_devolvido",
+];
+
+type SubFormTipo = "ressalva" | "correcao" | "recusar" | "devolver";
 
 function nomeBeneficiario(id: string): string {
   return beneficiariosPagamento.find((b) => b.id === id)?.nome ?? id;
@@ -42,6 +66,9 @@ function nomeBeneficiario(id: string): string {
 
 function Comprovantes() {
   const role = getAdminRole();
+  const isGerencia = role === "gerencia";
+  const autor = isGerencia ? gerenteReferencia : analistaReferencia;
+  const etapaAtual: "analista" | "gerencia" = isGerencia ? "gerencia" : "analista";
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<Tab>("comprovantes");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -100,6 +127,15 @@ function Comprovantes() {
     setComentario("");
   }
 
+  /** Próximo status ao aprovar, considerando em qual ponto do fluxo (normal ou retroativo) o comprovante está. */
+  function proximoStatusAprovacao(statusAtual: StatusComprovante): StatusComprovante {
+    if (statusAtual === "retroativo_aguardando_gerencia") return "retroativo_aprovado";
+    if (statusAtual === "retroativo_aguardando_analista" || statusAtual === "retroativo_devolvido") {
+      return "retroativo_aguardando_gerencia";
+    }
+    return "aprovado";
+  }
+
   function aprovar(comprovante: Comprovante, beneficiarioId: string) {
     const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
     if (!beneficiario) return;
@@ -115,13 +151,10 @@ function Comprovantes() {
       return;
     }
 
-    const proximoStatus: StatusComprovante =
-      comprovante.status === "retroativo_aguardando_analista" ? "retroativo_aguardando_gerencia" : "aprovado";
-
-    registrarAcao(comprovante, beneficiarioId, proximoStatus, {
-      etapa: "analista",
+    registrarAcao(comprovante, beneficiarioId, proximoStatusAprovacao(comprovante.status), {
+      etapa: etapaAtual,
       acao: "aprovado",
-      aprovadoPor: analistaReferencia,
+      aprovadoPor: autor,
       data: new Date().toISOString(),
     });
   }
@@ -131,19 +164,18 @@ function Comprovantes() {
     const comprovante = todos.find((c) => c.id === divergencia.comprovanteId);
     if (!comprovante) return;
 
+    const statusAtual = comprovante.status;
+    // Na 2ª alçada, a divergência não impede a conclusão — apenas fica registrada como ressalva no histórico.
     const proximoStatus: StatusComprovante =
-      comprovante.status === "retroativo_aguardando_analista"
-        ? "retroativo_aguardando_gerencia"
-        : "aprovado_com_ressalva";
+      statusAtual === "retroativo_aguardando_gerencia" ? "retroativo_aprovado" : proximoStatusAprovacao(statusAtual);
 
     registrarAcao(comprovante, divergencia.beneficiarioId, proximoStatus, {
-      etapa: "analista",
+      etapa: etapaAtual,
       acao: "aprovado_com_ressalva",
-      aprovadoPor: analistaReferencia,
+      aprovadoPor: autor,
       data: new Date().toISOString(),
       comentario: justificativa,
     });
-    updateComprovantePagamento(comprovante.id, { justificativaDivergencia: justificativa });
     setDivergencia(null);
     refresh();
   }
@@ -152,27 +184,39 @@ function Comprovantes() {
     if (!subForm) return;
     if (subForm.tipo === "ressalva") {
       registrarAcao(comprovante, subForm.beneficiarioId, "aprovado_com_ressalva", {
-        etapa: "analista",
+        etapa: etapaAtual,
         acao: "aprovado_com_ressalva",
-        aprovadoPor: analistaReferencia,
+        aprovadoPor: autor,
         data: new Date().toISOString(),
         comentario,
       });
     } else if (subForm.tipo === "correcao") {
       registrarAcao(comprovante, subForm.beneficiarioId, "correcao_solicitada", {
-        etapa: "analista",
+        etapa: etapaAtual,
         acao: "correcao_solicitada",
-        aprovadoPor: analistaReferencia,
+        aprovadoPor: autor,
         data: new Date().toISOString(),
         comentario,
       });
     } else if (subForm.tipo === "recusar") {
-      registrarAcao(comprovante, subForm.beneficiarioId, "recusado", {
-        etapa: "analista",
+      // Recusa na 2ª alçada (Gerência) usa um status próprio, para distinguir de uma recusa comum
+      // e permitir exibir a competência original, a justificativa do atraso e a aprovação anterior do Analista.
+      const statusRecusa: StatusComprovante =
+        comprovante.status === "retroativo_aguardando_gerencia" ? "retroativo_recusado" : "recusado";
+      registrarAcao(comprovante, subForm.beneficiarioId, statusRecusa, {
+        etapa: etapaAtual,
         acao: "recusado",
-        aprovadoPor: analistaReferencia,
+        aprovadoPor: autor,
         data: new Date().toISOString(),
         motivo,
+        comentario,
+      });
+    } else if (subForm.tipo === "devolver") {
+      registrarAcao(comprovante, subForm.beneficiarioId, "retroativo_devolvido", {
+        etapa: "gerencia",
+        acao: "devolvido_analista",
+        aprovadoPor: autor,
+        data: new Date().toISOString(),
         comentario,
       });
     }
@@ -221,9 +265,14 @@ function Comprovantes() {
               <ComprovanteStatusBadge status={c.status} />
             </header>
 
-            {c.status === "retroativo_aguardando_gerencia" && (
+            {c.status === "retroativo_aguardando_gerencia" && !isGerencia && (
               <p className="text-xs text-muted-foreground italic mb-2">
-                Aguardando ação da Gerência (2ª alçada) — implementada na Etapa 3.
+                Aguardando 2ª alçada da Gerência — somente consulta.
+              </p>
+            )}
+            {c.status === "retroativo_devolvido" && (
+              <p className="text-xs font-medium text-warning italic mb-2 flex items-center gap-1.5">
+                <Undo2 className="h-3.5 w-3.5" /> Devolvido pela Gerência — ajuste necessário
               </p>
             )}
 
@@ -272,8 +321,17 @@ function Comprovantes() {
               {getListaStatusBeneficiario(cur).map(({ beneficiarioId, status: statusBeneficiario }) => {
                 const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
                 const campos = getCamposDoBeneficiario(cur, beneficiarioId);
-                const acoesDisponiveis =
-                  statusBeneficiario === "em_analise" || statusBeneficiario === "retroativo_aguardando_analista";
+                const historico = cur.aprovacoes.filter(
+                  (a) => !a.beneficiarioId || a.beneficiarioId === beneficiarioId,
+                );
+                const decisaoAnalista = [...historico]
+                  .reverse()
+                  .find((a) => a.etapa === "analista" && (a.acao === "aprovado" || a.acao === "aprovado_com_ressalva"));
+                const devolucaoGerencia = [...historico].reverse().find((a) => a.acao === "devolvido_analista");
+
+                const acoesAnalista = statusAcaoAnalista.includes(statusBeneficiario);
+                const acoesGerencia = statusBeneficiario === "retroativo_aguardando_gerencia" && isGerencia;
+                const acoesDisponiveis = acoesAnalista || acoesGerencia;
                 const emSubForm = subForm?.beneficiarioId === beneficiarioId;
 
                 return (
@@ -289,6 +347,31 @@ function Comprovantes() {
                       valorCadastrado={beneficiario?.valorCadastrado}
                     />
 
+                    {statusBeneficiario === "retroativo_devolvido" && devolucaoGerencia && (
+                      <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-medium text-warning flex items-center gap-1.5">
+                          <Undo2 className="h-3.5 w-3.5" /> Devolvido pela Gerência — ajuste necessário
+                        </p>
+                        <p>{devolucaoGerencia.comentario}</p>
+                        <p className="text-muted-foreground">
+                          {devolucaoGerencia.aprovadoPor} em {new Date(devolucaoGerencia.data).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
+
+                    {statusBeneficiario === "retroativo_aguardando_gerencia" && decisaoAnalista && (
+                      <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-medium text-muted-foreground">Decisão do Analista (1ª alçada):</p>
+                        <p>
+                          {decisaoAnalista.acao === "aprovado_com_ressalva" ? "Aprovou com ressalva" : "Aprovou"}
+                          {decisaoAnalista.comentario && ` — "${decisaoAnalista.comentario}"`}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {decisaoAnalista.aprovadoPor} em {new Date(decisaoAnalista.data).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
+
                     {acoesDisponiveis && !emSubForm && (
                       <div className="flex flex-wrap gap-2 pt-2">
                         <button
@@ -296,9 +379,12 @@ function Comprovantes() {
                           className="text-sm bg-success text-success-foreground rounded-md px-3 py-2 hover:opacity-90 flex items-center gap-1.5"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />
-                          {cur.status === "retroativo_aguardando_analista" ? "Aprovar (1ª alçada)" : "Aprovar"}
+                          {acoesGerencia && "Aprovar definitivamente"}
+                          {!acoesGerencia && cur.status === "retroativo_aguardando_analista" && "Aprovar (1ª alçada)"}
+                          {!acoesGerencia && cur.status === "retroativo_devolvido" && "Reenviar para Gerência"}
+                          {!acoesGerencia && cur.status === "em_analise" && "Aprovar"}
                         </button>
-                        {cur.status !== "retroativo_aguardando_analista" && (
+                        {cur.status === "em_analise" && (
                           <button
                             onClick={() => setSubForm({ beneficiarioId, tipo: "ressalva" })}
                             className="text-sm border border-warning/40 text-warning rounded-md px-3 py-2 hover:bg-warning/5 flex items-center gap-1.5"
@@ -306,12 +392,22 @@ function Comprovantes() {
                             <AlertTriangle className="h-3.5 w-3.5" /> Aprovar com ressalva
                           </button>
                         )}
-                        <button
-                          onClick={() => setSubForm({ beneficiarioId, tipo: "correcao" })}
-                          className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" /> Solicitar correção
-                        </button>
+                        {acoesGerencia && (
+                          <button
+                            onClick={() => setSubForm({ beneficiarioId, tipo: "devolver" })}
+                            className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
+                          >
+                            <Undo2 className="h-3.5 w-3.5" /> Devolver ao Analista
+                          </button>
+                        )}
+                        {!acoesGerencia && (
+                          <button
+                            onClick={() => setSubForm({ beneficiarioId, tipo: "correcao" })}
+                            className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" /> Solicitar correção
+                          </button>
+                        )}
                         <button
                           onClick={() => setSubForm({ beneficiarioId, tipo: "recusar" })}
                           className="text-sm border border-destructive/30 text-destructive rounded-md px-3 py-2 hover:bg-destructive/5 flex items-center gap-1.5"
@@ -344,7 +440,9 @@ function Comprovantes() {
                               ? "Justificativa obrigatória para aprovar com ressalva..."
                               : subForm.tipo === "correcao"
                                 ? "Descreva o que precisa ser corrigido..."
-                                : "Detalhe o motivo da recusa..."
+                                : subForm.tipo === "devolver"
+                                  ? "Explique por que está devolvendo ao Analista..."
+                                  : "Detalhe o motivo da recusa..."
                           }
                           className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                         />
@@ -389,6 +487,9 @@ function Comprovantes() {
                         {a.acao === "aprovado_com_ressalva" && "aprovou com ressalva"}
                         {a.acao === "correcao_solicitada" && "solicitou correção"}
                         {a.acao === "recusado" && "recusou"}
+                        {a.acao === "devolvido_analista" && "devolveu ao Analista"}
+                        {a.acao === "documento_substituido" && "substituiu o documento"}
+                        {a.acao === "reenviado" && "reenviou o documento"}
                         {a.beneficiarioId && ` — ${nomeBeneficiario(a.beneficiarioId)}`}
                         {" em "}
                         {new Date(a.data).toLocaleString("pt-BR")}

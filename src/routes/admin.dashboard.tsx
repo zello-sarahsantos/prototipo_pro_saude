@@ -61,7 +61,7 @@ function Dashboard() {
             <div>
               <h2 className="font-semibold text-sm">Retroativos pendentes</h2>
               <p className="text-xs text-muted-foreground">
-                Aguardando 2ª alçada da Gerência — ação disponível na Etapa 3.
+                Aguardando 2ª alçada da Gerência.
               </p>
             </div>
           </div>

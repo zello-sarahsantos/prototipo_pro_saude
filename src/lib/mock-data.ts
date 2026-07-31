@@ -252,7 +252,9 @@ export type StatusComprovante =
   | 'recusado'
   | 'retroativo_aguardando_analista'
   | 'retroativo_aguardando_gerencia'
-  | 'retroativo_aprovado';
+  | 'retroativo_devolvido'
+  | 'retroativo_aprovado'
+  | 'retroativo_recusado';
 
 export interface CampoExtraido {
   chave: 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor' | 'dataPagamento' | 'banco';
@@ -270,7 +272,8 @@ export interface AcaoComprovante {
     | 'correcao_solicitada'
     | 'recusado'
     | 'documento_substituido'
-    | 'reenviado';
+    | 'reenviado'
+    | 'devolvido_analista';
   aprovadoPor: string;
   data: string;
   motivo?: string;
@@ -321,7 +324,9 @@ export const statusComprovanteLabels: Record<StatusComprovante, string> = {
   'recusado': 'Recusado',
   'retroativo_aguardando_analista': 'Retroativo — Aguardando Analista',
   'retroativo_aguardando_gerencia': 'Retroativo — Aguardando Gerência',
+  'retroativo_devolvido': 'Retroativo — Devolvido pela Gerência',
   'retroativo_aprovado': 'Retroativo Aprovado',
+  'retroativo_recusado': 'Retroativo Recusado',
 };
 
 export const statusComprovanteCore: Record<StatusComprovante, { bg: string; fg: string }> = {
@@ -335,7 +340,9 @@ export const statusComprovanteCore: Record<StatusComprovante, { bg: string; fg: 
   'recusado': { bg: '#fee2e2', fg: '#dc2626' },
   'retroativo_aguardando_analista': { bg: '#ede9fe', fg: '#6d28d9' },
   'retroativo_aguardando_gerencia': { bg: '#ede9fe', fg: '#6d28d9' },
+  'retroativo_devolvido': { bg: '#ede9fe', fg: '#6d28d9' },
   'retroativo_aprovado': { bg: '#dcfce7', fg: '#166534' },
+  'retroativo_recusado': { bg: '#fee2e2', fg: '#dc2626' },
 };
 
 /**

@@ -113,8 +113,37 @@ export function ServidorComprovanteDetail({
             const decisaoFinal = [...historico]
               .reverse()
               .find((a) => a.acao === "aprovado" || a.acao === "aprovado_com_ressalva" || a.acao === "recusado");
+            const decisaoAnalista = [...historico]
+              .reverse()
+              .find((a) => a.etapa === "analista" && (a.acao === "aprovado" || a.acao === "aprovado_com_ressalva"));
+            const decisaoGerencia = [...historico]
+              .reverse()
+              .find((a) => a.etapa === "gerencia" && (a.acao === "aprovado" || a.acao === "aprovado_com_ressalva" || a.acao === "recusado"));
             const pedidoCorrecao = [...historico].reverse().find((a) => a.acao === "correcao_solicitada");
+            const devolucaoGerencia = [...historico].reverse().find((a) => a.acao === "devolvido_analista");
             const versaoAnterior = comprovante.versoesAnteriores?.at(-1);
+
+            const HistoricoAlcadas = () =>
+              historico.length > 0 ? (
+                <div className="bg-muted/30 rounded-lg p-3 text-xs space-y-1.5">
+                  <p className="font-medium text-muted-foreground">Histórico das alçadas:</p>
+                  {historico.map((a, i) => (
+                    <p key={i}>
+                      <strong>{a.aprovadoPor}</strong> ({a.etapa}) —{" "}
+                      {a.acao === "aprovado" && "aprovou"}
+                      {a.acao === "aprovado_com_ressalva" && "aprovou com ressalva"}
+                      {a.acao === "correcao_solicitada" && "solicitou correção"}
+                      {a.acao === "recusado" && "recusou"}
+                      {a.acao === "devolvido_analista" && "devolveu ao Analista"}
+                      {a.acao === "documento_substituido" && "substituiu o documento"}
+                      {a.acao === "reenviado" && "reenviou o documento"}
+                      {" em "}
+                      {new Date(a.data).toLocaleString("pt-BR")}
+                      {a.comentario && ` — "${a.comentario}"`}
+                    </p>
+                  ))}
+                </div>
+              ) : null;
 
             return (
               <div key={beneficiarioId} className="border border-border rounded-xl p-4 space-y-3">
@@ -190,6 +219,67 @@ export function ServidorComprovanteDetail({
                       Etapa atual: {status === "retroativo_aguardando_analista" ? "1ª alçada (Analista)" : "2ª alçada (Gerência)"} —
                       somente leitura enquanto aguarda decisão.
                     </p>
+                    <HistoricoAlcadas />
+                  </div>
+                )}
+
+                {/* ===== Retroativo devolvido pela Gerência (somente leitura para o servidor) ===== */}
+                {status === "retroativo_devolvido" && (
+                  <div className="space-y-2">
+                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    {devolucaoGerencia && (
+                      <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-medium text-warning">Devolvido pela Gerência — em ajuste pelo Analista</p>
+                        <p>{devolucaoGerencia.comentario}</p>
+                        <p className="text-muted-foreground">
+                          {devolucaoGerencia.aprovadoPor} em {new Date(devolucaoGerencia.data).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground italic">
+                      A Gerência devolveu este retroativo ao Analista para reavaliação — não é uma nova solicitação,
+                      o processo continua a partir da 1ª alçada.
+                    </p>
+                    <HistoricoAlcadas />
+                  </div>
+                )}
+
+                {/* ===== Retroativo recusado (somente leitura, terminal) ===== */}
+                {status === "retroativo_recusado" && (
+                  <div className="space-y-2">
+                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    {decisaoAnalista && (
+                      <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-medium text-muted-foreground">Aprovação anterior do Analista (1ª alçada):</p>
+                        <p>
+                          {decisaoAnalista.acao === "aprovado_com_ressalva" ? "Aprovou com ressalva" : "Aprovou"}
+                          {decisaoAnalista.comentario && ` — "${decisaoAnalista.comentario}"`}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {decisaoAnalista.aprovadoPor} em {new Date(decisaoAnalista.data).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
+                    {decisaoGerencia && (
+                      <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-xs space-y-1">
+                        <p className="flex items-center gap-1.5 text-destructive font-medium">
+                          <XCircle className="h-3.5 w-3.5" /> Recusado pela Gerência (2ª alçada)
+                        </p>
+                        {decisaoGerencia.motivo && (
+                          <p>
+                            <strong>Motivo:</strong> {decisaoGerencia.motivo}
+                          </p>
+                        )}
+                        {decisaoGerencia.comentario && <p>{decisaoGerencia.comentario}</p>}
+                        <p className="text-muted-foreground">
+                          {decisaoGerencia.aprovadoPor} em {new Date(decisaoGerencia.data).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground italic">
+                      Recusa do retroativo é definitiva — não é possível reenviar este comprovante.
+                    </p>
+                    <HistoricoAlcadas />
                   </div>
                 )}
 
@@ -214,6 +304,7 @@ export function ServidorComprovanteDetail({
                         </p>
                       </div>
                     )}
+                    {status === "retroativo_aprovado" && <HistoricoAlcadas />}
                   </div>
                 )}
 
