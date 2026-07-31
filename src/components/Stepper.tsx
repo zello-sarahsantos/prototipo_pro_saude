@@ -33,12 +33,14 @@ export function StepNav({
   nextLabel = "Próximo",
   isLast = false,
   disabled = false,
+  cancelTo = "/servidor/requerimento/novo",
 }: {
   onPrev?: () => void;
   onNext: () => void;
   nextLabel?: string;
   isLast?: boolean;
   disabled?: boolean;
+  cancelTo?: string;
 }) {
   return (
     <div className="flex gap-2 pt-4">
@@ -51,7 +53,7 @@ export function StepNav({
         </button>
       ) : (
         <Link
-          to="/servidor/requerimento/novo"
+          to={cancelTo}
           className="flex-1 border border-border rounded-md py-2.5 text-sm font-medium hover:bg-muted text-center"
         >
           Cancelar

@@ -238,3 +238,209 @@ export const baseImportadaGerdab = [
     dependentes: []
   }
 ];
+
+/** ===== MÓDULO DE PAGAMENTO (Etapa 2) ===== */
+
+export type StatusComprovante =
+  | 'processando'
+  | 'ilegivel'
+  | 'revisao'
+  | 'em_analise'
+  | 'aprovado'
+  | 'aprovado_com_ressalva'
+  | 'recusado'
+  | 'retroativo_aguardando_analista'
+  | 'retroativo_aguardando_gerencia'
+  | 'retroativo_aprovado';
+
+export interface CampoExtraido {
+  chave: 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor' | 'dataPagamento' | 'banco';
+  valor: string;
+  origem: 'ocr' | 'manual';
+  confianca: 'alta' | 'media' | 'nenhuma';
+}
+
+export interface Comprovante {
+  id: string;
+  arquivo: string;
+  tipoDocumento: 'boleto_individual' | 'recibo' | 'demonstrativo' | 'fatura_tecnica';
+  beneficiarioIds: string[];
+  competencia: string;
+  isRetroativo: boolean;
+  justificativaAtraso?: string;
+  /** Campos extraídos do documento — usado quando há 1 único beneficiário. */
+  camposExtraidos: CampoExtraido[];
+  /** Usado quando `beneficiarioIds.length > 1` (ex: fatura técnica) — 1 conjunto de campos por beneficiário. */
+  gruposExtraidos?: { beneficiarioId: string; campos: CampoExtraido[] }[];
+  /** Preenchida quando o valor extraído diverge do valor cadastrado do beneficiário. */
+  justificativaDivergencia?: string;
+  status: StatusComprovante;
+  aprovacoes: { etapa: 'analista' | 'gerencia'; aprovadoPor: string; data: string; comentario?: string }[];
+  dataEnvio: string;
+}
+
+export const statusComprovanteLabels: Record<StatusComprovante, string> = {
+  'processando': 'Processando',
+  'ilegivel': 'Documento Ilegível',
+  'revisao': 'Em Revisão',
+  'em_analise': 'Em Análise',
+  'aprovado': 'Aprovado',
+  'aprovado_com_ressalva': 'Aprovado com Ressalva',
+  'recusado': 'Recusado',
+  'retroativo_aguardando_analista': 'Retroativo — Aguardando Analista',
+  'retroativo_aguardando_gerencia': 'Retroativo — Aguardando Gerência',
+  'retroativo_aprovado': 'Retroativo Aprovado',
+};
+
+export const statusComprovanteCore: Record<StatusComprovante, { bg: string; fg: string }> = {
+  'processando': { bg: '#fef3c7', fg: '#b45309' },
+  'ilegivel': { bg: '#fee2e2', fg: '#dc2626' },
+  'revisao': { bg: '#fef3c7', fg: '#b45309' },
+  'em_analise': { bg: '#fef3c7', fg: '#b45309' },
+  'aprovado': { bg: '#dcfce7', fg: '#166534' },
+  'aprovado_com_ressalva': { bg: '#fef3c7', fg: '#b45309' },
+  'recusado': { bg: '#fee2e2', fg: '#dc2626' },
+  'retroativo_aguardando_analista': { bg: '#ede9fe', fg: '#6d28d9' },
+  'retroativo_aguardando_gerencia': { bg: '#ede9fe', fg: '#6d28d9' },
+  'retroativo_aprovado': { bg: '#dcfce7', fg: '#166534' },
+};
+
+/**
+ * Cenário de referência do Módulo de Pagamento (Carlos Eduardo Ramos e grupo familiar).
+ * Independente de `servidorAtual`/`dependentes` (usados no Módulo de Cadastro) — mantém
+ * o escopo do pagamento isolado, sem alterar dados de outros módulos.
+ */
+export interface BeneficiarioPagamento {
+  id: string;
+  nome: string;
+  parentesco: 'Titular' | 'Cônjuge' | 'Filho';
+  operadora: string;
+  valorCadastrado: number;
+  situacao: 'ativo' | 'pendente_documentacao' | 'inativo';
+}
+
+export const beneficiariosPagamento: BeneficiarioPagamento[] = [
+  { id: 'ben-titular', nome: 'Carlos Eduardo Ramos', parentesco: 'Titular', operadora: 'Assefaz', valorCadastrado: 420, situacao: 'ativo' },
+  { id: 'ben-conjuge', nome: 'Marina Ramos', parentesco: 'Cônjuge', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo' },
+  { id: 'ben-filho', nome: 'Pedro Ramos', parentesco: 'Filho', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo' },
+];
+
+export const analistaReferencia = "Sarah Santos";
+export const gerenteReferencia = "Francisco";
+
+export const competenciaAtual = "2026-07";
+export const competenciaRetroativa = "2026-05";
+
+const nomesMeses = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+export function formatCompetencia(competencia: string): string {
+  const [ano, mes] = competencia.split("-");
+  const nome = nomesMeses[Number(mes) - 1] ?? mes;
+  return `${nome}/${ano}`;
+}
+
+export const comprovantes: Comprovante[] = [
+  // Exemplo 1: individual aprovado
+  {
+    id: "comp001",
+    arquivo: "boleto_julho_carlos.pdf",
+    tipoDocumento: "boleto_individual",
+    beneficiarioIds: ["ben-titular"],
+    competencia: competenciaAtual,
+    isRetroativo: false,
+    camposExtraidos: [
+      { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
+      { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
+      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
+      { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
+      { chave: 'valor', valor: '420.00', origem: 'ocr', confianca: 'alta' },
+      { chave: 'dataPagamento', valor: '31/07/2026', origem: 'ocr', confianca: 'media' },
+      { chave: 'banco', valor: 'Banco do Brasil', origem: 'ocr', confianca: 'alta' },
+    ],
+    status: 'aprovado',
+    aprovacoes: [
+      { etapa: 'analista', aprovadoPor: 'Sarah Santos', data: '2026-08-01', comentario: 'Campos conferidos' }
+    ],
+    dataEnvio: '2026-08-01T09:30:00Z',
+  },
+  // Exemplo 2: em análise
+  {
+    id: "comp002",
+    arquivo: "recibo_julho_marina.pdf",
+    tipoDocumento: "recibo",
+    beneficiarioIds: ["ben-conjuge"],
+    competencia: competenciaAtual,
+    isRetroativo: false,
+    camposExtraidos: [
+      { chave: 'nome', valor: 'Marina Ramos', origem: 'ocr', confianca: 'alta' },
+      { chave: 'cpf', valor: '234.567.890-11', origem: 'ocr', confianca: 'alta' },
+      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
+      { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
+      { chave: 'valor', valor: '310.00', origem: 'ocr', confianca: 'alta' },
+      { chave: 'dataPagamento', valor: '28/07/2026', origem: 'ocr', confianca: 'media' },
+      { chave: 'banco', valor: 'Banco Bradesco', origem: 'ocr', confianca: 'alta' },
+    ],
+    status: 'em_analise',
+    aprovacoes: [],
+    dataEnvio: '2026-08-02T14:15:00Z',
+  },
+  // Exemplo 3: ilegível com opção de reenvio
+  {
+    id: "comp003",
+    arquivo: "boleto_julho_pedro_ilegivel.pdf",
+    tipoDocumento: "boleto_individual",
+    beneficiarioIds: ["ben-filho"],
+    competencia: competenciaAtual,
+    isRetroativo: false,
+    camposExtraidos: [],
+    status: 'ilegivel',
+    aprovacoes: [],
+    dataEnvio: '2026-08-03T11:00:00Z',
+  },
+  // Exemplo 4: retroativo aguardando analista
+  {
+    id: "comp004",
+    arquivo: "recibo_maio_carlos_retroativo.pdf",
+    tipoDocumento: "recibo",
+    beneficiarioIds: ["ben-titular"],
+    competencia: competenciaRetroativa,
+    isRetroativo: true,
+    justificativaAtraso: 'Comprovante foi enviado pelo banco com atraso no mês anterior',
+    camposExtraidos: [
+      { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
+      { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
+      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
+      { chave: 'competencia', valor: '2026-05', origem: 'ocr', confianca: 'alta' },
+      { chave: 'valor', valor: '420.00', origem: 'ocr', confianca: 'alta' },
+      { chave: 'dataPagamento', valor: '30/05/2026', origem: 'ocr', confianca: 'media' },
+      { chave: 'banco', valor: 'Caixa Econômica', origem: 'ocr', confianca: 'alta' },
+    ],
+    status: 'retroativo_aguardando_analista',
+    aprovacoes: [],
+    dataEnvio: '2026-08-04T10:00:00Z',
+  },
+  // Exemplo 5: retroativo com divergência de valor
+  {
+    id: "comp005",
+    arquivo: "demonstrativo_julho_carlos_divergente.pdf",
+    tipoDocumento: "demonstrativo",
+    beneficiarioIds: ["ben-titular"],
+    competencia: competenciaAtual,
+    isRetroativo: false,
+    camposExtraidos: [
+      { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
+      { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
+      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
+      { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
+      { chave: 'valor', valor: '520.00', origem: 'ocr', confianca: 'alta' }, // Divergente do cadastrado (420)
+      { chave: 'dataPagamento', valor: '31/07/2026', origem: 'ocr', confianca: 'media' },
+      { chave: 'banco', valor: 'Banco do Brasil', origem: 'ocr', confianca: 'alta' },
+    ],
+    status: 'em_analise',
+    aprovacoes: [],
+    dataEnvio: '2026-08-05T09:45:00Z',
+  },
+];
