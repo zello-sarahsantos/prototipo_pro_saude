@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronRight, FileUp, ShieldAlert } from "lucide-react";
+import { ChevronRight, FileUp, ShieldAlert, AlertTriangle } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ServidorComprovanteDetail } from "@/components/ServidorComprovanteDetail";
 import {
@@ -11,6 +11,7 @@ import {
   type Comprovante,
 } from "@/lib/mock-data";
 import { getComprovantesUnificados } from "@/lib/prosaude-storage";
+import { getCompetenciasPendentes } from "@/lib/competencias-pendentes";
 
 export const Route = createFileRoute("/servidor/pagamentos/")({
   component: PagamentosHome,
@@ -22,9 +23,12 @@ const associacao = servidorAtual.associacao !== "—" ? servidorAtual.associacao
 function PagamentosHome() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [detalhe, setDetalhe] = useState<{ comprovante: Comprovante; beneficiarioId?: string } | null>(null);
+  const [mostrarTodasPendentes, setMostrarTodasPendentes] = useState(false);
 
   const comprovantes = useMemo(() => getComprovantesUnificados(), [refreshKey]);
   const daCompetenciaAtual = comprovantes.filter((c) => c.competencia === competenciaAtual);
+  const competenciasPendentes = useMemo(() => getCompetenciasPendentes(), [refreshKey]);
+  const pendentesExibidas = mostrarTodasPendentes ? competenciasPendentes : competenciasPendentes.slice(0, 3);
 
   function refresh() {
     setRefreshKey((k) => k + 1);
@@ -63,6 +67,45 @@ function PagamentosHome() {
             <p className="text-xs opacity-90">Boleto, recibo ou demonstrativo do plano de saúde</p>
           </div>
         </Link>
+      )}
+
+      {competenciasPendentes.length > 0 && (
+        <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+            <h3 className="font-semibold text-destructive text-sm">
+              Competências pendentes ({competenciasPendentes.length})
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {pendentesExibidas.map((c) => (
+              <div
+                key={c}
+                className="bg-card rounded-lg p-3 border border-border flex items-center justify-between gap-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{formatCompetencia(c)}</p>
+                  <p className="text-xs text-muted-foreground">Prazo encerrado.</p>
+                </div>
+                <Link
+                  to="/servidor/pagamentos/enviar"
+                  search={{ competencia: c }}
+                  className="text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 hover:bg-primary-light shrink-0"
+                >
+                  Enviar retroativo
+                </Link>
+              </div>
+            ))}
+          </div>
+          {competenciasPendentes.length > 3 && !mostrarTodasPendentes && (
+            <button
+              onClick={() => setMostrarTodasPendentes(true)}
+              className="text-xs font-medium text-destructive hover:underline"
+            >
+              Ver todas ({competenciasPendentes.length})
+            </button>
+          )}
+        </section>
       )}
 
       <section>

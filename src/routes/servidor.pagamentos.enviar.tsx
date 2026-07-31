@@ -9,7 +9,7 @@ import { ResumoPagamento } from "@/components/ResumoPagamento";
 import {
   beneficiariosPagamento,
   competenciaAtual,
-  competenciaRetroativa,
+  competenciasFechadas,
   formatCompetencia,
   type Comprovante,
   type CampoExtraido,
@@ -18,6 +18,9 @@ import { arquivoEhIlegivel, gerarCamposExtraidos } from "@/lib/ocr-mock";
 import { addComprovantePagamento, getComprovantesUnificados } from "@/lib/prosaude-storage";
 
 export const Route = createFileRoute("/servidor/pagamentos/enviar")({
+  validateSearch: (search: Record<string, unknown>): { competencia?: string } => ({
+    competencia: typeof search.competencia === "string" ? search.competencia : undefined,
+  }),
   component: EnviarComprovante,
 });
 
@@ -40,10 +43,15 @@ const tipoDocumentoOpcoes = [
 ] as const;
 
 function EnviarComprovante() {
+  const search = Route.useSearch();
+  // Quando aberta a partir do alerta de "competência pendente", a competência vem preenchida e travada.
+  const competenciaViaAlerta =
+    search.competencia && competenciasFechadas.includes(search.competencia) ? search.competencia : undefined;
+
   const [step, setStep] = useState<Step>("selecao");
   const [tipoDocumento, setTipoDocumento] =
     useState<Comprovante["tipoDocumento"]>("boleto_individual");
-  const [competencia, setCompetencia] = useState(competenciaAtual);
+  const [competencia, setCompetencia] = useState(competenciaViaAlerta ?? competenciaAtual);
   const [justificativaAtraso, setJustificativaAtraso] = useState("");
   const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>([]);
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -54,7 +62,7 @@ function EnviarComprovante() {
 
   const comprovantesExistentes = useMemo(() => getComprovantesUnificados(), []);
 
-  const isRetroativo = competencia === competenciaRetroativa;
+  const isRetroativo = competencia !== competenciaAtual;
   const beneficiariosEscolhidos = beneficiariosPagamento.filter((b) =>
     beneficiariosSelecionados.includes(b.id),
   );
@@ -174,13 +182,21 @@ function EnviarComprovante() {
             <select
               value={competencia}
               onChange={(e) => setCompetencia(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm"
+              disabled={!!competenciaViaAlerta}
+              className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm disabled:opacity-70"
             >
               <option value={competenciaAtual}>{formatCompetencia(competenciaAtual)} (aberta)</option>
-              <option value={competenciaRetroativa}>
-                {formatCompetencia(competenciaRetroativa)} (fechada — retroativo)
-              </option>
+              {competenciasFechadas.map((c) => (
+                <option key={c} value={c}>
+                  {formatCompetencia(c)} (fechada — retroativo)
+                </option>
+              ))}
             </select>
+            {competenciaViaAlerta && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Competência preenchida automaticamente a partir do alerta de pendência.
+              </p>
+            )}
           </div>
 
           {isRetroativo && (

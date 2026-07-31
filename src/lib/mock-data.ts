@@ -371,6 +371,9 @@ export const gerenteReferencia = "Francisco";
 export const competenciaAtual = "2026-07";
 export const competenciaRetroativa = "2026-05";
 
+/** Competências já fechadas (anteriores à atual) elegíveis para envio retroativo. */
+export const competenciasFechadas = ["2026-04", "2026-05", "2026-06"];
+
 const nomesMeses = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",

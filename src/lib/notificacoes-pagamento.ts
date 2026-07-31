@@ -1,5 +1,6 @@
-import { beneficiariosPagamento, competenciaAtual, type StatusComprovante } from "./mock-data";
+import { beneficiariosPagamento, competenciaAtual, formatCompetencia, type StatusComprovante } from "./mock-data";
 import { getComprovantesUnificados } from "./prosaude-storage";
+import { getCompetenciasPendentes } from "./competencias-pendentes";
 
 export interface NotificacaoPagamento {
   id: string;
@@ -28,7 +29,7 @@ export function getNotificacoesPagamento(): NotificacaoPagamento[] {
   const comprovantes = getComprovantesUnificados();
   const relevantes = comprovantes.filter((c) => c.competencia === competenciaAtual || c.isRetroativo);
 
-  return beneficiariosPagamento.flatMap((b) => {
+  const notificacoesStatus = beneficiariosPagamento.flatMap((b) => {
     const doBeneficiario = relevantes.filter((c) => c.beneficiarioIds.includes(b.id));
     const maisRecente = doBeneficiario[doBeneficiario.length - 1];
     if (!maisRecente) return [];
@@ -38,4 +39,12 @@ export function getNotificacoesPagamento(): NotificacaoPagamento[] {
 
     return [{ id: `${b.id}-${maisRecente.id}`, mensagem: gerarMensagem(b.nome) }];
   });
+
+  // 1 notificação por competência pendente — nomeia claramente o mês sem envio.
+  const notificacoesPendentes = getCompetenciasPendentes().map((c) => ({
+    id: `pendente-${c}`,
+    mensagem: `Você não enviou comprovante da competência de ${formatCompetencia(c)} — prazo encerrado.`,
+  }));
+
+  return [...notificacoesPendentes, ...notificacoesStatus];
 }
