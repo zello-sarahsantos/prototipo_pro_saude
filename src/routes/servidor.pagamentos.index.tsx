@@ -1,15 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
-import { FileUp, ShieldAlert } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronRight, FileUp, ShieldAlert } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
+import { ServidorComprovanteDetail } from "@/components/ServidorComprovanteDetail";
 import {
   beneficiariosPagamento,
-  comprovantes as comprovantesSeed,
   competenciaAtual,
   formatCompetencia,
   servidorAtual,
+  type Comprovante,
 } from "@/lib/mock-data";
-import { loadComprovantesPagamento } from "@/lib/prosaude-storage";
+import { getComprovantesUnificados } from "@/lib/prosaude-storage";
 
 export const Route = createFileRoute("/servidor/pagamentos/")({
   component: PagamentosHome,
@@ -19,12 +20,15 @@ export const Route = createFileRoute("/servidor/pagamentos/")({
 const associacao = servidorAtual.associacao !== "—" ? servidorAtual.associacao : null;
 
 function PagamentosHome() {
-  const comprovantes = useMemo(
-    () => [...comprovantesSeed, ...loadComprovantesPagamento()],
-    [],
-  );
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [detalhe, setDetalhe] = useState<{ comprovante: Comprovante; beneficiarioId?: string } | null>(null);
 
+  const comprovantes = useMemo(() => getComprovantesUnificados(), [refreshKey]);
   const daCompetenciaAtual = comprovantes.filter((c) => c.competencia === competenciaAtual);
+
+  function refresh() {
+    setRefreshKey((k) => k + 1);
+  }
 
   return (
     <div className="p-4 space-y-5">
@@ -71,7 +75,12 @@ function PagamentosHome() {
             // Último envio da lista = mais recente (seed em ordem cronológica + envios da sessão ao final)
             const maisRecente = doBeneficiario[doBeneficiario.length - 1];
             return (
-              <div key={b.id} className="bg-card rounded-xl p-3 border border-border flex items-center gap-3">
+              <button
+                key={b.id}
+                onClick={() => maisRecente && setDetalhe({ comprovante: maisRecente, beneficiarioId: b.id })}
+                disabled={!maisRecente}
+                className="w-full text-left bg-card rounded-xl p-3 border border-border flex items-center gap-3 disabled:cursor-default hover:border-primary/40 disabled:hover:border-border transition"
+              >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{b.nome}</p>
                   <p className="text-xs text-muted-foreground">{b.parentesco}</p>
@@ -79,9 +88,12 @@ function PagamentosHome() {
                 {!maisRecente ? (
                   <ComprovanteStatusBadge status="ilegivel" label="Sem comprovante" />
                 ) : (
-                  <ComprovanteStatusBadge status={maisRecente.status} />
+                  <>
+                    <ComprovanteStatusBadge status={maisRecente.status} />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -97,7 +109,11 @@ function PagamentosHome() {
               .slice()
               .reverse()
               .map((c) => (
-                <div key={c.id} className="bg-card rounded-xl p-3 border border-border flex items-center gap-3">
+                <button
+                  key={c.id}
+                  onClick={() => setDetalhe({ comprovante: c })}
+                  className="w-full text-left bg-card rounded-xl p-3 border border-border flex items-center gap-3 hover:border-primary/40 transition"
+                >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{c.arquivo}</p>
                     <p className="text-xs text-muted-foreground">
@@ -106,10 +122,20 @@ function PagamentosHome() {
                     </p>
                   </div>
                   <ComprovanteStatusBadge status={c.status} />
-                </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </button>
               ))}
           </div>
         </section>
+      )}
+
+      {detalhe && (
+        <ServidorComprovanteDetail
+          comprovante={comprovantes.find((c) => c.id === detalhe.comprovante.id) ?? detalhe.comprovante}
+          focusBeneficiarioId={detalhe.beneficiarioId}
+          onClose={() => setDetalhe(null)}
+          onChanged={refresh}
+        />
       )}
     </div>
   );

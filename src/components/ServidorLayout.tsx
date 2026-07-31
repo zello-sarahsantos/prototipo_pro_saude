@@ -1,11 +1,13 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Home, FileText, Users, LogOut, Plus, CreditCard } from "lucide-react";
+import { Home, FileText, Users, Plus, CreditCard } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export function ServidorLayout() {
   const loc = useLocation();
   const isNovo =
     loc.pathname.startsWith("/servidor/requerimento") ||
-    loc.pathname.startsWith("/servidor/pagamentos");
+    loc.pathname.startsWith("/servidor/pagamentos") ||
+    loc.pathname === "/servidor/meus-dados";
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto shadow-elevated">
       <header className="bg-primary text-primary-foreground px-4 py-4 sticky top-0 z-10">
@@ -14,9 +16,7 @@ export function ServidorLayout() {
             <p className="text-xs opacity-80">DETRAN • Pró-Saúde</p>
             <h1 className="text-base font-semibold">Portal do Servidor</h1>
           </div>
-          <Link to="/login" className="opacity-90 hover:opacity-100">
-            <LogOut className="h-5 w-5" />
-          </Link>
+          <NotificationBell />
         </div>
       </header>
 

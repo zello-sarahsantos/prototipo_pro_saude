@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { LogOut } from "lucide-react";
 import { servidorAtual } from "@/lib/mock-data";
 import { PendencyBanner } from "@/components/PendencyBanner";
 
@@ -45,6 +46,13 @@ function MeusDados() {
         className="w-full bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-medium hover:bg-primary-light transition"
       >
         Solicitar alteração de cadastro
+      </button>
+
+      <button
+        onClick={() => navigate({ to: "/login" })}
+        className="w-full flex items-center justify-center gap-2 border border-border rounded-md py-2.5 text-sm font-medium text-destructive hover:bg-destructive/5 transition"
+      >
+        <LogOut className="h-4 w-4" /> Sair
       </button>
     </div>
   );

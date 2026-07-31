@@ -1,4 +1,4 @@
-import type { Comprovante } from "./mock-data";
+import { comprovantes as comprovantesSeed, type Comprovante } from "./mock-data";
 
 export const PROSAUDE_STORAGE_KEYS = {
   titularCadastro: "prosaude_titular_cadastro",
@@ -88,9 +88,29 @@ export function addComprovantePagamento(comprovante: Comprovante) {
   );
 }
 
+/**
+ * Une os comprovantes de exemplo (`mock-data.ts`) com os persistidos em `localStorage`,
+ * deduplicando por `id` — a versão do `localStorage` sempre prevalece (é a mais recente,
+ * já que toda ação do Servidor/Analista/Gerência é persistida ali).
+ */
+export function getComprovantesUnificados(): Comprovante[] {
+  const persistidos = loadComprovantesPagamento();
+  const idsPersistidos = new Set(persistidos.map((c) => c.id));
+  const seedNaoSobreposto = comprovantesSeed.filter((c) => !idsPersistidos.has(c.id));
+  return [...seedNaoSobreposto, ...persistidos];
+}
+
+/**
+ * Atualiza um comprovante (seed ou já persistido) e grava no `localStorage`. Se o registro
+ * ainda não existir lá (caso comum: é um comprovante de exemplo que o Analista está tocando
+ * pela primeira vez), ele é "promovido" para o `localStorage` já com o patch aplicado.
+ */
 export function updateComprovantePagamento(id: string, patch: Partial<Comprovante>) {
   if (typeof window === "undefined") return;
   const atuais = loadComprovantesPagamento();
-  const atualizados = atuais.map((c) => (c.id === id ? { ...c, ...patch } : c));
-  localStorage.setItem(PROSAUDE_STORAGE_KEYS.comprovantesPagamento, JSON.stringify(atualizados));
+  const existente = atuais.find((c) => c.id === id) ?? comprovantesSeed.find((c) => c.id === id);
+  if (!existente) return;
+  const atualizado = { ...existente, ...patch };
+  const semAntigo = atuais.filter((c) => c.id !== id);
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.comprovantesPagamento, JSON.stringify([...semAntigo, atualizado]));
 }

@@ -9,13 +9,17 @@ import {
   Shield,
   Menu,
   X,
+  FileCheck,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+// "Comprovantes" fica disponível para Analista e Gerência — a Gerência sempre tem, no
+// mínimo, as mesmas permissões do Analista (regra do Módulo de Pagamento).
 const baseItems = [
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/admin/servidores", icon: Users, label: "Servidores" },
   { to: "/admin/requerimentos", icon: ClipboardList, label: "Requerimentos" },
+  { to: "/admin/comprovantes", icon: FileCheck, label: "Comprovantes" },
   { to: "/admin/carga-inicial", icon: Upload, label: "Carga Inicial" },
 ];
 

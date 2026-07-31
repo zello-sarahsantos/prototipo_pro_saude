@@ -22,14 +22,18 @@ export function CamposExtraidosForm({
   campos,
   onChange,
   valorCadastrado,
+  readOnly = false,
 }: {
   titulo?: string;
   campos: CampoExtraido[];
-  onChange: (campos: CampoExtraido[]) => void;
+  onChange?: (campos: CampoExtraido[]) => void;
   /** Quando informado, exibe alerta "Divergente" se o campo `valor` não bater com o valor cadastrado. */
   valorCadastrado?: number;
+  /** Modo de visualização (ex: Analista conferindo) — campos não editáveis. */
+  readOnly?: boolean;
 }) {
   const editarCampo = (chave: CampoExtraido["chave"], valor: string) => {
+    if (!onChange) return;
     onChange(
       campos.map((c) => (c.chave === chave ? { ...c, valor, origem: "manual" as const } : c)),
     );
@@ -76,7 +80,8 @@ export function CamposExtraidosForm({
           <input
             value={campo.valor}
             onChange={(e) => editarCampo(campo.chave, e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            readOnly={readOnly}
+            className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${readOnly ? "opacity-70 cursor-default" : ""}`}
           />
         </div>
         );

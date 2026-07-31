@@ -246,6 +246,7 @@ export type StatusComprovante =
   | 'ilegivel'
   | 'revisao'
   | 'em_analise'
+  | 'correcao_solicitada'
   | 'aprovado'
   | 'aprovado_com_ressalva'
   | 'recusado'
@@ -258,6 +259,31 @@ export interface CampoExtraido {
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
+}
+
+/** Registro de uma ação tomada sobre o comprovante (ou sobre um beneficiário específico dele). */
+export interface AcaoComprovante {
+  etapa: 'servidor' | 'analista' | 'gerencia';
+  acao:
+    | 'aprovado'
+    | 'aprovado_com_ressalva'
+    | 'correcao_solicitada'
+    | 'recusado'
+    | 'documento_substituido'
+    | 'reenviado';
+  aprovadoPor: string;
+  data: string;
+  motivo?: string;
+  comentario?: string;
+  /** Presente quando a ação se refere a apenas 1 beneficiário de um comprovante multi-beneficiário. */
+  beneficiarioId?: string;
+}
+
+/** Status individual de cada beneficiário dentro de um comprovante multi-beneficiário (fatura técnica). */
+export interface StatusBeneficiarioComprovante {
+  beneficiarioId: string;
+  status: StatusComprovante;
+  comentario?: string;
 }
 
 export interface Comprovante {
@@ -274,8 +300,13 @@ export interface Comprovante {
   gruposExtraidos?: { beneficiarioId: string; campos: CampoExtraido[] }[];
   /** Preenchida quando o valor extraído diverge do valor cadastrado do beneficiário. */
   justificativaDivergencia?: string;
+  /** Status geral do comprovante (fila, badges). Em comprovantes multi-beneficiário, é derivado de `statusPorBeneficiario`. */
   status: StatusComprovante;
-  aprovacoes: { etapa: 'analista' | 'gerencia'; aprovadoPor: string; data: string; comentario?: string }[];
+  /** Usado quando `beneficiarioIds.length > 1` — permite aprovar/corrigir cada beneficiário individualmente. */
+  statusPorBeneficiario?: StatusBeneficiarioComprovante[];
+  /** Versões anteriores do arquivo — preservadas ao substituir (ilegível) ou reenviar (correção solicitada). */
+  versoesAnteriores?: { arquivo: string; dataEnvio: string; status: StatusComprovante }[];
+  aprovacoes: AcaoComprovante[];
   dataEnvio: string;
 }
 
@@ -284,6 +315,7 @@ export const statusComprovanteLabels: Record<StatusComprovante, string> = {
   'ilegivel': 'Documento Ilegível',
   'revisao': 'Em Revisão',
   'em_analise': 'Em Análise',
+  'correcao_solicitada': 'Correção Solicitada',
   'aprovado': 'Aprovado',
   'aprovado_com_ressalva': 'Aprovado com Ressalva',
   'recusado': 'Recusado',
@@ -297,6 +329,7 @@ export const statusComprovanteCore: Record<StatusComprovante, { bg: string; fg: 
   'ilegivel': { bg: '#fee2e2', fg: '#dc2626' },
   'revisao': { bg: '#fef3c7', fg: '#b45309' },
   'em_analise': { bg: '#fef3c7', fg: '#b45309' },
+  'correcao_solicitada': { bg: '#fef3c7', fg: '#b45309' },
   'aprovado': { bg: '#dcfce7', fg: '#166534' },
   'aprovado_com_ressalva': { bg: '#fef3c7', fg: '#b45309' },
   'recusado': { bg: '#fee2e2', fg: '#dc2626' },
@@ -362,7 +395,7 @@ export const comprovantes: Comprovante[] = [
     ],
     status: 'aprovado',
     aprovacoes: [
-      { etapa: 'analista', aprovadoPor: 'Sarah Santos', data: '2026-08-01', comentario: 'Campos conferidos' }
+      { etapa: 'analista', acao: 'aprovado', aprovadoPor: 'Sarah Santos', data: '2026-08-01', comentario: 'Campos conferidos' }
     ],
     dataEnvio: '2026-08-01T09:30:00Z',
   },

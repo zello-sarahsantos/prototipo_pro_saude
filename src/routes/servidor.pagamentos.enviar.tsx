@@ -8,7 +8,6 @@ import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { ResumoPagamento } from "@/components/ResumoPagamento";
 import {
   beneficiariosPagamento,
-  comprovantes as comprovantesSeed,
   competenciaAtual,
   competenciaRetroativa,
   formatCompetencia,
@@ -16,7 +15,7 @@ import {
   type CampoExtraido,
 } from "@/lib/mock-data";
 import { arquivoEhIlegivel, gerarCamposExtraidos } from "@/lib/ocr-mock";
-import { addComprovantePagamento, loadComprovantesPagamento } from "@/lib/prosaude-storage";
+import { addComprovantePagamento, getComprovantesUnificados } from "@/lib/prosaude-storage";
 
 export const Route = createFileRoute("/servidor/pagamentos/enviar")({
   component: EnviarComprovante,
@@ -53,10 +52,7 @@ function EnviarComprovante() {
   >([]);
   const [dataEnvio, setDataEnvio] = useState<string | null>(null);
 
-  const comprovantesExistentes = useMemo(
-    () => [...comprovantesSeed, ...loadComprovantesPagamento()],
-    [],
-  );
+  const comprovantesExistentes = useMemo(() => getComprovantesUnificados(), []);
 
   const isRetroativo = competencia === competenciaRetroativa;
   const beneficiariosEscolhidos = beneficiariosPagamento.filter((b) =>

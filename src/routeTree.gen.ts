@@ -24,6 +24,7 @@ import { Route as AssociacaoGerenciamentoRouteImport } from './routes/associacao
 import { Route as AdminRequerimentosRouteImport } from './routes/admin.requerimentos'
 import { Route as AdminParametrosRouteImport } from './routes/admin.parametros'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AdminComprovantesRouteImport } from './routes/admin.comprovantes'
 import { Route as AdminCargaInicialRouteImport } from './routes/admin.carga-inicial'
 import { Route as ServidorPagamentosIndexRouteImport } from './routes/servidor.pagamentos.index'
 import { Route as AdminServidoresIndexRouteImport } from './routes/admin.servidores.index'
@@ -110,6 +111,11 @@ const AdminDashboardRoute = AdminDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminComprovantesRoute = AdminComprovantesRouteImport.update({
+  id: '/comprovantes',
+  path: '/comprovantes',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCargaInicialRoute = AdminCargaInicialRouteImport.update({
   id: '/carga-inicial',
   path: '/carga-inicial',
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/servidor': typeof ServidorRouteWithChildren
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
+  '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
@@ -202,6 +209,7 @@ export interface FileRoutesByTo {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/servidor': typeof ServidorRouteWithChildren
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
+  '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/servidor': typeof ServidorRouteWithChildren
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
+  '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
@@ -259,6 +268,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/servidor'
     | '/admin/carga-inicial'
+    | '/admin/comprovantes'
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
@@ -286,6 +296,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/servidor'
     | '/admin/carga-inicial'
+    | '/admin/comprovantes'
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
@@ -313,6 +324,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/servidor'
     | '/admin/carga-inicial'
+    | '/admin/comprovantes'
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
@@ -449,6 +461,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/comprovantes': {
+      id: '/admin/comprovantes'
+      path: '/comprovantes'
+      fullPath: '/admin/comprovantes'
+      preLoaderRoute: typeof AdminComprovantesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/carga-inicial': {
       id: '/admin/carga-inicial'
       path: '/carga-inicial'
@@ -524,6 +543,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminCargaInicialRoute: typeof AdminCargaInicialRoute
+  AdminComprovantesRoute: typeof AdminComprovantesRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminParametrosRoute: typeof AdminParametrosRoute
   AdminRequerimentosRoute: typeof AdminRequerimentosRoute
@@ -533,6 +553,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminCargaInicialRoute: AdminCargaInicialRoute,
+  AdminComprovantesRoute: AdminComprovantesRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   AdminParametrosRoute: AdminParametrosRoute,
   AdminRequerimentosRoute: AdminRequerimentosRoute,
