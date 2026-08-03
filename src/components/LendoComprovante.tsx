@@ -5,13 +5,13 @@ export type EtapaLeitura = 0 | 1 | 2;
 const etapasLabel = ["Enviando arquivo", "Verificando legibilidade", "Extraindo campos com IA"];
 
 export function LendoComprovante({
-  nomeArquivo,
+  nomesArquivos,
   etapaAtual,
   concluido = false,
   falhouLegibilidade = false,
   onVoltar,
 }: {
-  nomeArquivo: string;
+  nomesArquivos: string[];
   /** Etapa em andamento (recebe o spinner) enquanto `concluido` e `falhouLegibilidade` forem falsos. */
   etapaAtual: EtapaLeitura;
   /** Todas as etapas concluídas com sucesso. */
@@ -27,8 +27,10 @@ export function LendoComprovante({
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div>
-          <h2 className="text-base font-semibold leading-tight">Lendo comprovante</h2>
-          <p className="text-xs text-muted-foreground">{nomeArquivo}</p>
+          <h2 className="text-base font-semibold leading-tight">
+            {nomesArquivos.length > 1 ? "Lendo comprovantes" : "Lendo comprovante"}
+          </h2>
+          <p className="text-xs text-muted-foreground">{nomesArquivos.join(", ")}</p>
         </div>
       </div>
 

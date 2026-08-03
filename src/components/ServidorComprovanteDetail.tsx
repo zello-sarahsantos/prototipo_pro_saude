@@ -32,7 +32,7 @@ export function ServidorComprovanteDetail({
 }) {
   const [acaoAtiva, setAcaoAtiva] = useState<{ beneficiarioId: string; step: AcaoStep } | null>(null);
   const [campos, setCampos] = useState<CampoExtraido[]>([]);
-  const [novoArquivoNome, setNovoArquivoNome] = useState<string>(comprovante.arquivo);
+  const [novoArquivoNome, setNovoArquivoNome] = useState<string>(comprovante.arquivos[0]?.nome ?? "documento.pdf");
 
   const lista = getListaStatusBeneficiario(comprovante);
   const ordenada = focusBeneficiarioId
@@ -83,7 +83,7 @@ export function ServidorComprovanteDetail({
       <div className="bg-card rounded-t-2xl sm:rounded-2xl shadow-elevated max-w-2xl w-full max-h-[92vh] overflow-y-auto">
         <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
           <div>
-            <h2 className="font-semibold">{comprovante.arquivo}</h2>
+            <h2 className="font-semibold">{comprovante.arquivos.map((a) => a.nome).join(", ")}</h2>
             <p className="text-xs text-muted-foreground">
               {formatCompetencia(comprovante.competencia)}
               {comprovante.isRetroativo && " • Retroativo"}
@@ -95,7 +95,11 @@ export function ServidorComprovanteDetail({
         </header>
 
         <div className="p-6 space-y-5">
-          <DocPreview filename={comprovante.arquivo} />
+          <div className="space-y-2">
+            {comprovante.arquivos.map((a) => (
+              <DocPreview key={a.nome} filename={a.nome} />
+            ))}
+          </div>
 
           {comprovante.isRetroativo && comprovante.justificativaAtraso && (
             <div className="bg-muted/50 rounded-lg p-3 text-xs">

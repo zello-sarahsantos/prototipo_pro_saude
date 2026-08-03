@@ -1,5 +1,19 @@
 import { FileText } from "lucide-react";
-import type { BeneficiarioPagamento, CampoExtraido } from "@/lib/mock-data";
+import {
+  tipoAssistenciaLabels,
+  tipoDocumentoArquivoLabels,
+  type BeneficiarioPagamento,
+  type CampoExtraido,
+  type TipoAssistencia,
+  type TipoDocumentoArquivo,
+} from "@/lib/mock-data";
+
+function valorExibido(campo: CampoExtraido): string {
+  if (campo.chave === "tipoAssistencia" && campo.valor) {
+    return tipoAssistenciaLabels[campo.valor as TipoAssistencia];
+  }
+  return campo.valor;
+}
 
 const chaveLabels: Record<CampoExtraido["chave"], string> = {
   nome: "Nome",
@@ -10,17 +24,18 @@ const chaveLabels: Record<CampoExtraido["chave"], string> = {
   dataPagamento: "Data do Pagamento",
   banco: "Banco",
   pagador: "Pagador",
+  tipoAssistencia: "Tipo de Assistência",
 };
 
 export function ResumoPagamento({
-  arquivo,
+  arquivos,
   beneficiarios,
   competencia,
   isRetroativo,
   justificativaAtraso,
   gruposExtraidos,
 }: {
-  arquivo: string;
+  arquivos: { nome: string; tipos: TipoDocumentoArquivo[] }[];
   beneficiarios: BeneficiarioPagamento[];
   competencia: string;
   isRetroativo: boolean;
@@ -30,9 +45,15 @@ export function ResumoPagamento({
   return (
     <div className="space-y-4">
       <div className="bg-card rounded-xl border border-border p-4 space-y-2">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <FileText className="h-4 w-4 text-primary" /> {arquivo}
-        </div>
+        {arquivos.map((a) => (
+          <div key={a.nome} className="flex items-center gap-2 text-sm font-semibold">
+            <FileText className="h-4 w-4 text-primary shrink-0" />
+            <span className="truncate">{a.nome}</span>
+            <span className="text-xs font-normal text-muted-foreground shrink-0">
+              ({a.tipos.map((t) => tipoDocumentoArquivoLabels[t]).join(", ")})
+            </span>
+          </div>
+        ))}
         <p className="text-xs text-muted-foreground">
           Competência: <strong className="text-foreground">{competencia}</strong>
           {isRetroativo && <span className="text-[#6d28d9] font-medium"> • Retroativo</span>}
@@ -54,7 +75,7 @@ export function ResumoPagamento({
               {grupo.campos.map((c) => (
                 <div key={c.chave} className="flex justify-between gap-3">
                   <dt className="text-muted-foreground">{chaveLabels[c.chave]}</dt>
-                  <dd className="font-medium text-right">{c.valor}</dd>
+                  <dd className="font-medium text-right">{valorExibido(c)}</dd>
                 </div>
               ))}
             </dl>

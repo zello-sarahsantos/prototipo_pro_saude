@@ -3,14 +3,16 @@ import { arquivoEhIlegivel, gerarCamposExtraidos } from "./ocr-mock";
 import { updateComprovantePagamento } from "./prosaude-storage";
 import { getListaStatusBeneficiario, recomputeStatusGeral } from "./comprovante-status";
 
-/** Roda o processamento mockado (OCR/IA) para o novo arquivo enviado. */
+/** Roda o processamento mockado (OCR/IA) para o novo arquivo enviado — herda os tipos
+ *  documentais já marcados para o documento (esta tela substitui o documento inteiro). */
 export function processarNovoArquivo(
   comprovante: Comprovante,
   beneficiario: BeneficiarioPagamento,
   arquivo: File,
 ): { ilegivel: boolean; campos: CampoExtraido[] } {
   const ilegivel = arquivoEhIlegivel(arquivo.name);
-  const campos = ilegivel ? [] : gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.name);
+  const tipos = [...new Set(comprovante.arquivos.flatMap((a) => a.tipos))];
+  const campos = ilegivel ? [] : gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.name, tipos);
   return { ilegivel, campos };
 }
 
@@ -33,10 +35,11 @@ export function confirmarReenvio(params: {
   const agora = new Date().toISOString();
 
   const versaoAnterior = {
-    arquivo: comprovante.arquivo,
+    arquivo: comprovante.arquivos.map((a) => a.nome).join(", "),
     dataEnvio: comprovante.dataEnvio,
     status: comprovante.status,
   };
+  const tiposHerdados = [...new Set(comprovante.arquivos.flatMap((a) => a.tipos))];
 
   const acaoLog = {
     etapa: "servidor" as const,
@@ -57,7 +60,7 @@ export function confirmarReenvio(params: {
       g.beneficiarioId === beneficiarioId ? { ...g, campos } : g,
     );
     updateComprovantePagamento(comprovante.id, {
-      arquivo: novoArquivo,
+      arquivos: [{ nome: novoArquivo, tipos: tiposHerdados }],
       statusPorBeneficiario: novaLista,
       status: recomputeStatusGeral(novaLista),
       gruposExtraidos: gruposAtualizados,
@@ -67,7 +70,7 @@ export function confirmarReenvio(params: {
     });
   } else {
     updateComprovantePagamento(comprovante.id, {
-      arquivo: novoArquivo,
+      arquivos: [{ nome: novoArquivo, tipos: tiposHerdados }],
       status: novoStatus,
       camposExtraidos: campos,
       versoesAnteriores: [...(comprovante.versoesAnteriores ?? []), versaoAnterior],

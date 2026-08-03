@@ -256,7 +256,7 @@ function Comprovantes() {
           <article key={c.id} className="bg-card rounded-xl border border-border shadow-card p-5">
             <header className="flex justify-between items-start mb-3 gap-3">
               <div className="min-w-0">
-                <p className="font-semibold truncate">{c.arquivo}</p>
+                <p className="font-semibold truncate">{c.arquivos.map((a) => a.nome).join(", ")}</p>
                 <p className="text-sm text-muted-foreground">
                   {c.beneficiarioIds.map(nomeBeneficiario).join(", ")} • {formatCompetencia(c.competencia)}
                   {c.isRetroativo && " • Retroativo"}
@@ -297,7 +297,7 @@ function Comprovantes() {
           <div className="bg-card rounded-t-2xl sm:rounded-2xl shadow-elevated max-w-2xl w-full max-h-[92vh] overflow-y-auto">
             <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
               <div>
-                <h2 className="font-semibold">{cur.arquivo}</h2>
+                <h2 className="font-semibold">{cur.arquivos.map((a) => a.nome).join(", ")}</h2>
                 <p className="text-xs text-muted-foreground">
                   {formatCompetencia(cur.competencia)}
                   {cur.isRetroativo && " • Retroativo"}
@@ -309,7 +309,11 @@ function Comprovantes() {
             </header>
 
             <div className="p-6 space-y-5">
-              <DocPreview filename={cur.arquivo} />
+              <div className="space-y-2">
+                {cur.arquivos.map((a) => (
+                  <DocPreview key={a.nome} filename={a.nome} />
+                ))}
+              </div>
 
               {cur.isRetroativo && cur.justificativaAtraso && (
                 <div className="bg-muted/50 rounded-lg p-3 text-xs">

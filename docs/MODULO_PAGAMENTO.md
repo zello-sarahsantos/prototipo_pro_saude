@@ -1,6 +1,6 @@
 # Documentação Técnica — Módulo de Pagamento (Pró-Saúde)
 
-> **Última atualização:** 2026-07-31 (via sessão de desenvolvimento assistido)
+> **Última atualização:** 2026-08-03 (via sessão de desenvolvimento assistido — rodada de multi-arquivo/consolidação, Etapa A da seção 3.17)
 > **Branch de trabalho:** `feature-modulo-pagamentos`
 > **Status de commit:** ver seção 13 (Histórico das Decisões) e `git log` — há trabalho commitado e trabalho ainda não commitado (ver `git status` no momento da leitura deste documento para o estado exato).
 
@@ -62,8 +62,9 @@ O cenário de dados de referência é fixo e **não deve ser alterado** sem nece
 | `LendoComprovante` | `src/components/LendoComprovante.tsx` |
 | `ConferenciaBeneficiarios` | `src/components/ConferenciaBeneficiarios.tsx` |
 | `ConsolidadoCompetencia` | `src/components/ConsolidadoCompetencia.tsx` |
+| `ArquivosAnexadosUpload` | `src/components/ArquivosAnexadosUpload.tsx` (adicionado na rodada de multi-arquivo — ver seção 3.17) |
 
-Detalhamento completo de cada um na seção 10.
+Detalhamento completo de cada um na seção 10. **Nota:** `ComprovanteUploadBox` (single-file) continua existindo e em uso, mas hoje só é usado pelo fluxo pós-submissão de substituição/correção (`ServidorComprovanteDetail`) — o wizard de envio inicial usa `ArquivosAnexadosUpload` (multi-arquivo) desde a rodada descrita na seção 3.17.
 
 ### 2.2 Rotas criadas
 
@@ -101,9 +102,10 @@ Ver seção 8 completa.
 
 ### 2.6 Dados mock utilizados
 - `beneficiariosPagamento` (3 registros fixos — Carlos/Marina/Pedro) em `mock-data.ts`.
-- `comprovantes` (5 registros seed cobrindo aprovado, em_analise, ilegível, retroativo aguardando analista, e divergência de valor) em `mock-data.ts`.
+- `comprovantes` (5 registros seed cobrindo aprovado, em_analise, ilegível, retroativo aguardando analista, e divergência de valor) em `mock-data.ts` — cada um com `arquivos: ArquivoAnexado[]` (ver seção 3.17 e 7).
 - `competenciaAtual = "2026-07"`, `competenciaRetroativa = "2026-05"` (legado, mantido por compatibilidade com o seed), `competenciasFechadas = ["2026-04", "2026-05", "2026-06"]`.
 - `analistaReferencia = "Sarah Santos"`, `gerenteReferencia = "Francisco"`.
+- `tipoPlanoPagamento = "individual_familiar"` e `tiposDocumentoPorPlano` — config do cenário de referência (ver seção 3.17).
 
 ---
 
@@ -258,6 +260,50 @@ Duas ações do Servidor, por status:
 ### 3.16 Histórico
 `servidor.pagamentos.index.tsx`, seção "Histórico de envios": lista **todos** os comprovantes da competência atual E de qualquer outra competência (`comprovantes` = todos, sem filtro de competência nessa lista especificamente — note que a seção "Situação da competência atual" É filtrada por competência, mas "Histórico de envios" mostra tudo), em ordem reversa (mais recente primeiro, via `.slice().reverse()`), cada item clicável abrindo `ServidorComprovanteDetail`.
 
+### 3.17 Multi-arquivo por envio, consolidação de campos e navegação do Resumo
+
+**Contexto da mudança:** o modelo original (Etapas 1-3) permitia exatamente **1 arquivo por envio**. O usuário identificou que, na prática, a informação de um pagamento frequentemente chega em **mais de um arquivo complementar** (ex: fatura técnica + comprovante de pagamento; boleto + comprovante PIX) e pediu que o protótipo consolidasse os dados desses arquivos em vez de tratá-los como envios totalmente independentes. Esta seção documenta a evolução do modelo para suportar isso.
+
+**Upload multi-arquivo (`ArquivosAnexadosUpload.tsx`, usado no passo `"upload"` de `enviar.tsx`):**
+- O Servidor pode anexar 1 ou mais arquivos ao mesmo envio (botão "Adicionar outro arquivo" após o primeiro).
+- Cada arquivo anexado tem seu próprio grupo de marcadores (toggle buttons, visualmente parecidos com checkboxes) indicando quais **tipos documentais** (`TipoDocumentoArquivo`) aquele arquivo específico contém — um mesmo arquivo pode ter mais de um tipo marcado (ex: um único PDF que já é ao mesmo tempo "Fatura Técnica" e "Comprovante de Pagamento").
+- Os tipos disponíveis para marcação são filtrados por `tiposDocumentoPorPlano[tipoPlanoPagamento]` (ver seção 6, regra de plano empresarial x individual/familiar) — hoje, com o cenário de referência em `individual_familiar`, os tipos oferecidos são Boleto, Recibo, Demonstrativo de Pagamento e Comprovante de Pagamento (Fatura Técnica não aparece, pois é exclusiva do plano empresarial).
+- Avançar para o processamento exige pelo menos 1 arquivo com pelo menos 1 tipo marcado em cada arquivo anexado (`podeAvancarUpload` em `enviar.tsx`).
+- Estado em `enviar.tsx`: `arquivosSelecionados: { file: File; tipos: TipoDocumentoArquivo[] }[]` (substituiu o antigo `arquivo: File | null`).
+
+**Geração de campos por tipo documental (`ocr-mock.ts`):**
+- Mapa interno `camposPorTipoDocumento: Record<TipoDocumentoArquivo, CampoExtraido["chave"][]>` define quais campos cada tipo documental tipicamente contém: `fatura_tecnica` → nome/operadora/competência/tipoAssistencia; `demonstrativo` → nome/operadora/competência/valor/tipoAssistencia; `boleto` → nome/valor/dataPagamento/banco/competência; `recibo` → nome/valor/dataPagamento/pagador; `comprovante_pagamento` → valor/dataPagamento/banco/pagador.
+- `gerarCamposExtraidos(beneficiario, competencia, nomeArquivo, tipos)` agora recebe também os `tipos` marcados para aquele arquivo específico e só retorna os campos pertencentes à união desses tipos — os demais campos simplesmente não aparecem no resultado daquele arquivo (ficam para outro arquivo do mesmo envio completar).
+- Todo campo retornado carrega `arquivoOrigem: nomeArquivo` (novo campo em `CampoExtraido`), permitindo rastrear de qual arquivo ele veio mesmo depois da consolidação.
+
+**Consolidação entre arquivos (`mesclarCamposDeArquivos`, em `ocr-mock.ts`):**
+- Recebe `{ nome: string; campos: CampoExtraido[] }[]` (1 entrada por arquivo anexado, na ordem de upload) e retorna **1 único conjunto de campos consolidado** por beneficiário.
+- Regra de mesclagem: para cada uma das 8 chaves possíveis (`nome`, `operadora`, `competencia`, `valor`, `dataPagamento`, `banco`, `pagador`, `tipoAssistencia`), usa o **primeiro arquivo (na ordem em que foi anexado)** que produziu um valor não vazio para aquela chave. Se **nenhum** arquivo do envio contiver aquele campo, ele permanece vazio/`confianca: "nenhuma"` — mesmo comportamento visual já existente de "Não identificado", reaproveitado sem nenhuma mudança na UI de conferência.
+- Esta é a implementação literal da regra de negócio pedida: "não importa se a informação veio de um ou de vários documentos — se o conjunto conseguir preencher todos os campos, o envio segue normalmente".
+- `iniciarProcessamento()` em `enviar.tsx` roda `gerarCamposExtraidos` para cada arquivo × cada beneficiário selecionado, e então `mesclarCamposDeArquivos` por beneficiário para montar `gruposExtraidos`.
+
+**Rastreabilidade da origem na conferência (`CamposExtraidosForm.tsx`):**
+- Cada campo agora exibe, abaixo do input, uma linha `Origem: {arquivoOrigem}` quando esse dado está presente — visível tanto na conferência do Servidor quanto na visão somente-leitura do Analista/Gerência (mesmo componente compartilhado, sem duplicação de lógica).
+- O campo `tipoAssistencia` (novo — ver seção 6, regra de assistência odontológica) é renderizado como `<select>` (não texto livre), com as opções vindas de `tipoAssistenciaLabels`.
+
+**Bloco "Documentos analisados" (`ConferenciaBeneficiarios.tsx`):**
+- No topo da tela de conferência, um card lista todos os arquivos do envio + os tipos marcados para cada um — permite ao Servidor confirmar visualmente que anexou/marcou tudo corretamente antes de revisar os campos consolidados.
+- **Simplificação decidida nesta rodada:** a antiga ação "Reenviar comprovante" (que abria um upload inline substituindo o único arquivo) foi removida. Em seu lugar, o botão "Anexar mais um arquivo" (exibido quando algum campo está "Não identificado") simplesmente chama `onVoltar()`, que volta ao passo `"upload"` já com os arquivos atuais preservados — o Servidor pode então adicionar mais um arquivo complementar ou remover/reetiquetar um dos existentes, sem duplicar a lógica de upload em dois lugares.
+
+**Resumo da Competência como painel de navegação (`ConsolidadoCompetencia.tsx`):**
+- Nova seção "Envios desta competência", listando **todos** os `Comprovante`s da competência (não só os pendentes), cada um como uma linha expansível mostrando: nome(s) de arquivo(s), tipos marcados por arquivo, beneficiário(s) contemplado(s) e status geral (via `ComprovanteStatusBadge`).
+- **Decisão explícita de simplificação (pedido do usuário — "evite uma arquitetura excessivamente complexa"):** editar um envio a partir do Resumo **não** reabre o wizard de envio nem usa parâmetros de rota de edição. Em vez disso:
+  - Se o envio ainda está em um status que o Servidor pode alterar (`em_analise` ou `retroativo_aguardando_analista` — nunca depois de decidido pelo Analista/Gerência), expandir a linha mostra o `CamposExtraidosForm` editável de cada beneficiário do envio, com um botão "Salvar alterações" que chama `updateComprovantePagamento(id, { camposExtraidos | gruposExtraidos })` **diretamente** — sem navegação, sem novo estado de rota, sem duplicar a máquina de estados do wizard.
+  - Se o envio está `ilegivel` ou `correcao_solicitada`, a correção correta não é "editar campos" — é **substituir o arquivo**, que já tinha um fluxo dedicado e testado (`ServidorComprovanteDetail`, seção 3.15). Por isso, para esses dois status, clicar na linha ou no botão "Corrigir agora" de uma pendência abre o mesmo modal `ServidorComprovanteDetail` já existente (com `focusBeneficiarioId` quando aplicável), em vez do formulário inline. A função `corrigirEnvio(comprovante, beneficiarioId?)` decide qual dos dois caminhos usar, checando `statusExigeSubstituicao.includes(comprovante.status)`.
+  - Para qualquer outro status (`aprovado`, `recusado`, `retroativo_aprovado`, etc.), expandir a linha mostra os campos em modo somente leitura com a mensagem "Este envio já foi decidido e não pode mais ser editado pelo Servidor."
+- "Pendência neste documento" (texto antes estático) agora é um botão "Corrigir agora" que aciona exatamente essa mesma lógica de roteamento (`corrigirEnvio`), usando o `comprovanteIdPendente` calculado por beneficiário no `useMemo` principal do componente.
+- Clicar em uma linha de envio (fora do contexto de uma pendência específica) também rola a tela até aquele envio (`scrollIntoView`) quando expandido via `expandirEnvio`.
+
+**Impacto em `Comprovante` (modelo de dados) — ver seção 7 para a interface completa:**
+- `arquivo: string` + `tipoDocumento: (...)` (campos únicos) foram **removidos** e substituídos por `arquivos: ArquivoAnexado[]` (`{ nome: string; tipos: TipoDocumentoArquivo[] }[]`).
+- Todo lugar que antes lia `comprovante.arquivo` para exibição (histórico do Servidor, fila do Analista/Gerência, `ServidorComprovanteDetail`, `DocPreview`) foi migrado para `comprovante.arquivos.map(a => a.nome).join(", ")`, e `DocPreview` agora é renderizado **uma vez por arquivo** (loop), não uma vez por comprovante.
+- O fluxo pós-submissão de substituição (`reenvio-comprovante.ts`, usado por `ServidorComprovanteDetail` para "ilegível → substituir" e "correção solicitada → corrigir e reenviar") continua tratando a substituição como **1 arquivo novo que colapsa tudo** — o novo `arquivos` gravado é `[{ nome: novoArquivo, tipos: <união de todos os tipos que o envio tinha antes> }]`. Ou seja, essa tela específica **não ganhou** suporte a multi-arquivo — decisão deliberada para não duplicar a complexidade em dois lugares (o upload multi-arquivo "de verdade" só existe no wizard de envio inicial).
+
 ---
 
 ## 4. Fluxo do Analista
@@ -354,9 +400,11 @@ Ver 5.2, item 1. É o único caminho que produz `retroativo_aprovado`.
 6. Um beneficiário pode ter **múltiplos documentos** na mesma competência (documentos complementares) — nunca há sobrescrita.
 
 ### Documentos
-7. Um `Comprovante` tem exatamente 1 `arquivo` (string) — não existe (por decisão explícita) um campo de arquivo por beneficiário; documentos complementares para 1 pessoa específica são sempre um **novo** `Comprovante` independente.
+7. **(Atualizada — ver seção 3.17)** Um `Comprovante` pode ter **múltiplos arquivos complementares** via `arquivos: ArquivoAnexado[]` (antes era 1 único `arquivo: string`). Mesmo assim, documentos complementares para 1 pessoa específica que chegam **depois** (em momento diferente) continuam sendo sempre um **novo** `Comprovante` independente — `arquivos[]` serve para arquivos anexados **juntos, no mesmo envio**, não para o histórico de complementos ao longo do tempo.
 8. `camposExtraidos` é usado quando `beneficiarioIds.length === 1`; `gruposExtraidos` é usado quando `> 1`. Um Comprovante nunca tem os dois preenchidos simultaneamente com significado — `camposExtraidos` fica `[]` ou com o primeiro grupo copiado quando há múltiplos (ver `confirmarDocumento()`: `camposExtraidos: primeiro?.campos ?? []` sempre grava o primeiro grupo ali também, por segurança/compatibilidade com código legado que só lê `camposExtraidos`).
 9. Editar qualquer campo sempre marca `origem: 'manual'`, mesmo que o valor final seja igual ao original.
+9a. Um arquivo pode ter mais de um `TipoDocumentoArquivo` marcado simultaneamente (ex: um único PDF marcado como Fatura Técnica **e** Comprovante de Pagamento) — os tipos determinam quais campos aquele arquivo contribui na consolidação (ver seção 3.17), não são mutuamente exclusivos.
+9b. Ao consolidar múltiplos arquivos do mesmo envio, cada campo do resultado final vem do **primeiro arquivo (ordem de upload)** que o produziu — não há lógica de "melhor confiança vence" na consolidação entre arquivos (diferente da lógica de "Não identificado" dentro de 1 arquivo só, que já existia).
 
 ### Pendências
 10. "Pendências" no Resumo da Competência conta **beneficiários únicos**, nunca documentos — um mesmo beneficiário nunca é contado duas vezes mesmo que tenha 2 motivos de pendência (ex: 1 documento ilegível + 1 documento com campo vazio).
@@ -395,6 +443,17 @@ Ver 5.2, item 1. É o único caminho que produz `retroativo_aprovado`.
 29. Ver seção 8 — regra geral: tudo que precisa sobreviver a F5 vive em `localStorage`; nada fica só em estado React entre navegações de página completas.
 30. Dados seed (`comprovantes` em `mock-data.ts`) são somente leitura em memória — qualquer alteração sobre um registro seed o "promove" para o `localStorage` como uma cópia modificada (nunca edita o array `comprovantes` original).
 
+### Tipo de plano (restrição de tipos de documento) — modelo pronto, aplicação pendente (Etapa B)
+31a. `tipoPlanoPagamento: 'empresarial' | 'individual_familiar'` (hoje fixo em `'individual_familiar'` para o cenário Carlos/Marina/Pedro) e `tiposDocumentoPorPlano` já existem em `mock-data.ts` e **já restringem** os tipos de documento oferecidos no upload multi-arquivo (`empresarial` → só Fatura Técnica + Comprovante de Pagamento; `individual_familiar` → Boleto, Recibo, Demonstrativo + Comprovante de Pagamento).
+31b. **Não existe** alternador de UI para trocar de plano — para demonstrar o ramo empresarial, é preciso trocar `tipoPlanoPagamento` manualmente no código e rebuildar. Isso é uma limitação conhecida (ver seção 12).
+
+### Tipo de assistência (odontológico não reembolsável) — modelo pronto, bloqueio de aprovação pendente (Etapa B)
+31c. `CampoExtraido` já suporta a chave `'tipoAssistencia'` com valores `'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico'`, gerado pelo OCR mock (arquivos do tipo `fatura_tecnica`/`demonstrativo` o produzem; nome de arquivo contendo `"odontologico"`/`"odonto"` gera o valor `odontologico`, senão `medico_hospitalar` por padrão) e exibido com badge "Não elegível — Odontológico" em `CamposExtraidosForm` sempre que o valor for `odontologico`.
+31d. **Ainda não implementado:** o bloqueio efetivo da aprovação (automática ou com ressalva) pelo Analista/Gerência quando `tipoAssistencia === 'odontologico'`. Hoje o badge é só um alerta visual — `admin.comprovantes.tsx` ainda não verifica elegibilidade antes de permitir "Aprovar"/"Aprovar com ressalva". Ver seção 12 (Pendências) e seção 14 (Próximos Passos).
+
+### Documento complementar solicitado pela GERDAB — não implementado (Etapa B)
+31e. Hoje o Servidor já pode anexar documentos complementares por iniciativa própria a qualquer momento (regra 6 acima). O que ainda **não existe** é um mecanismo para o Analista/Gerência **solicitar explicitamente** um documento complementar (distinto de "Solicitar correção", que pressupõe que o documento atual está errado) e para isso aparecer destacado ao Servidor. Ver seção 12 e 14.
+
 ### Permissões
 31. Gerência = Analista + 3 ações exclusivas sobre retroativos aguardando a 2ª alçada. Nunca o inverso.
 32. `getAdminRole()` faz default para `"gerencia"` quando a chave não existe no `localStorage` — **atenção**: isso significa que, sem login explícito, o comportamento padrão do admin é "Gerência" (mais permissivo), não "Analista".
@@ -427,13 +486,35 @@ type StatusComprovante =
 ### `CampoExtraido`
 ```ts
 interface CampoExtraido {
-  chave: 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor' | 'dataPagamento' | 'banco' | 'pagador';
+  chave:
+    | 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor'
+    | 'dataPagamento' | 'banco' | 'pagador' | 'tipoAssistencia'; // tipoAssistencia adicionado na rodada de multi-arquivo
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
+  arquivoOrigem?: string; // NOVO — nome do arquivo (dentre os anexados ao envio) que originou este campo
 }
+
+type TipoAssistencia = 'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico';
 ```
-`pagador` foi adicionado por último (regra 4 do usuário — pagamento deve ser feito pelo titular). `cpf` existe no tipo e nos dados seed, mas **não é gerado** por `gerarCamposExtraidos()` (assimetria conhecida, seção 12).
+`pagador` foi adicionado antes (regra do usuário — pagamento deve ser feito pelo titular). `tipoAssistencia` e `arquivoOrigem` foram adicionados na rodada de multi-arquivo (seção 3.17) — `tipoAssistencia` sustenta a regra de assistência odontológica não reembolsável (seção 6), e `arquivoOrigem` sustenta a rastreabilidade de qual arquivo originou cada campo consolidado. `cpf` existe no tipo e nos dados seed, mas **não é gerado** por `gerarCamposExtraidos()` (assimetria conhecida, seção 12).
+
+### `TipoDocumentoArquivo` e `ArquivoAnexado`
+```ts
+type TipoDocumentoArquivo = 'fatura_tecnica' | 'comprovante_pagamento' | 'boleto' | 'recibo' | 'demonstrativo';
+
+interface ArquivoAnexado {
+  nome: string;
+  tipos: TipoDocumentoArquivo[]; // um arquivo pode ter mais de 1 tipo marcado
+}
+
+const tipoPlanoPagamento: 'empresarial' | 'individual_familiar' = 'individual_familiar';
+const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
+  empresarial: ['fatura_tecnica', 'comprovante_pagamento'],
+  individual_familiar: ['boleto', 'recibo', 'demonstrativo', 'comprovante_pagamento'],
+};
+```
+Novos nesta rodada (seção 3.17). `TipoDocumentoArquivo` substitui o antigo `Comprovante['tipoDocumento']` (união única, removida) — `'boleto_individual'` foi renomeado para `'boleto'`.
 
 ### `AcaoComprovante`
 ```ts
@@ -470,8 +551,7 @@ Usado só quando `Comprovante.beneficiarioIds.length > 1` (fatura técnica), par
 ```ts
 interface Comprovante {
   id: string;
-  arquivo: string;
-  tipoDocumento: 'boleto_individual' | 'recibo' | 'demonstrativo' | 'fatura_tecnica';
+  arquivos: ArquivoAnexado[];              // ATUALIZADO nesta rodada — antes era `arquivo: string` + `tipoDocumento` únicos
   beneficiarioIds: string[];
   competencia: string;                    // formato "YYYY-MM"
   isRetroativo: boolean;
@@ -610,21 +690,27 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "selecao").
 
 ### `ComprovanteUploadBox`
-- **Finalidade:** drop-zone/seleção de arquivo genérica, reaproveitada em múltiplos contextos.
+- **Finalidade:** drop-zone/seleção de **1 único** arquivo — usado apenas no fluxo pós-submissão de substituição (não mais no wizard de envio inicial, que usa `ArquivosAnexadosUpload` desde a rodada de multi-arquivo, seção 3.17).
 - **Props:** `arquivo: File | null`, `onSelect: (file) => void`, `onClear: () => void`.
 - **Comportamento:** mostra área tracejada "Tocar para enviar" quando vazio; mostra nome+tamanho do arquivo com botão de remover quando preenchido.
-- **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "upload"), `ConferenciaBeneficiarios.tsx` (reenvio de fatura técnica), `ServidorComprovanteDetail.tsx` (substituir/corrigir e reenviar).
+- **Usado em:** `ServidorComprovanteDetail.tsx` (substituir/corrigir e reenviar) — único uso restante.
+
+### `ArquivosAnexadosUpload` (novo — seção 3.17)
+- **Finalidade:** upload de 1 ou mais arquivos complementares no mesmo envio, cada um com seu próprio grupo de tipos documentais marcáveis.
+- **Props:** `arquivos: { file: File; tipos: TipoDocumentoArquivo[] }[]`, `tiposPermitidos: TipoDocumentoArquivo[]` (filtrados por `tipoPlanoPagamento`), `onChange: (arquivos) => void`.
+- **Comportamento:** cada arquivo anexado mostra nome/tamanho + botão remover + linha de toggle-buttons (tipos permitidos, múltipla marcação); botão "Adicionar outro arquivo"/"Tocar para enviar" reaproveita o mesmo `<input type="file">` a cada clique (reseta `input.value` após cada seleção para permitir reselecionar o mesmo nome de arquivo).
+- **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "upload").
 
 ### `CamposExtraidosForm`
-- **Finalidade:** exibir e (opcionalmente) editar o conjunto de `CampoExtraido[]` de 1 beneficiário, com indicadores de confiança e divergência.
+- **Finalidade:** exibir e (opcionalmente) editar o conjunto de `CampoExtraido[]` de 1 beneficiário, com indicadores de confiança, origem do arquivo e divergência.
 - **Props:** `titulo?: string`, `campos: CampoExtraido[]`, `onChange?: (campos) => void`, `valorCadastrado?: number` (ativa divergência de `valor`), `nomeTitular?: string` (ativa divergência de `pagador`), `readOnly?: boolean` (default `false`).
-- **Comportamento:** por campo, mostra label + input; badges condicionais "Não identificado" (campo vazio), "Divergente" (valor ou pagador fora do esperado), "Preenchido manualmente" (`origem === 'manual'`) ou indicador de confiança (ícone + texto). Editar sempre seta `origem: 'manual'`.
-- **Usado em:** `ConferenciaBeneficiarios.tsx` (editável), `ServidorComprovanteDetail.tsx` (misto: editável durante reenvio, `readOnly` nos demais estados), `admin.comprovantes.tsx` (sempre `readOnly`, com `valorCadastrado` para mostrar divergência ao Analista/Gerência).
+- **Comportamento:** por campo, mostra label + input (ou `<select>` para `tipoAssistencia`); badges condicionais "Não identificado" (campo vazio), "Não elegível — Odontológico" (**novo** — `tipoAssistencia === 'odontologico'`), "Divergente" (valor ou pagador fora do esperado), "Preenchido manualmente" (`origem === 'manual'`) ou indicador de confiança (ícone + texto); linha adicional **"Origem: {arquivoOrigem}"** (**novo**) quando o campo tem essa informação. Editar sempre seta `origem: 'manual'`.
+- **Usado em:** `ConferenciaBeneficiarios.tsx` (editável), `ServidorComprovanteDetail.tsx` (misto: editável durante reenvio, `readOnly` nos demais estados), `admin.comprovantes.tsx` (sempre `readOnly`, com `valorCadastrado` para mostrar divergência ao Analista/Gerência), `ConsolidadoCompetencia.tsx` (**novo uso** — edição inline de envios ainda não decididos, a partir do Resumo da Competência).
 
 ### `ResumoPagamento`
 - **Finalidade:** card de resumo do **documento atual** (não da competência inteira) antes de confirmar/persistir.
-- **Props:** `arquivo: string`, `beneficiarios: BeneficiarioPagamento[]`, `competencia: string`, `isRetroativo: boolean`, `justificativaAtraso?: string`, `gruposExtraidos: { beneficiarioId, campos }[]`.
-- **Comportamento:** somente leitura, lista todos os campos de todos os grupos em formato `<dl>`.
+- **Props:** `arquivos: { nome, tipos }[]` (**atualizado** — antes era `arquivo: string` único), `beneficiarios: BeneficiarioPagamento[]`, `competencia: string`, `isRetroativo: boolean`, `justificativaAtraso?: string`, `gruposExtraidos: { beneficiarioId, campos }[]`.
+- **Comportamento:** somente leitura, lista todos os arquivos anexados (nome + tipos) e todos os campos de todos os grupos em formato `<dl>`; valores de `tipoAssistencia` são exibidos com o rótulo amigável (`tipoAssistenciaLabels`), não o valor bruto do enum.
 - **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "confirmar_documento").
 
 ### `ComprovanteStatusBadge`
@@ -641,8 +727,8 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 ### `ServidorComprovanteDetail`
 - **Finalidade:** modal de detalhe/ação de um comprovante já persistido, do ponto de vista do Servidor — cobre todos os status possíveis com renderização condicional.
 - **Props:** `comprovante: Comprovante`, `focusBeneficiarioId?: string` (ordena a lista para colocar esse beneficiário primeiro), `onClose: () => void`, `onChanged: () => void` (callback para o pai forçar refresh).
-- **Comportamento:** ver seção 3.15 em detalhe.
-- **Usado em:** `servidor.pagamentos.index.tsx` (todos os cards clicáveis).
+- **Comportamento:** ver seção 3.15 em detalhe. Título e preview agora iteram sobre `comprovante.arquivos` (1 `DocPreview` por arquivo) em vez de exibir 1 arquivo único.
+- **Usado em:** `servidor.pagamentos.index.tsx` (todos os cards clicáveis), **`ConsolidadoCompetencia.tsx`** (novo uso — acionado por `corrigirEnvio()` quando o envio está `ilegivel` ou `correcao_solicitada`).
 
 ### `DivergenciaAprovacaoModal`
 - **Finalidade:** modal bloqueante de justificativa quando o Analista/Gerência tenta aprovar um comprovante com valor divergente do cadastro.
@@ -653,23 +739,24 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 ### `DocPreview`
 - **Finalidade:** simular visualmente um preview de documento (não há renderização real de PDF/imagem).
 - **Props:** `filename: string`.
-- **Usado em:** `ServidorComprovanteDetail.tsx`, `admin.comprovantes.tsx`.
+- **Usado em:** `ServidorComprovanteDetail.tsx`, `admin.comprovantes.tsx` — **desde a rodada de multi-arquivo, é renderizado 1 vez por arquivo** (`comprovante.arquivos.map(a => <DocPreview key={a.nome} filename={a.nome} />)`), não mais 1 vez por comprovante.
 
 ### `LendoComprovante`
 - **Finalidade:** tela/estado "Lendo comprovante" com checklist de 3 etapas.
-- **Props:** `nomeArquivo: string`, `etapaAtual: EtapaLeitura (0|1|2)`, `concluido?: boolean`, `falhouLegibilidade?: boolean`, `onVoltar: () => void`.
+- **Props:** `nomesArquivos: string[]` (**atualizado** — antes era `nomeArquivo: string` único), `etapaAtual: EtapaLeitura (0|1|2)`, `concluido?: boolean`, `falhouLegibilidade?: boolean`, `onVoltar: () => void`.
+- **Comportamento:** exibe a lista de nomes de arquivo (separados por vírgula) e título no plural quando há mais de 1; a checklist de 3 etapas continua sendo **global ao lote inteiro** (sem progresso por arquivo individual — simplificação deliberada).
 - **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "lendo").
 
 ### `ConferenciaBeneficiarios`
-- **Finalidade:** tela unificada "Confira antes de enviar" — substitui o antigo passo simplificado de revisão para documento único; usada para 1 ou N beneficiários igualmente.
-- **Props:** `arquivo: string`, `beneficiarios: BeneficiarioPagamento[]`, `gruposExtraidos: { beneficiarioId, campos }[]`, `onChangeGrupo: (id, campos) => void`, `onSubstituirArquivo: (file) => void`, `onVoltar: () => void`, `onContinuar: () => void`, `nomeTitular?: string`.
-- **Comportamento:** ver seções 3.4-3.7 em detalhe. Estado interno `confirmados: Set<string>` e `reenviandoTudo: boolean`.
+- **Finalidade:** tela unificada "Confira antes de enviar" — usada para 1 ou N beneficiários e 1 ou N arquivos igualmente.
+- **Props:** `arquivos: { nome, tipos }[]` (**atualizado** — antes era `arquivo: string` único), `beneficiarios: BeneficiarioPagamento[]`, `gruposExtraidos: { beneficiarioId, campos }[]`, `onChangeGrupo: (id, campos) => void`, `onVoltar: () => void` (**substituiu** `onSubstituirArquivo`, que recebia 1 novo File — agora simplesmente volta ao passo de upload multi-arquivo), `onContinuar: () => void`, `nomeTitular?: string`.
+- **Comportamento:** ver seções 3.4-3.7 e 3.17 em detalhe. Novo bloco "Documentos analisados" no topo, listando arquivos + tipos marcados. Estado interno `confirmados: Set<string>` (o antigo `reenviandoTudo` foi removido — "reenviar" hoje só volta ao passo de upload, sem upload inline dentro desta própria tela).
 - **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "conferencia_beneficiarios").
 
 ### `ConsolidadoCompetencia`
-- **Finalidade:** tela final "Resumo da competência" — consolida todos os documentos persistidos da competência (não o documento em memória), com alertas de beneficiário sem comprovante e ação de conclusão.
-- **Props:** `competencia: string`, `onAnexarDependente: (beneficiarioId) => void`, `onConcluir: () => void`, `onRefresh: () => void`, `refreshKey: number`.
-- **Comportamento:** ver seção 3.9 em detalhe. Estado interno `confirmandoDispensa: string | null`.
+- **Finalidade:** tela final "Resumo da competência" — consolida todos os documentos persistidos da competência (não o documento em memória), com alertas de beneficiário sem comprovante, navegação para editar/corrigir envios e ação de conclusão.
+- **Props:** `competencia: string`, `onAnexarDependente: (beneficiarioId) => void`, `onConcluir: () => void`, `onRefresh: () => void`, `refreshKey: number` (sem mudanças de assinatura nesta rodada — a navegação nova é 100% interna ao componente).
+- **Comportamento:** ver seção 3.9 e **3.17** (nova seção "Envios desta competência", edição inline via `CamposExtraidosForm` + `updateComprovantePagamento`, roteamento `corrigirEnvio()` para `ServidorComprovanteDetail` quando o status exige substituição de arquivo). Estado interno: `confirmandoDispensa`, `expandidoId`, `edicaoAtual`, `detalheParaCorrigir` (novos os 3 últimos).
 - **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "resumo_competencia").
 
 ---
@@ -691,10 +778,12 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - Substituição/correção pós-submissão pelo Servidor (`ServidorComprovanteDetail`), incluindo a partir do alerta de "competência incompleta".
 - Histórico append-only de todas as ações (Servidor/Analista/Gerência) visível em ambos os lados.
 - Notificações derivadas do estado persistido.
+- **(Novo)** Envio com múltiplos arquivos complementares no mesmo envio, cada um com seus próprios tipos documentais marcados, com consolidação automática dos campos extraídos (e rastreabilidade de qual arquivo originou cada campo) — seção 3.17.
+- **(Novo)** Resumo da Competência como painel de navegação: lista todos os envios da competência, permite editar campos inline (envios ainda não decididos) ou abrir o fluxo de substituição de arquivo já existente (envios ilegíveis/com correção solicitada), e pular direto de uma pendência para o ponto exato que precisa de correção — seção 3.17.
 
-**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1), fluxo do Analista + sino + detalhe (Etapa 2), 2ª alçada da Gerência (Etapa 3), alertas de competências sem comprovante.
+**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1), fluxo do Analista + sino + detalhe (Etapa 2), 2ª alçada da Gerência (Etapa 3), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`).
 
-**Ainda não commitado no momento da escrita deste documento** (verificar `git status` para confirmar o estado exato): os 3 novos estados do fluxo de envio (Lendo/Conferência unificada/Resumo consolidado), o campo "Pagador", e o alerta de "competência incompleta". Ver `git status --short` mostrado no topo deste documento como referência do momento em que foi escrito.
+**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): toda a feature de multi-arquivo/consolidação/navegação do Resumo descrita na seção 3.17 (Etapa A da rodada de multi-arquivo). As regras de negócio de tipo de plano, tipo de assistência (bloqueio de aprovação) e documento complementar solicitado pela GERDAB (Etapa B da mesma rodada) **ainda não foram implementadas** — só o modelo de dados de base (`tipoPlanoPagamento`, `tiposDocumentoPorPlano`, `tipoAssistencia`) já existe, ver seção 6 e 12.
 
 ---
 
@@ -703,7 +792,7 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 Itens **explicitamente identificados e ainda não implementados**, ou limitações técnicas conhecidas e aceitas:
 
 1. **Campo `cpf` ausente em `gerarCamposExtraidos()`** — os comprovantes seed têm `cpf` em `camposExtraidos`, mas todo comprovante gerado pelo mock de OCR não inclui esse campo. Não bloqueante, mas inconsistente.
-2. **`arquivoPorBeneficiario` não implementado** — decisão explícita de não criar esse campo; documentos complementares por beneficiário são sempre `Comprovante`s separados. Se um requisito futuro exigir rastrear múltiplos arquivos dentro do mesmo registro de fatura técnica, isso precisará ser revisitado.
+2. **`arquivoPorBeneficiario` não implementado** — decisão explícita de não criar esse campo; documentos complementares que chegam **em momentos diferentes** por beneficiário são sempre `Comprovante`s separados. **Atualização:** desde a rodada de multi-arquivo (seção 3.17), múltiplos arquivos anexados **juntos, no mesmo envio**, já são suportados via `Comprovante.arquivos[]` — o que continua não existindo é rastrear "este arquivo é só do beneficiário X" dentro de uma fatura técnica multi-beneficiário (todos os arquivos do envio se aplicam a todos os beneficiários selecionados).
 3. **"Competência incompleta" só é calculada para `competenciaAtual`** — não foi estendida para competências retroativas fechadas. Se for necessário mostrar esse alerta também para competências retroativas parcialmente enviadas, `getBeneficiariosFaltantes()` precisa ser chamada para cada competência relevante (hoje só é chamada uma vez, hardcoded para `competenciaAtual`, em `servidor.pagamentos.index.tsx`).
 4. **Deep-link para aba específica não implementado** — o card "Retroativos pendentes" no dashboard admin linka para `/admin/comprovantes` mas não abre automaticamente a aba "Retroativos". O mesmo vale para qualquer link que quisesse abrir `/admin/comprovantes` já em uma aba/registro específico.
 5. **Validação de teto de R$ 4.000,00 não implementada** — o texto no Resumo da Competência é apenas informativo ("a validação do teto ocorre na etapa de cálculo do ressarcimento"), não há lógica de bloqueio ou cálculo real de reembolso no Módulo de Pagamento.
@@ -714,6 +803,10 @@ Itens **explicitamente identificados e ainda não implementados**, ou limitaçõ
 10. **`justificativaDivergencia` no `Comprovante`** — campo existe no tipo mas não é mais escrito ativamente por nenhum fluxo atual (era usado antes da centralização em `aprovacoes[]`). Pode ser removido ou mantido como está.
 11. **Nenhum teste automatizado** — toda a validação foi manual via navegador (Claude Browser tool). Não há testes unitários ou de integração para os fluxos documentados.
 12. **`justificativaAtraso` não é reaproveitada ao criar documento complementar via "Anexar comprovante do dependente"** — `handleAnexarDependente()` sempre reseta esse campo para string vazia, exigindo nova justificativa a cada documento retroativo adicional, mesmo que o motivo seja o mesmo.
+13. **(Novo) Bloqueio de aprovação por tipo de assistência odontológica não implementado** — o campo `tipoAssistencia` e o badge visual "Não elegível" já existem (seção 3.17/6), mas `admin.comprovantes.tsx` ainda não verifica elegibilidade antes de permitir "Aprovar"/"Aprovar com ressalva". É a próxima peça a implementar (Etapa B).
+14. **(Novo) Sem alternador de UI para `tipoPlanoPagamento`** — trocar entre "empresarial" e "individual_familiar" exige editar a constante em `mock-data.ts` manualmente; não há uma tela ou toggle no protótipo para isso.
+15. **(Novo) "Documento complementar solicitado pela GERDAB" não implementado** — não existe ainda o botão "Solicitar documento complementar" no lado do Analista/Gerência, nem o campo `solicitacaoComplementar` no `Comprovante`, nem a notificação/destaque correspondente ao Servidor (Etapa B).
+16. **(Novo) `LendoComprovante` não tem progresso por arquivo individual** — quando há múltiplos arquivos no mesmo envio, a checklist de 3 etapas trata o lote inteiro como uma unidade só; se um dos arquivos for ilegível, todos ficam "pausados" até a etapa de legibilidade apontar qual(is) falharam, sem indicar progresso incremental por arquivo.
 
 ---
 
@@ -740,6 +833,11 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 17. **Campo "Pagador" adicionado com regra de que deve ser o titular** — requisito de negócio novo (regra real do auxílio-saúde: o pagamento deve ter sido feito pelo titular do plano, mesmo quando o comprovante é de um dependente); implementado com a mesma mecânica visual de divergência já usada para `valor`.
 18. **Convenção de nome de arquivo para simular cenários de OCR** (`ilegivel`, `divergente`, `incompleto[_-]<nome>`, `pagador_divergente`) — escolhida para manter o protótipo 100% determinístico e testável sem precisar de OCR real ou de um painel de configuração de mock separado.
 19. **"Reenviar comprovante" em fatura técnica substitui o documento inteiro, nunca só 1 beneficiário** — decisão explícita para não precisar modelar "arquivo por beneficiário"; a alternativa (documento complementar separado) já resolve o caso de uso de corrigir só 1 pessoa sem essa complexidade adicional.
+20. **Multi-arquivo por envio com consolidação por primeiro-arquivo-preenche** — pedido explícito do usuário ("frequentemente arquivos podem vir acompanhados por outros... é importante consolidar tudo o que a IA conseguiu trazer"). Optou-se por uma regra de mesclagem simples (primeiro arquivo, na ordem de upload, que produzir valor não vazio para cada campo vence) em vez de qualquer lógica de "melhor confiança entre arquivos", para manter o comportamento previsível e fácil de testar deterministicamente.
+21. **Tipos documentais atribuídos por arquivo, não ao envio inteiro** — o modelo antigo tinha 1 `tipoDocumento` por Comprovante; como agora um envio pode ter vários arquivos de tipos diferentes (e um mesmo arquivo pode ser de mais de 1 tipo), o campo migrou para `arquivos[].tipos[]`. Isso também é o que possibilita restringir os tipos oferecidos por `tipoPlanoPagamento` no nível certo (por arquivo, na hora do upload).
+22. **Edição do Resumo da Competência feita inline, sem reabrir o wizard** — pedido explícito do usuário, no meio da implementação desta rodada: *"Evite criar uma arquitetura excessivamente complexa... prefira a solução mais simples que preserve a experiência do usuário."* A ideia original do plano (parâmetros de rota `editarComprovanteId`/`focusBeneficiarioId` reabrindo o wizard em "modo edição") foi descartada em favor de editar campos diretamente dentro de `ConsolidadoCompetencia` (reaproveitando `CamposExtraidosForm` + `updateComprovantePagamento`, ambos já existentes), sem nenhum estado de rota novo.
+23. **Correção de documento ilegível/correção solicitada a partir do Resumo abre `ServidorComprovanteDetail`, não o formulário inline** — durante o teste manual desta rodada, descobriu-se que o formulário de edição inline (decisão 22) não faz sentido para esses dois status: "ilegível" não é uma decisão a reverter, é uma substituição de arquivo, que já tinha um fluxo dedicado e testado. A função `corrigirEnvio()` decide entre os dois caminhos com base no status do comprovante (`statusExigeSubstituicao`), evitando duplicar a lógica de substituição de arquivo em dois lugares.
+24. **`ComprovanteUploadBox` (single-file) mantido, não removido** — em vez de generalizar esse componente para suportar multi-arquivo, foi criado um componente novo (`ArquivosAnexadosUpload`) para o wizard de envio. `ComprovanteUploadBox` continua existindo porque o fluxo pós-submissão de substituição (`ServidorComprovanteDetail`, decisão de manter single-file na seção 3.17) ainda precisa dele — decisão de menor complexidade do que fazer 1 componente suportar 2 modos de uso muito diferentes.
 
 ---
 
@@ -747,6 +845,7 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 
 Ordem sugerida, da menor para a maior complexidade/risco:
 
+0. **Implementar a Etapa B da rodada de multi-arquivo** (pendências 13-15 da seção 12): bloqueio de aprovação por tipo de assistência odontológica em `admin.comprovantes.tsx` (usando o mesmo molde de `getDivergencia`/`DivergenciaAprovacaoModal`), e o botão "Solicitar documento complementar" pelo Analista/Gerência com o destaque correspondente no lado do Servidor. É a continuação natural e já planejada do que foi entregue nesta rodada (seção 3.17) — recomendado como o próximo passo antes de qualquer outra coisa.
 1. **Decidir e resolver as pendências 1, 9 e 10 da seção 12** (campo `cpf` ausente no mock de OCR; status legados `processando`/`revisao`; campo `justificativaDivergencia` não utilizado) — são limpezas de baixo risco que não mudam comportamento visível.
 2. **Commitar o trabalho pendente** (ver seção 11 — "Ainda não commitado") antes de iniciar qualquer nova funcionalidade, para não acumular um diff gigante e difícil de revisar. Seguir o mesmo processo já estabelecido: build limpo, teste manual no navegador, teste de persistência com F5, apresentar resumo, aguardar autorização explícita antes de `git commit`/`git push`.
 3. **Estender "competência incompleta" para competências retroativas** (pendência 3) — hoje só cobre `competenciaAtual`; se o negócio precisar do mesmo alerta para os meses fechados, generalizar `getBeneficiariosFaltantes` para aceitar uma lista de competências e agregar o resultado na UI.

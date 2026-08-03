@@ -1,4 +1,9 @@
-import { beneficiariosPagamento, type BeneficiarioPagamento, type CampoExtraido } from "./mock-data";
+import {
+  beneficiariosPagamento,
+  type BeneficiarioPagamento,
+  type CampoExtraido,
+  type TipoDocumentoArquivo,
+} from "./mock-data";
 
 const titularPagamento = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
 
@@ -21,6 +26,12 @@ function arquivoTemPagadorDivergente(nomeArquivo: string): boolean {
   return nome.includes("pagador_divergente") || nome.includes("pagador-divergente");
 }
 
+/** Simula um documento de assistência odontológica — não reembolsável pelo Pró-Saúde. */
+function arquivoEhOdontologico(nomeArquivo: string): boolean {
+  const nome = nomeArquivo.toLowerCase();
+  return nome.includes("odontologico") || nome.includes("odonto");
+}
+
 /**
  * Simula uma extração parcial da IA (nome e valor não identificados) para um beneficiário
  * específico dentro de uma fatura técnica. `"incompleto"` sozinho no nome afeta todos os
@@ -38,14 +49,30 @@ export function arquivoEhIncompleto(nomeArquivo: string, beneficiario: Beneficia
 
 const bancos = ["Banco do Brasil", "Caixa Econômica", "Bradesco", "Itaú"];
 
+/**
+ * Quais campos cada tipo documental tipicamente traz — um arquivo só contribui com os campos
+ * dos tipos marcados para ele; os demais campos ficam para outro arquivo do mesmo envio
+ * completar (ver `mesclarCamposDeArquivos`).
+ */
+const camposPorTipoDocumento: Record<TipoDocumentoArquivo, CampoExtraido["chave"][]> = {
+  fatura_tecnica: ["nome", "operadora", "competencia", "tipoAssistencia"],
+  demonstrativo: ["nome", "operadora", "competencia", "valor", "tipoAssistencia"],
+  boleto: ["nome", "valor", "dataPagamento", "banco", "competencia"],
+  recibo: ["nome", "valor", "dataPagamento", "pagador"],
+  comprovante_pagamento: ["valor", "dataPagamento", "banco", "pagador"],
+};
+
+/** Gera os campos que UM arquivo (com os tipos documentais marcados) contribui para 1 beneficiário. */
 export function gerarCamposExtraidos(
   beneficiario: BeneficiarioPagamento,
   competencia: string,
   nomeArquivo: string,
+  tipos: TipoDocumentoArquivo[],
 ): CampoExtraido[] {
   const divergente = arquivoEhDivergente(nomeArquivo);
   const incompleto = arquivoEhIncompleto(nomeArquivo, beneficiario);
   const pagadorDivergente = arquivoTemPagadorDivergente(nomeArquivo);
+  const odontologico = arquivoEhOdontologico(nomeArquivo);
   const valor = divergente ? beneficiario.valorCadastrado + 100 : beneficiario.valorCadastrado;
   const [ano, mes] = competencia.split("-");
   const dataPagamento = `28/${mes}/${ano}`;
@@ -57,28 +84,74 @@ export function gerarCamposExtraidos(
       : beneficiario.nome
     : titularPagamento?.nome ?? beneficiario.nome;
 
-  return [
+  const camposPossiveis: CampoExtraido[] = [
     {
       chave: "nome",
       valor: incompleto ? "" : beneficiario.nome,
       origem: "ocr",
       confianca: incompleto ? "nenhuma" : "alta",
+      arquivoOrigem: nomeArquivo,
     },
-    { chave: "operadora", valor: beneficiario.operadora, origem: "ocr", confianca: "alta" },
-    { chave: "competencia", valor: competencia, origem: "ocr", confianca: "media" },
+    { chave: "operadora", valor: beneficiario.operadora, origem: "ocr", confianca: "alta", arquivoOrigem: nomeArquivo },
+    { chave: "competencia", valor: competencia, origem: "ocr", confianca: "media", arquivoOrigem: nomeArquivo },
     {
       chave: "valor",
       valor: incompleto ? "" : valor.toFixed(2),
       origem: "ocr",
       confianca: incompleto ? "nenhuma" : divergente ? "media" : "alta",
+      arquivoOrigem: nomeArquivo,
     },
-    { chave: "dataPagamento", valor: dataPagamento, origem: "ocr", confianca: "media" },
-    { chave: "banco", valor: bancos[nomeArquivo.length % bancos.length], origem: "ocr", confianca: "nenhuma" },
+    { chave: "dataPagamento", valor: dataPagamento, origem: "ocr", confianca: "media", arquivoOrigem: nomeArquivo },
+    {
+      chave: "banco",
+      valor: bancos[nomeArquivo.length % bancos.length],
+      origem: "ocr",
+      confianca: "nenhuma",
+      arquivoOrigem: nomeArquivo,
+    },
     {
       chave: "pagador",
       valor: incompleto ? "" : nomePagador,
       origem: "ocr",
       confianca: incompleto ? "nenhuma" : pagadorDivergente ? "media" : "alta",
+      arquivoOrigem: nomeArquivo,
+    },
+    {
+      chave: "tipoAssistencia",
+      valor: odontologico ? "odontologico" : "medico_hospitalar",
+      origem: "ocr",
+      confianca: "alta",
+      arquivoOrigem: nomeArquivo,
     },
   ];
+
+  const chavesDoArquivo = new Set(tipos.flatMap((t) => camposPorTipoDocumento[t]));
+  return camposPossiveis.filter((c) => chavesDoArquivo.has(c.chave));
+}
+
+const todasAsChaves: CampoExtraido["chave"][] = [
+  "nome",
+  "operadora",
+  "competencia",
+  "valor",
+  "dataPagamento",
+  "banco",
+  "pagador",
+  "tipoAssistencia",
+];
+
+/**
+ * Consolida os campos extraídos de vários arquivos anexados a um mesmo envio, para 1
+ * beneficiário — para cada campo, usa o primeiro arquivo (na ordem de upload) que produziu
+ * um valor não vazio. Se nenhum arquivo trouxer o campo, ele fica "não identificado" (mesmo
+ * comportamento já usado para documentos incompletos).
+ */
+export function mesclarCamposDeArquivos(porArquivo: { nome: string; campos: CampoExtraido[] }[]): CampoExtraido[] {
+  return todasAsChaves.map((chave) => {
+    for (const arquivo of porArquivo) {
+      const campo = arquivo.campos.find((c) => c.chave === chave && c.valor.trim() !== "");
+      if (campo) return campo;
+    }
+    return { chave, valor: "", origem: "ocr" as const, confianca: "nenhuma" as const };
+  });
 }

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { RefreshCw, XCircle } from "lucide-react";
 import { Stepper, StepNav } from "@/components/Stepper";
 import { BeneficiarioSelector } from "@/components/BeneficiarioSelector";
-import { ComprovanteUploadBox } from "@/components/ComprovanteUploadBox";
+import { ArquivosAnexadosUpload, type ArquivoComTipos } from "@/components/ArquivosAnexadosUpload";
 import { ResumoPagamento } from "@/components/ResumoPagamento";
 import { LendoComprovante, type EtapaLeitura } from "@/components/LendoComprovante";
 import { ConferenciaBeneficiarios } from "@/components/ConferenciaBeneficiarios";
@@ -13,13 +13,17 @@ import {
   competenciaAtual,
   competenciasFechadas,
   formatCompetencia,
+  tiposDocumentoPorPlano,
+  tipoPlanoPagamento,
+  type ArquivoAnexado,
   type Comprovante,
   type CampoExtraido,
 } from "@/lib/mock-data";
-import { arquivoEhIlegivel, gerarCamposExtraidos } from "@/lib/ocr-mock";
+import { arquivoEhIlegivel, gerarCamposExtraidos, mesclarCamposDeArquivos } from "@/lib/ocr-mock";
 import { addComprovantePagamento, getComprovantesUnificados, saveConclusaoCompetencia } from "@/lib/prosaude-storage";
 
 const titularPagamento = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
+const tiposPermitidos = tiposDocumentoPorPlano[tipoPlanoPagamento];
 
 export const Route = createFileRoute("/servidor/pagamentos/enviar")({
   validateSearch: (search: Record<string, unknown>): { competencia?: string; beneficiario?: string } => ({
@@ -47,13 +51,6 @@ function stepIndex(step: Step): number {
   return 3;
 }
 
-const tipoDocumentoOpcoes = [
-  { value: "boleto_individual", label: "Boleto individual" },
-  { value: "recibo", label: "Recibo" },
-  { value: "demonstrativo", label: "Demonstrativo de pagamento" },
-  { value: "fatura_tecnica", label: "Fatura técnica (múltiplos beneficiários)" },
-] as const;
-
 function EnviarComprovante() {
   const search = Route.useSearch();
   const navigate = useNavigate();
@@ -67,20 +64,18 @@ function EnviarComprovante() {
 
   const [step, setStep] = useState<Step>("selecao");
   const [travarCompetencia, setTravarCompetencia] = useState(!!competenciaViaAlerta);
-  const [tipoDocumento, setTipoDocumento] =
-    useState<Comprovante["tipoDocumento"]>("boleto_individual");
   const [competencia, setCompetencia] = useState(competenciaViaAlerta ?? competenciaAtual);
   const [justificativaAtraso, setJustificativaAtraso] = useState("");
   const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>(
     beneficiarioViaAlerta ? [beneficiarioViaAlerta] : [],
   );
-  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [arquivosSelecionados, setArquivosSelecionados] = useState<ArquivoComTipos[]>([]);
+  const [arquivosIlegiveis, setArquivosIlegiveis] = useState<string[]>([]);
   const [gruposExtraidos, setGruposExtraidos] = useState<
     { beneficiarioId: string; campos: CampoExtraido[] }[]
   >([]);
   const [etapaLeitura, setEtapaLeitura] = useState<EtapaLeitura>(0);
   const [leituraConcluida, setLeituraConcluida] = useState(false);
-  const [leituraFalhouLegibilidade, setLeituraFalhouLegibilidade] = useState(false);
   const [refreshResumoKey, setRefreshResumoKey] = useState(0);
 
   const comprovantesExistentes = useMemo(() => getComprovantesUnificados(), [step]);
@@ -92,28 +87,35 @@ function EnviarComprovante() {
 
   const podeAvancarSelecao =
     beneficiariosSelecionados.length > 0 && (!isRetroativo || justificativaAtraso.trim().length > 0);
+  const podeAvancarUpload =
+    arquivosSelecionados.length > 0 && arquivosSelecionados.every((a) => a.tipos.length > 0);
 
-  function iniciarProcessamento(file: File) {
-    setArquivo(file);
+  function iniciarProcessamento() {
     setStep("lendo");
     setEtapaLeitura(0);
     setLeituraConcluida(false);
-    setLeituraFalhouLegibilidade(false);
+    setArquivosIlegiveis([]);
 
     setTimeout(() => {
       setEtapaLeitura(1);
       setTimeout(() => {
-        if (arquivoEhIlegivel(file.name)) {
-          setLeituraFalhouLegibilidade(true);
+        const ilegiveis = arquivosSelecionados
+          .filter((a) => arquivoEhIlegivel(a.file.name))
+          .map((a) => a.file.name);
+        if (ilegiveis.length > 0) {
+          setArquivosIlegiveis(ilegiveis);
           setTimeout(() => setStep("ilegivel"), 700);
           return;
         }
         setEtapaLeitura(2);
         setTimeout(() => {
-          const grupos = beneficiariosEscolhidos.map((b) => ({
-            beneficiarioId: b.id,
-            campos: gerarCamposExtraidos(b, competencia, file.name),
-          }));
+          const grupos = beneficiariosEscolhidos.map((b) => {
+            const porArquivo = arquivosSelecionados.map((a) => ({
+              nome: a.file.name,
+              campos: gerarCamposExtraidos(b, competencia, a.file.name, a.tipos),
+            }));
+            return { beneficiarioId: b.id, campos: mesclarCamposDeArquivos(porArquivo) };
+          });
           setGruposExtraidos(grupos);
           setLeituraConcluida(true);
           setTimeout(() => {
@@ -124,9 +126,8 @@ function EnviarComprovante() {
     }, 350);
   }
 
-  function reenviar() {
-    setArquivo(null);
-    setLeituraFalhouLegibilidade(false);
+  function corrigirIlegivel() {
+    setArquivosIlegiveis([]);
     setStep("upload");
   }
 
@@ -136,11 +137,14 @@ function EnviarComprovante() {
 
   /** Persiste o documento em revisão — reflete no Resumo da competência, que só lê dados salvos. */
   function confirmarDocumento() {
+    const arquivosDoEnvio: ArquivoAnexado[] = arquivosSelecionados.map((a) => ({
+      nome: a.file.name,
+      tipos: a.tipos,
+    }));
     const primeiro = gruposExtraidos[0];
     const novoComprovante: Comprovante = {
       id: `comp-${Date.now()}`,
-      arquivo: arquivo?.name ?? "documento.pdf",
-      tipoDocumento,
+      arquivos: arquivosDoEnvio,
       beneficiarioIds: beneficiariosSelecionados,
       competencia,
       isRetroativo,
@@ -159,9 +163,8 @@ function EnviarComprovante() {
   /** "Anexar comprovante do dependente" a partir do Resumo — mantém a competência travada,
    *  preserva tudo já salvo e reabre o wizard só com o beneficiário faltante pré-selecionado. */
   function handleAnexarDependente(beneficiarioId: string) {
-    setTipoDocumento("boleto_individual");
     setJustificativaAtraso("");
-    setArquivo(null);
+    setArquivosSelecionados([]);
     setGruposExtraidos([]);
     setBeneficiariosSelecionados([beneficiarioId]);
     setTravarCompetencia(true);
@@ -187,21 +190,6 @@ function EnviarComprovante() {
 
       {step === "selecao" && (
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Tipo de documento</label>
-            <select
-              value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value as Comprovante["tipoDocumento"])}
-              className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm"
-            >
-              {tipoDocumentoOpcoes.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div>
             <label className="block text-sm font-medium mb-1.5">Competência</label>
             <select
@@ -265,28 +253,30 @@ function EnviarComprovante() {
       {step === "upload" && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Envie o comprovante para {beneficiariosEscolhidos.map((b) => b.nome).join(", ")}.
+            Envie o(s) comprovante(s) para {beneficiariosEscolhidos.map((b) => b.nome).join(", ")}. Você pode
+            anexar mais de um arquivo quando as informações estiverem em documentos complementares (ex: fatura
+            técnica + comprovante de pagamento).
           </p>
-          <ComprovanteUploadBox
-            arquivo={arquivo}
-            onSelect={(f) => setArquivo(f)}
-            onClear={() => setArquivo(null)}
+          <ArquivosAnexadosUpload
+            arquivos={arquivosSelecionados}
+            tiposPermitidos={tiposPermitidos}
+            onChange={setArquivosSelecionados}
           />
           <StepNav
             onPrev={() => setStep("selecao")}
-            onNext={() => arquivo && iniciarProcessamento(arquivo)}
+            onNext={iniciarProcessamento}
             nextLabel="Enviar para processamento"
-            disabled={!arquivo}
+            disabled={!podeAvancarUpload}
           />
         </div>
       )}
 
       {step === "lendo" && (
         <LendoComprovante
-          nomeArquivo={arquivo?.name ?? ""}
+          nomesArquivos={arquivosSelecionados.map((a) => a.file.name)}
           etapaAtual={etapaLeitura}
           concluido={leituraConcluida}
-          falhouLegibilidade={leituraFalhouLegibilidade}
+          falhouLegibilidade={arquivosIlegiveis.length > 0}
           onVoltar={() => setStep("upload")}
         />
       )}
@@ -296,24 +286,26 @@ function EnviarComprovante() {
           <XCircle className="h-14 w-14 text-destructive mx-auto" />
           <h3 className="text-base font-semibold">Não foi possível ler o documento</h3>
           <p className="text-sm text-muted-foreground px-2">
-            O arquivo enviado está ilegível. Tire uma nova foto ou digitalize novamente e reenvie.
+            {arquivosIlegiveis.length > 1
+              ? `Os arquivos ${arquivosIlegiveis.join(", ")} estão ilegíveis.`
+              : `O arquivo ${arquivosIlegiveis[0] ?? ""} está ilegível.`}{" "}
+            Remova-o(s), tire uma nova foto ou digitalize novamente e reenvie.
           </p>
           <button
-            onClick={reenviar}
+            onClick={corrigirIlegivel}
             className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2.5 text-sm font-medium hover:bg-primary-light"
           >
-            <RefreshCw className="h-4 w-4" /> Reenviar documento
+            <RefreshCw className="h-4 w-4" /> Corrigir arquivos
           </button>
         </div>
       )}
 
       {step === "conferencia_beneficiarios" && (
         <ConferenciaBeneficiarios
-          arquivo={arquivo?.name ?? ""}
+          arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, tipos: a.tipos }))}
           beneficiarios={beneficiariosEscolhidos}
           gruposExtraidos={gruposExtraidos}
           onChangeGrupo={handleChangeGrupo}
-          onSubstituirArquivo={(novoArquivo) => iniciarProcessamento(novoArquivo)}
           onVoltar={() => setStep("upload")}
           onContinuar={() => setStep("confirmar_documento")}
           nomeTitular={titularPagamento?.nome}
@@ -323,7 +315,7 @@ function EnviarComprovante() {
       {step === "confirmar_documento" && (
         <div className="space-y-4">
           <ResumoPagamento
-            arquivo={arquivo?.name ?? ""}
+            arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, tipos: a.tipos }))}
             beneficiarios={beneficiariosEscolhidos}
             competencia={competencia}
             isRetroativo={isRetroativo}
