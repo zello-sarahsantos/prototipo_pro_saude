@@ -9,6 +9,7 @@ const chaveLabels: Record<CampoExtraido["chave"], string> = {
   valor: "Valor (R$)",
   dataPagamento: "Data do Pagamento",
   banco: "Banco",
+  pagador: "Pagador",
 };
 
 export function ResumoPagamento({

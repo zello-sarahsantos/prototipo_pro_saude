@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronRight, FileUp, ShieldAlert, AlertTriangle } from "lucide-react";
+import { ChevronRight, FileUp, ShieldAlert, AlertTriangle, RefreshCw, Paperclip } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ServidorComprovanteDetail } from "@/components/ServidorComprovanteDetail";
 import {
@@ -11,7 +11,7 @@ import {
   type Comprovante,
 } from "@/lib/mock-data";
 import { getComprovantesUnificados } from "@/lib/prosaude-storage";
-import { getCompetenciasPendentes } from "@/lib/competencias-pendentes";
+import { getCompetenciasPendentes, getBeneficiariosFaltantes } from "@/lib/competencias-pendentes";
 
 export const Route = createFileRoute("/servidor/pagamentos/")({
   component: PagamentosHome,
@@ -29,6 +29,13 @@ function PagamentosHome() {
   const daCompetenciaAtual = comprovantes.filter((c) => c.competencia === competenciaAtual);
   const competenciasPendentes = useMemo(() => getCompetenciasPendentes(), [refreshKey]);
   const pendentesExibidas = mostrarTodasPendentes ? competenciasPendentes : competenciasPendentes.slice(0, 3);
+  const beneficiariosFaltantes = useMemo(() => getBeneficiariosFaltantes(competenciaAtual), [refreshKey]);
+
+  function abrirDetalheDoBeneficiario(beneficiarioId: string) {
+    const doBeneficiario = daCompetenciaAtual.filter((c) => c.beneficiarioIds.includes(beneficiarioId));
+    const maisRecente = doBeneficiario[doBeneficiario.length - 1];
+    if (maisRecente) setDetalhe({ comprovante: maisRecente, beneficiarioId });
+  }
 
   function refresh() {
     setRefreshKey((k) => k + 1);
@@ -105,6 +112,46 @@ function PagamentosHome() {
               Ver todas ({competenciasPendentes.length})
             </button>
           )}
+        </section>
+      )}
+
+      {beneficiariosFaltantes.length > 0 && (
+        <section className="rounded-xl border border-warning/40 bg-warning/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
+            <h3 className="font-semibold text-warning text-sm">
+              Competência {formatCompetencia(competenciaAtual)} incompleta
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {beneficiariosFaltantes.map(({ beneficiarioId, motivo }) => {
+              const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
+              if (!beneficiario) return null;
+              return (
+                <div key={beneficiarioId} className="bg-card rounded-lg p-3 border border-border space-y-2">
+                  <p className="text-sm font-medium">
+                    {beneficiario.nome} {motivo === "sem_comprovante" ? "ainda não possui comprovante." : "possui documento ilegível."}
+                  </p>
+                  {motivo === "sem_comprovante" ? (
+                    <Link
+                      to="/servidor/pagamentos/enviar"
+                      search={{ competencia: competenciaAtual, beneficiario: beneficiarioId }}
+                      className="inline-flex text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 hover:bg-primary-light items-center gap-1.5"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" /> Anexar comprovante
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => abrirDetalheDoBeneficiario(beneficiarioId)}
+                      className="inline-flex text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted items-center gap-1.5"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Substituir documento
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </section>
       )}
 

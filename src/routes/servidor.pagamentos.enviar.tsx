@@ -1,11 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { RefreshCw, XCircle } from "lucide-react";
 import { Stepper, StepNav } from "@/components/Stepper";
 import { BeneficiarioSelector } from "@/components/BeneficiarioSelector";
 import { ComprovanteUploadBox } from "@/components/ComprovanteUploadBox";
-import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { ResumoPagamento } from "@/components/ResumoPagamento";
+import { LendoComprovante, type EtapaLeitura } from "@/components/LendoComprovante";
+import { ConferenciaBeneficiarios } from "@/components/ConferenciaBeneficiarios";
+import { ConsolidadoCompetencia } from "@/components/ConsolidadoCompetencia";
 import {
   beneficiariosPagamento,
   competenciaAtual,
@@ -15,23 +17,33 @@ import {
   type CampoExtraido,
 } from "@/lib/mock-data";
 import { arquivoEhIlegivel, gerarCamposExtraidos } from "@/lib/ocr-mock";
-import { addComprovantePagamento, getComprovantesUnificados } from "@/lib/prosaude-storage";
+import { addComprovantePagamento, getComprovantesUnificados, saveConclusaoCompetencia } from "@/lib/prosaude-storage";
+
+const titularPagamento = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
 
 export const Route = createFileRoute("/servidor/pagamentos/enviar")({
-  validateSearch: (search: Record<string, unknown>): { competencia?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { competencia?: string; beneficiario?: string } => ({
     competencia: typeof search.competencia === "string" ? search.competencia : undefined,
+    beneficiario: typeof search.beneficiario === "string" ? search.beneficiario : undefined,
   }),
   component: EnviarComprovante,
 });
 
-type Step = "selecao" | "upload" | "processando" | "ilegivel" | "revisao" | "resumo" | "enviado";
+type Step =
+  | "selecao"
+  | "upload"
+  | "lendo"
+  | "ilegivel"
+  | "conferencia_beneficiarios"
+  | "confirmar_documento"
+  | "resumo_competencia";
 
 const stepLabels = ["Beneficiários", "Documento", "Revisão", "Resumo"];
 
 function stepIndex(step: Step): number {
   if (step === "selecao") return 0;
-  if (step === "upload" || step === "processando" || step === "ilegivel") return 1;
-  if (step === "revisao") return 2;
+  if (step === "upload" || step === "lendo" || step === "ilegivel") return 1;
+  if (step === "conferencia_beneficiarios") return 2;
   return 3;
 }
 
@@ -44,23 +56,34 @@ const tipoDocumentoOpcoes = [
 
 function EnviarComprovante() {
   const search = Route.useSearch();
+  const navigate = useNavigate();
   // Quando aberta a partir do alerta de "competência pendente", a competência vem preenchida e travada.
   const competenciaViaAlerta =
     search.competencia && competenciasFechadas.includes(search.competencia) ? search.competencia : undefined;
+  const beneficiarioViaAlerta =
+    search.beneficiario && beneficiariosPagamento.some((b) => b.id === search.beneficiario)
+      ? search.beneficiario
+      : undefined;
 
   const [step, setStep] = useState<Step>("selecao");
+  const [travarCompetencia, setTravarCompetencia] = useState(!!competenciaViaAlerta);
   const [tipoDocumento, setTipoDocumento] =
     useState<Comprovante["tipoDocumento"]>("boleto_individual");
   const [competencia, setCompetencia] = useState(competenciaViaAlerta ?? competenciaAtual);
   const [justificativaAtraso, setJustificativaAtraso] = useState("");
-  const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>([]);
+  const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>(
+    beneficiarioViaAlerta ? [beneficiarioViaAlerta] : [],
+  );
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [gruposExtraidos, setGruposExtraidos] = useState<
     { beneficiarioId: string; campos: CampoExtraido[] }[]
   >([]);
-  const [dataEnvio, setDataEnvio] = useState<string | null>(null);
+  const [etapaLeitura, setEtapaLeitura] = useState<EtapaLeitura>(0);
+  const [leituraConcluida, setLeituraConcluida] = useState(false);
+  const [leituraFalhouLegibilidade, setLeituraFalhouLegibilidade] = useState(false);
+  const [refreshResumoKey, setRefreshResumoKey] = useState(0);
 
-  const comprovantesExistentes = useMemo(() => getComprovantesUnificados(), []);
+  const comprovantesExistentes = useMemo(() => getComprovantesUnificados(), [step]);
 
   const isRetroativo = competencia !== competenciaAtual;
   const beneficiariosEscolhidos = beneficiariosPagamento.filter((b) =>
@@ -72,27 +95,47 @@ function EnviarComprovante() {
 
   function iniciarProcessamento(file: File) {
     setArquivo(file);
-    setStep("processando");
+    setStep("lendo");
+    setEtapaLeitura(0);
+    setLeituraConcluida(false);
+    setLeituraFalhouLegibilidade(false);
+
     setTimeout(() => {
-      if (arquivoEhIlegivel(file.name)) {
-        setStep("ilegivel");
-        return;
-      }
-      const grupos = beneficiariosEscolhidos.map((b) => ({
-        beneficiarioId: b.id,
-        campos: gerarCamposExtraidos(b, competencia, file.name),
-      }));
-      setGruposExtraidos(grupos);
-      setStep("revisao");
-    }, 1200);
+      setEtapaLeitura(1);
+      setTimeout(() => {
+        if (arquivoEhIlegivel(file.name)) {
+          setLeituraFalhouLegibilidade(true);
+          setTimeout(() => setStep("ilegivel"), 700);
+          return;
+        }
+        setEtapaLeitura(2);
+        setTimeout(() => {
+          const grupos = beneficiariosEscolhidos.map((b) => ({
+            beneficiarioId: b.id,
+            campos: gerarCamposExtraidos(b, competencia, file.name),
+          }));
+          setGruposExtraidos(grupos);
+          setLeituraConcluida(true);
+          setTimeout(() => {
+            setStep("conferencia_beneficiarios");
+          }, 500);
+        }, 600);
+      }, 500);
+    }, 350);
   }
 
   function reenviar() {
     setArquivo(null);
+    setLeituraFalhouLegibilidade(false);
     setStep("upload");
   }
 
-  function confirmarEnvio() {
+  function handleChangeGrupo(beneficiarioId: string, campos: CampoExtraido[]) {
+    setGruposExtraidos((prev) => prev.map((g) => (g.beneficiarioId === beneficiarioId ? { ...g, campos } : g)));
+  }
+
+  /** Persiste o documento em revisão — reflete no Resumo da competência, que só lê dados salvos. */
+  function confirmarDocumento() {
     const primeiro = gruposExtraidos[0];
     const novoComprovante: Comprovante = {
       id: `comp-${Date.now()}`,
@@ -109,56 +152,38 @@ function EnviarComprovante() {
       dataEnvio: new Date().toISOString(),
     };
     addComprovantePagamento(novoComprovante);
-    setDataEnvio(novoComprovante.dataEnvio);
-    setStep("enviado");
+    setRefreshResumoKey((k) => k + 1);
+    setStep("resumo_competencia");
   }
 
-  if (step === "enviado") {
-    return (
-      <div className="p-6 text-center space-y-4">
-        <CheckCircle2 className="h-16 w-16 text-success mx-auto" />
-        <h2 className="text-xl font-bold">Comprovante enviado com sucesso!</h2>
-        <div className="bg-muted rounded-lg py-3 px-4">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">
-            Status
-          </p>
-          <p className="text-lg font-bold text-status-analise-fg">
-            {isRetroativo ? "Retroativo — Aguardando Analista" : "Em Análise"}
-          </p>
-        </div>
-        {dataEnvio && (
-          <p className="text-xs text-muted-foreground">
-            Enviado em {new Date(dataEnvio).toLocaleString("pt-BR")}
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground italic px-2">
-          A GERDAB realizará a conferência das informações e documentos enviados.
-        </p>
-        <div className="space-y-2 pt-2">
-          <Link
-            to="/servidor/pagamentos"
-            className="block w-full bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-medium"
-          >
-            Ver histórico de pagamentos
-          </Link>
-          <Link
-            to="/servidor/inicio"
-            className="block w-full border border-border rounded-md py-2.5 text-sm font-medium hover:bg-muted"
-          >
-            Voltar ao início
-          </Link>
-        </div>
-      </div>
-    );
+  /** "Anexar comprovante do dependente" a partir do Resumo — mantém a competência travada,
+   *  preserva tudo já salvo e reabre o wizard só com o beneficiário faltante pré-selecionado. */
+  function handleAnexarDependente(beneficiarioId: string) {
+    setTipoDocumento("boleto_individual");
+    setJustificativaAtraso("");
+    setArquivo(null);
+    setGruposExtraidos([]);
+    setBeneficiariosSelecionados([beneficiarioId]);
+    setTravarCompetencia(true);
+    setStep("selecao");
+  }
+
+  function handleConcluir() {
+    saveConclusaoCompetencia(competencia);
+    navigate({ to: "/servidor/pagamentos" });
   }
 
   return (
     <div className="p-4">
-      <h2 className="text-lg font-semibold mb-1">Enviar Comprovante</h2>
-      <p className="text-xs text-muted-foreground mb-4">
-        Etapa {stepIndex(step) + 1} de {stepLabels.length}
-      </p>
-      <Stepper steps={stepLabels} current={stepIndex(step)} />
+      {step !== "resumo_competencia" && (
+        <>
+          <h2 className="text-lg font-semibold mb-1">Enviar Comprovante</h2>
+          <p className="text-xs text-muted-foreground mb-4">
+            Etapa {stepIndex(step) + 1} de {stepLabels.length}
+          </p>
+          <Stepper steps={stepLabels} current={stepIndex(step)} />
+        </>
+      )}
 
       {step === "selecao" && (
         <div className="space-y-4">
@@ -182,7 +207,7 @@ function EnviarComprovante() {
             <select
               value={competencia}
               onChange={(e) => setCompetencia(e.target.value)}
-              disabled={!!competenciaViaAlerta}
+              disabled={travarCompetencia}
               className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm disabled:opacity-70"
             >
               <option value={competenciaAtual}>{formatCompetencia(competenciaAtual)} (aberta)</option>
@@ -192,9 +217,9 @@ function EnviarComprovante() {
                 </option>
               ))}
             </select>
-            {competenciaViaAlerta && (
+            {travarCompetencia && (
               <p className="text-xs text-muted-foreground mt-1">
-                Competência preenchida automaticamente a partir do alerta de pendência.
+                Competência preenchida automaticamente — os comprovantes já enviados foram preservados.
               </p>
             )}
           </div>
@@ -256,12 +281,14 @@ function EnviarComprovante() {
         </div>
       )}
 
-      {step === "processando" && (
-        <div className="p-8 text-center space-y-3">
-          <Loader2 className="h-10 w-10 text-primary mx-auto animate-spin" />
-          <p className="text-sm font-medium">Processando documento com OCR/IA...</p>
-          <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos.</p>
-        </div>
+      {step === "lendo" && (
+        <LendoComprovante
+          nomeArquivo={arquivo?.name ?? ""}
+          etapaAtual={etapaLeitura}
+          concluido={leituraConcluida}
+          falhouLegibilidade={leituraFalhouLegibilidade}
+          onVoltar={() => setStep("upload")}
+        />
       )}
 
       {step === "ilegivel" && (
@@ -280,32 +307,20 @@ function EnviarComprovante() {
         </div>
       )}
 
-      {step === "revisao" && (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Confira os campos extraídos. Campos editados passam a ser marcados como "Preenchido manualmente".
-          </p>
-          {gruposExtraidos.map((grupo, idx) => {
-            const beneficiario = beneficiariosEscolhidos.find((b) => b.id === grupo.beneficiarioId);
-            return (
-              <CamposExtraidosForm
-                key={grupo.beneficiarioId}
-                titulo={beneficiario?.nome}
-                campos={grupo.campos}
-                valorCadastrado={beneficiario?.valorCadastrado}
-                onChange={(campos) =>
-                  setGruposExtraidos((prev) =>
-                    prev.map((g, i) => (i === idx ? { ...g, campos } : g)),
-                  )
-                }
-              />
-            );
-          })}
-          <StepNav onPrev={() => setStep("upload")} onNext={() => setStep("resumo")} nextLabel="Continuar" />
-        </div>
+      {step === "conferencia_beneficiarios" && (
+        <ConferenciaBeneficiarios
+          arquivo={arquivo?.name ?? ""}
+          beneficiarios={beneficiariosEscolhidos}
+          gruposExtraidos={gruposExtraidos}
+          onChangeGrupo={handleChangeGrupo}
+          onSubstituirArquivo={(novoArquivo) => iniciarProcessamento(novoArquivo)}
+          onVoltar={() => setStep("upload")}
+          onContinuar={() => setStep("confirmar_documento")}
+          nomeTitular={titularPagamento?.nome}
+        />
       )}
 
-      {step === "resumo" && (
+      {step === "confirmar_documento" && (
         <div className="space-y-4">
           <ResumoPagamento
             arquivo={arquivo?.name ?? ""}
@@ -316,12 +331,22 @@ function EnviarComprovante() {
             gruposExtraidos={gruposExtraidos}
           />
           <StepNav
-            onPrev={() => setStep("revisao")}
-            onNext={confirmarEnvio}
-            nextLabel="Confirmar e Enviar"
+            onPrev={() => setStep("conferencia_beneficiarios")}
+            onNext={confirmarDocumento}
+            nextLabel="Confirmar documento"
             isLast
           />
         </div>
+      )}
+
+      {step === "resumo_competencia" && (
+        <ConsolidadoCompetencia
+          competencia={competencia}
+          onAnexarDependente={handleAnexarDependente}
+          onConcluir={handleConcluir}
+          onRefresh={() => setRefreshResumoKey((k) => k + 1)}
+          refreshKey={refreshResumoKey}
+        />
       )}
     </div>
   );

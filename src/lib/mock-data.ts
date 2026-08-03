@@ -257,7 +257,7 @@ export type StatusComprovante =
   | 'retroativo_recusado';
 
 export interface CampoExtraido {
-  chave: 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor' | 'dataPagamento' | 'banco';
+  chave: 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor' | 'dataPagamento' | 'banco' | 'pagador';
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
@@ -373,6 +373,20 @@ export const competenciaRetroativa = "2026-05";
 
 /** Competências já fechadas (anteriores à atual) elegíveis para envio retroativo. */
 export const competenciasFechadas = ["2026-04", "2026-05", "2026-06"];
+
+/** Registro de que o servidor concluiu a montagem do envio daquela competência. */
+export interface ConclusaoCompetencia {
+  competencia: string;
+  concluidoEm: string;
+}
+
+/** Registro de que o servidor optou conscientemente por seguir sem o comprovante de um beneficiário. */
+export interface BeneficiarioDispensado {
+  beneficiarioId: string;
+  competencia: string;
+  motivo: "continuar_sem_comprovante";
+  data: string;
+}
 
 const nomesMeses = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",

@@ -58,3 +58,13 @@ export function getListaStatusBeneficiario(c: Comprovante): StatusBeneficiarioCo
   }
   return [{ beneficiarioId: c.beneficiarioIds[0], status: c.status }];
 }
+
+/** Status de um beneficiário específico dentro de um comprovante (single ou multi-beneficiário). */
+export function statusDoBeneficiarioNoDocumento(c: Comprovante, beneficiarioId: string): StatusComprovante {
+  return getListaStatusBeneficiario(c).find((s) => s.beneficiarioId === beneficiarioId)?.status ?? c.status;
+}
+
+/** Verifica se algum campo do beneficiário (nesse comprovante) não foi identificado pela IA. */
+export function beneficiarioTemCampoVazio(c: Comprovante, beneficiarioId: string): boolean {
+  return getCamposDoBeneficiario(c, beneficiarioId).some((campo) => campo.valor.trim() === "");
+}
