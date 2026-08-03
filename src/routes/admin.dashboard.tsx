@@ -1,13 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { requerimentos, regrasProSaude } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { AlertCircle, ArrowRight, ClipboardList, UserCheck, Users } from "lucide-react";
+import { getComprovantesUnificados } from "@/lib/prosaude-storage";
+import { AlertCircle, ArrowRight, ClipboardList, ShieldQuestion, UserCheck, Users } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   component: Dashboard,
 });
 
 function Dashboard() {
+  const retroativosPendentes = getComprovantesUnificados().filter(
+    (c) => c.status === "retroativo_aguardando_gerencia",
+  );
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       <header>
@@ -48,6 +53,29 @@ function Dashboard() {
           tone="success"
         />
       </div>
+
+      <section className="bg-card rounded-xl border border-border shadow-card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <ShieldQuestion className="h-5 w-5 text-primary" />
+            <div>
+              <h2 className="font-semibold text-sm">Retroativos pendentes</h2>
+              <p className="text-xs text-muted-foreground">
+                Aguardando 2ª alçada da Gerência.
+              </p>
+            </div>
+          </div>
+          <p className="text-3xl font-bold tracking-tight text-primary">{retroativosPendentes.length}</p>
+        </div>
+        {retroativosPendentes.length > 0 && (
+          <Link
+            to="/admin/comprovantes"
+            className="mt-3 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            Ver na fila de Comprovantes <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="lg:col-span-2 bg-card rounded-xl border border-border shadow-card">

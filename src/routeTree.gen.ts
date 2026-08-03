@@ -24,12 +24,15 @@ import { Route as AssociacaoGerenciamentoRouteImport } from './routes/associacao
 import { Route as AdminRequerimentosRouteImport } from './routes/admin.requerimentos'
 import { Route as AdminParametrosRouteImport } from './routes/admin.parametros'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AdminComprovantesRouteImport } from './routes/admin.comprovantes'
 import { Route as AdminCargaInicialRouteImport } from './routes/admin.carga-inicial'
+import { Route as ServidorPagamentosIndexRouteImport } from './routes/servidor.pagamentos.index'
 import { Route as AdminServidoresIndexRouteImport } from './routes/admin.servidores.index'
 import { Route as ServidorRequerimentoNovoPlanoRouteImport } from './routes/servidor.requerimento.novo-plano'
 import { Route as ServidorRequerimentoNovoRouteImport } from './routes/servidor.requerimento.novo'
 import { Route as ServidorRequerimentoIncluirDependenteRouteImport } from './routes/servidor.requerimento.incluir-dependente'
 import { Route as ServidorRequerimentoExclusaoRouteImport } from './routes/servidor.requerimento.exclusao'
+import { Route as ServidorPagamentosEnviarRouteImport } from './routes/servidor.pagamentos.enviar'
 import { Route as AssociacaoGerenciamentoIdRouteImport } from './routes/associacao.gerenciamento.$id'
 import { Route as AdminServidoresIdRouteImport } from './routes/admin.servidores.$id'
 
@@ -108,10 +111,20 @@ const AdminDashboardRoute = AdminDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminComprovantesRoute = AdminComprovantesRouteImport.update({
+  id: '/comprovantes',
+  path: '/comprovantes',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCargaInicialRoute = AdminCargaInicialRouteImport.update({
   id: '/carga-inicial',
   path: '/carga-inicial',
   getParentRoute: () => AdminRoute,
+} as any)
+const ServidorPagamentosIndexRoute = ServidorPagamentosIndexRouteImport.update({
+  id: '/pagamentos/',
+  path: '/pagamentos/',
+  getParentRoute: () => ServidorRoute,
 } as any)
 const AdminServidoresIndexRoute = AdminServidoresIndexRouteImport.update({
   id: '/servidores/',
@@ -142,6 +155,12 @@ const ServidorRequerimentoExclusaoRoute =
     path: '/requerimento/exclusao',
     getParentRoute: () => ServidorRoute,
   } as any)
+const ServidorPagamentosEnviarRoute =
+  ServidorPagamentosEnviarRouteImport.update({
+    id: '/pagamentos/enviar',
+    path: '/pagamentos/enviar',
+    getParentRoute: () => ServidorRoute,
+  } as any)
 const AssociacaoGerenciamentoIdRoute =
   AssociacaoGerenciamentoIdRouteImport.update({
     id: '/$id',
@@ -162,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/servidor': typeof ServidorRouteWithChildren
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
+  '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
@@ -173,11 +193,13 @@ export interface FileRoutesByFullPath {
   '/servidor/meus-dados': typeof ServidorMeusDadosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
+  '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
   '/servidor/requerimento/exclusao': typeof ServidorRequerimentoExclusaoRoute
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
   '/admin/servidores/': typeof AdminServidoresIndexRoute
+  '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -187,6 +209,7 @@ export interface FileRoutesByTo {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/servidor': typeof ServidorRouteWithChildren
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
+  '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
@@ -198,11 +221,13 @@ export interface FileRoutesByTo {
   '/servidor/meus-dados': typeof ServidorMeusDadosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
+  '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
   '/servidor/requerimento/exclusao': typeof ServidorRequerimentoExclusaoRoute
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
   '/admin/servidores': typeof AdminServidoresIndexRoute
+  '/servidor/pagamentos': typeof ServidorPagamentosIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -213,6 +238,7 @@ export interface FileRoutesById {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/servidor': typeof ServidorRouteWithChildren
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
+  '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
@@ -224,11 +250,13 @@ export interface FileRoutesById {
   '/servidor/meus-dados': typeof ServidorMeusDadosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
+  '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
   '/servidor/requerimento/exclusao': typeof ServidorRequerimentoExclusaoRoute
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
   '/admin/servidores/': typeof AdminServidoresIndexRoute
+  '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -240,6 +268,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/servidor'
     | '/admin/carga-inicial'
+    | '/admin/comprovantes'
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
@@ -251,11 +280,13 @@ export interface FileRouteTypes {
     | '/servidor/meus-dados'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
+    | '/servidor/pagamentos/enviar'
     | '/servidor/requerimento/exclusao'
     | '/servidor/requerimento/incluir-dependente'
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
     | '/admin/servidores/'
+    | '/servidor/pagamentos/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -265,6 +296,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/servidor'
     | '/admin/carga-inicial'
+    | '/admin/comprovantes'
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
@@ -276,11 +308,13 @@ export interface FileRouteTypes {
     | '/servidor/meus-dados'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
+    | '/servidor/pagamentos/enviar'
     | '/servidor/requerimento/exclusao'
     | '/servidor/requerimento/incluir-dependente'
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
     | '/admin/servidores'
+    | '/servidor/pagamentos'
   id:
     | '__root__'
     | '/'
@@ -290,6 +324,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/servidor'
     | '/admin/carga-inicial'
+    | '/admin/comprovantes'
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
@@ -301,11 +336,13 @@ export interface FileRouteTypes {
     | '/servidor/meus-dados'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
+    | '/servidor/pagamentos/enviar'
     | '/servidor/requerimento/exclusao'
     | '/servidor/requerimento/incluir-dependente'
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
     | '/admin/servidores/'
+    | '/servidor/pagamentos/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -424,12 +461,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/comprovantes': {
+      id: '/admin/comprovantes'
+      path: '/comprovantes'
+      fullPath: '/admin/comprovantes'
+      preLoaderRoute: typeof AdminComprovantesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/carga-inicial': {
       id: '/admin/carga-inicial'
       path: '/carga-inicial'
       fullPath: '/admin/carga-inicial'
       preLoaderRoute: typeof AdminCargaInicialRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/servidor/pagamentos/': {
+      id: '/servidor/pagamentos/'
+      path: '/pagamentos'
+      fullPath: '/servidor/pagamentos/'
+      preLoaderRoute: typeof ServidorPagamentosIndexRouteImport
+      parentRoute: typeof ServidorRoute
     }
     '/admin/servidores/': {
       id: '/admin/servidores/'
@@ -466,6 +517,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServidorRequerimentoExclusaoRouteImport
       parentRoute: typeof ServidorRoute
     }
+    '/servidor/pagamentos/enviar': {
+      id: '/servidor/pagamentos/enviar'
+      path: '/pagamentos/enviar'
+      fullPath: '/servidor/pagamentos/enviar'
+      preLoaderRoute: typeof ServidorPagamentosEnviarRouteImport
+      parentRoute: typeof ServidorRoute
+    }
     '/associacao/gerenciamento/$id': {
       id: '/associacao/gerenciamento/$id'
       path: '/$id'
@@ -485,6 +543,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminCargaInicialRoute: typeof AdminCargaInicialRoute
+  AdminComprovantesRoute: typeof AdminComprovantesRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminParametrosRoute: typeof AdminParametrosRoute
   AdminRequerimentosRoute: typeof AdminRequerimentosRoute
@@ -494,6 +553,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminCargaInicialRoute: AdminCargaInicialRoute,
+  AdminComprovantesRoute: AdminComprovantesRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   AdminParametrosRoute: AdminParametrosRoute,
   AdminRequerimentosRoute: AdminRequerimentosRoute,
@@ -537,21 +597,25 @@ interface ServidorRouteChildren {
   ServidorDependentesRoute: typeof ServidorDependentesRoute
   ServidorInicioRoute: typeof ServidorInicioRoute
   ServidorMeusDadosRoute: typeof ServidorMeusDadosRoute
+  ServidorPagamentosEnviarRoute: typeof ServidorPagamentosEnviarRoute
   ServidorRequerimentoExclusaoRoute: typeof ServidorRequerimentoExclusaoRoute
   ServidorRequerimentoIncluirDependenteRoute: typeof ServidorRequerimentoIncluirDependenteRoute
   ServidorRequerimentoNovoRoute: typeof ServidorRequerimentoNovoRoute
   ServidorRequerimentoNovoPlanoRoute: typeof ServidorRequerimentoNovoPlanoRoute
+  ServidorPagamentosIndexRoute: typeof ServidorPagamentosIndexRoute
 }
 
 const ServidorRouteChildren: ServidorRouteChildren = {
   ServidorDependentesRoute: ServidorDependentesRoute,
   ServidorInicioRoute: ServidorInicioRoute,
   ServidorMeusDadosRoute: ServidorMeusDadosRoute,
+  ServidorPagamentosEnviarRoute: ServidorPagamentosEnviarRoute,
   ServidorRequerimentoExclusaoRoute: ServidorRequerimentoExclusaoRoute,
   ServidorRequerimentoIncluirDependenteRoute:
     ServidorRequerimentoIncluirDependenteRoute,
   ServidorRequerimentoNovoRoute: ServidorRequerimentoNovoRoute,
   ServidorRequerimentoNovoPlanoRoute: ServidorRequerimentoNovoPlanoRoute,
+  ServidorPagamentosIndexRoute: ServidorPagamentosIndexRoute,
 }
 
 const ServidorRouteWithChildren = ServidorRoute._addFileChildren(
