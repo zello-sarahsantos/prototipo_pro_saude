@@ -94,14 +94,6 @@ function Inicio() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
-        <p className="font-semibold text-warning">Fase atual: cadastro</p>
-        <p className="text-muted-foreground mt-1">
-          Comprovantes mensais, ressarcimentos retroativos e reajustes de valor serão tratados na Fase 2.
-          Nesta fase, o foco é manter o cadastro base correto para análise da GERDAB.
-        </p>
-      </section>
-
       {isPensionistaTemporario && (
         <section className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 text-sm text-destructive">
           <p className="font-bold flex items-center gap-2"><Info className="h-4 w-4" /> Benefício Temporário</p>
