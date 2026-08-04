@@ -910,3 +910,5 @@ Ordem sugerida, da menor para a maior complexidade/risco:
 ---
 
 *Fim do documento.*
+
+> **Nota de escopo:** mudanças de navegação do Portal do Servidor, Primeiro Acesso e Requerimento de Mudança de Plano (fora do Módulo de Pagamento) estão documentadas separadamente em `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md`.
