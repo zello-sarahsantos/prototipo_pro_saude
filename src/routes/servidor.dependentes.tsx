@@ -71,7 +71,7 @@ function Dependentes() {
                   Ver detalhes
                 </button>
                 {d.alerta && d.status === "alerta" ? (
-                  <button className="flex-1 text-sm text-center border border-warning/50 bg-warning/10 text-warning-foreground rounded-md py-2 hover:bg-warning/20">
+                  <button className="flex-1 text-sm text-center border border-warning/50 bg-warning/10 text-warning font-medium rounded-md py-2 hover:bg-warning/20">
                     Enviar Comprovante
                   </button>
                 ) : (

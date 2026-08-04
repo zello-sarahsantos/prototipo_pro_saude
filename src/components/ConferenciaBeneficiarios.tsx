@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
-import { ComprovanteUploadBox } from "@/components/ComprovanteUploadBox";
-import type { BeneficiarioPagamento, CampoExtraido } from "@/lib/mock-data";
+import { tipoDocumentoArquivoLabels, type BeneficiarioPagamento, type CampoExtraido, type TipoDocumentoArquivo } from "@/lib/mock-data";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
   return campos.some((c) => c.valor.trim() === "");
@@ -13,28 +12,25 @@ function todaAltaConfianca(campos: CampoExtraido[]): boolean {
 }
 
 export function ConferenciaBeneficiarios({
-  arquivo,
+  arquivos,
   beneficiarios,
   gruposExtraidos,
   onChangeGrupo,
-  onSubstituirArquivo,
   onVoltar,
   onContinuar,
   nomeTitular,
 }: {
-  arquivo: string;
+  arquivos: { nome: string; tipos: TipoDocumentoArquivo[] }[];
   beneficiarios: BeneficiarioPagamento[];
   gruposExtraidos: { beneficiarioId: string; campos: CampoExtraido[] }[];
   onChangeGrupo: (beneficiarioId: string, campos: CampoExtraido[]) => void;
-  /** "Reenviar comprovante" substitui o documento inteiro — novo arquivo, novo OCR para todos. */
-  onSubstituirArquivo: (novoArquivo: File) => void;
+  /** Volta ao passo de upload — permite remover/adicionar arquivos e reprocessar. */
   onVoltar: () => void;
   onContinuar: () => void;
   /** O pagamento deve ter sido feito pelo titular — usado para destacar "Pagador" divergente. */
   nomeTitular?: string;
 }) {
   const [confirmados, setConfirmados] = useState<Set<string>>(new Set());
-  const [reenviandoTudo, setReenviandoTudo] = useState(false);
 
   // Confirma automaticamente os beneficiários com todos os campos em alta confiança.
   useEffect(() => {
@@ -49,27 +45,6 @@ export function ConferenciaBeneficiarios({
 
   const todosResolvidos = gruposExtraidos.every((g) => !naoIdentificado(g.campos) && confirmados.has(g.beneficiarioId));
 
-  if (reenviandoTudo) {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Selecione o novo arquivo — ele substituirá <strong>{arquivo}</strong> por completo.
-        </p>
-        <ComprovanteUploadBox
-          arquivo={null}
-          onSelect={(f) => onSubstituirArquivo(f)}
-          onClear={() => setReenviandoTudo(false)}
-        />
-        <button
-          onClick={() => setReenviandoTudo(false)}
-          className="text-sm border border-border rounded-md px-4 py-2.5 hover:bg-muted"
-        >
-          Cancelar
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -79,10 +54,25 @@ export function ConferenciaBeneficiarios({
         <h2 className="text-base font-semibold">Confira antes de enviar</h2>
       </div>
 
+      <div className="bg-card rounded-xl border border-border p-3 space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Documentos analisados</p>
+        {arquivos.map((a) => (
+          <div key={a.nome} className="flex items-start gap-2 text-sm">
+            <FileText className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">{a.nome}</p>
+              <p className="text-xs text-muted-foreground">
+                {a.tipos.map((t) => tipoDocumentoArquivoLabels[t]).join(", ") || "Nenhum tipo marcado"}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <p className="text-sm text-muted-foreground">
-        1 documento (<strong>{arquivo}</strong>) → {gruposExtraidos.length} beneficiário
-        {gruposExtraidos.length > 1 ? "s" : ""} identificado{gruposExtraidos.length > 1 ? "s" : ""}. Confira os dados
-        de cada um — a IA pré-preenche, mas você pode editar qualquer campo.
+        {gruposExtraidos.length} beneficiário{gruposExtraidos.length > 1 ? "s" : ""} identificado
+        {gruposExtraidos.length > 1 ? "s" : ""} nos documentos acima. Confira os dados de cada um — a IA
+        pré-preenche a partir do conjunto de arquivos, mas você pode editar qualquer campo.
       </p>
 
       <div className="space-y-3">
@@ -128,10 +118,10 @@ export function ConferenciaBeneficiarios({
                 )}
                 {incompleto && (
                   <button
-                    onClick={() => setReenviandoTudo(true)}
+                    onClick={onVoltar}
                     className="text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" /> Reenviar comprovante
+                    <RefreshCw className="h-3.5 w-3.5" /> Anexar mais um arquivo
                   </button>
                 )}
               </div>

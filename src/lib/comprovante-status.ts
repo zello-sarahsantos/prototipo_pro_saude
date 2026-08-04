@@ -31,6 +31,20 @@ export function getDivergencia(
   };
 }
 
+/** Verifica se o tipo de assistência do documento é reembolsável — odontológico não é
+ *  amparado pelo Pró-Saúde, então nunca pode ser aprovado (automaticamente ou com ressalva). */
+export function getElegibilidade(
+  comprovante: Comprovante,
+  beneficiarioId: string,
+): { elegivel: boolean; tipoAssistencia?: string } {
+  const campos = getCamposDoBeneficiario(comprovante, beneficiarioId);
+  const campo = campos.find((c) => c.chave === "tipoAssistencia");
+  return {
+    elegivel: campo?.valor !== "odontologico",
+    tipoAssistencia: campo?.valor,
+  };
+}
+
 /**
  * Deriva o status geral do comprovante a partir do status individual de cada beneficiário
  * (fatura técnica). A ação sobre 1 beneficiário nunca força os demais a mudar de status —

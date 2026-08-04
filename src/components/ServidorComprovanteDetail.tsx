@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X, RefreshCw, RotateCcw, XCircle, Loader2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { X, RefreshCw, RotateCcw, XCircle, Loader2, FilePlus } from "lucide-react";
 import { DocPreview } from "@/components/DocPreview";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ComprovanteUploadBox } from "@/components/ComprovanteUploadBox";
@@ -32,7 +33,7 @@ export function ServidorComprovanteDetail({
 }) {
   const [acaoAtiva, setAcaoAtiva] = useState<{ beneficiarioId: string; step: AcaoStep } | null>(null);
   const [campos, setCampos] = useState<CampoExtraido[]>([]);
-  const [novoArquivoNome, setNovoArquivoNome] = useState<string>(comprovante.arquivo);
+  const [novoArquivoNome, setNovoArquivoNome] = useState<string>(comprovante.arquivos[0]?.nome ?? "documento.pdf");
 
   const lista = getListaStatusBeneficiario(comprovante);
   const ordenada = focusBeneficiarioId
@@ -83,7 +84,7 @@ export function ServidorComprovanteDetail({
       <div className="bg-card rounded-t-2xl sm:rounded-2xl shadow-elevated max-w-2xl w-full max-h-[92vh] overflow-y-auto">
         <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
           <div>
-            <h2 className="font-semibold">{comprovante.arquivo}</h2>
+            <h2 className="font-semibold">{comprovante.arquivos.map((a) => a.nome).join(", ")}</h2>
             <p className="text-xs text-muted-foreground">
               {formatCompetencia(comprovante.competencia)}
               {comprovante.isRetroativo && " • Retroativo"}
@@ -95,12 +96,37 @@ export function ServidorComprovanteDetail({
         </header>
 
         <div className="p-6 space-y-5">
-          <DocPreview filename={comprovante.arquivo} />
+          <div className="space-y-2">
+            {comprovante.arquivos.map((a) => (
+              <DocPreview key={a.nome} filename={a.nome} />
+            ))}
+          </div>
 
           {comprovante.isRetroativo && comprovante.justificativaAtraso && (
             <div className="bg-muted/50 rounded-lg p-3 text-xs">
               <p className="font-medium text-muted-foreground mb-1">Justificativa do atraso enviada:</p>
               <p>{comprovante.justificativaAtraso}</p>
+            </div>
+          )}
+
+          {comprovante.solicitacaoComplementar && (
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-2">
+              <p className="font-medium text-warning">GERDAB solicitou documento complementar</p>
+              <p>{comprovante.solicitacaoComplementar.motivo}</p>
+              <p className="text-muted-foreground">
+                {comprovante.solicitacaoComplementar.solicitadoPor} em{" "}
+                {new Date(comprovante.solicitacaoComplementar.data).toLocaleString("pt-BR")}
+              </p>
+              <Link
+                to="/servidor/pagamentos/enviar"
+                search={{
+                  competencia: comprovante.competencia,
+                  beneficiario: focusBeneficiarioId ?? comprovante.beneficiarioIds[0],
+                }}
+                className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-md px-3 py-2 text-sm font-medium hover:bg-primary-light"
+              >
+                <FilePlus className="h-3.5 w-3.5" /> Anexar documento complementar
+              </Link>
             </div>
           )}
 

@@ -9,6 +9,7 @@ import {
   Ban,
   ArrowUpCircle,
   Undo2,
+  FilePlus,
 } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { DocPreview } from "@/components/DocPreview";
@@ -28,6 +29,7 @@ import { getComprovantesUnificados, updateComprovantePagamento } from "@/lib/pro
 import {
   getCamposDoBeneficiario,
   getDivergencia,
+  getElegibilidade,
   recomputeStatusGeral,
   getListaStatusBeneficiario,
 } from "@/lib/comprovante-status";
@@ -58,7 +60,7 @@ const statusAcaoAnalista: StatusComprovante[] = [
   "retroativo_devolvido",
 ];
 
-type SubFormTipo = "ressalva" | "correcao" | "recusar" | "devolver";
+type SubFormTipo = "ressalva" | "correcao" | "recusar" | "devolver" | "complementar";
 
 function nomeBeneficiario(id: string): string {
   return beneficiariosPagamento.find((b) => b.id === id)?.nome ?? id;
@@ -219,6 +221,24 @@ function Comprovantes() {
         data: new Date().toISOString(),
         comentario,
       });
+    } else if (subForm.tipo === "complementar") {
+      // Não altera o status — é apenas um pedido adicional, registrado no histórico e destacado ao Servidor.
+      updateComprovantePagamento(comprovante.id, {
+        solicitacaoComplementar: { motivo: comentario, solicitadoPor: autor, data: new Date().toISOString() },
+        aprovacoes: [
+          ...comprovante.aprovacoes,
+          {
+            etapa: etapaAtual,
+            acao: "documento_complementar_solicitado",
+            aprovadoPor: autor,
+            data: new Date().toISOString(),
+            comentario,
+          },
+        ],
+      });
+      refresh();
+      setSubForm(null);
+      setComentario("");
     }
   }
 
@@ -256,7 +276,7 @@ function Comprovantes() {
           <article key={c.id} className="bg-card rounded-xl border border-border shadow-card p-5">
             <header className="flex justify-between items-start mb-3 gap-3">
               <div className="min-w-0">
-                <p className="font-semibold truncate">{c.arquivo}</p>
+                <p className="font-semibold truncate">{c.arquivos.map((a) => a.nome).join(", ")}</p>
                 <p className="text-sm text-muted-foreground">
                   {c.beneficiarioIds.map(nomeBeneficiario).join(", ")} • {formatCompetencia(c.competencia)}
                   {c.isRetroativo && " • Retroativo"}
@@ -297,7 +317,7 @@ function Comprovantes() {
           <div className="bg-card rounded-t-2xl sm:rounded-2xl shadow-elevated max-w-2xl w-full max-h-[92vh] overflow-y-auto">
             <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
               <div>
-                <h2 className="font-semibold">{cur.arquivo}</h2>
+                <h2 className="font-semibold">{cur.arquivos.map((a) => a.nome).join(", ")}</h2>
                 <p className="text-xs text-muted-foreground">
                   {formatCompetencia(cur.competencia)}
                   {cur.isRetroativo && " • Retroativo"}
@@ -309,7 +329,11 @@ function Comprovantes() {
             </header>
 
             <div className="p-6 space-y-5">
-              <DocPreview filename={cur.arquivo} />
+              <div className="space-y-2">
+                {cur.arquivos.map((a) => (
+                  <DocPreview key={a.nome} filename={a.nome} />
+                ))}
+              </div>
 
               {cur.isRetroativo && cur.justificativaAtraso && (
                 <div className="bg-muted/50 rounded-lg p-3 text-xs">
@@ -333,6 +357,7 @@ function Comprovantes() {
                 const acoesGerencia = statusBeneficiario === "retroativo_aguardando_gerencia" && isGerencia;
                 const acoesDisponiveis = acoesAnalista || acoesGerencia;
                 const emSubForm = subForm?.beneficiarioId === beneficiarioId;
+                const { elegivel } = getElegibilidade(cur, beneficiarioId);
 
                 return (
                   <div key={beneficiarioId} className="border border-border rounded-xl p-4 space-y-3">
@@ -346,6 +371,25 @@ function Comprovantes() {
                       readOnly
                       valorCadastrado={beneficiario?.valorCadastrado}
                     />
+
+                    {!elegivel && (
+                      <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-xs flex items-start gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                        <p className="text-destructive">
+                          <strong>Não elegível — Odontológico.</strong> O Pró-Saúde não cobre assistência
+                          odontológica como reembolsável. Aprovação automática ou com ressalva está bloqueada;
+                          use Solicitar correção ou Recusar.
+                        </p>
+                      </div>
+                    )}
+
+                    {cur.solicitacaoComplementar && (
+                      <p className="text-xs text-muted-foreground italic">
+                        Documento complementar já solicitado em{" "}
+                        {new Date(cur.solicitacaoComplementar.data).toLocaleString("pt-BR")} por{" "}
+                        {cur.solicitacaoComplementar.solicitadoPor} — aguardando o Servidor anexar.
+                      </p>
+                    )}
 
                     {statusBeneficiario === "retroativo_devolvido" && devolucaoGerencia && (
                       <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-1">
@@ -374,22 +418,32 @@ function Comprovantes() {
 
                     {acoesDisponiveis && !emSubForm && (
                       <div className="flex flex-wrap gap-2 pt-2">
-                        <button
-                          onClick={() => aprovar(cur, beneficiarioId)}
-                          className="text-sm bg-success text-success-foreground rounded-md px-3 py-2 hover:opacity-90 flex items-center gap-1.5"
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {acoesGerencia && "Aprovar definitivamente"}
-                          {!acoesGerencia && cur.status === "retroativo_aguardando_analista" && "Aprovar (1ª alçada)"}
-                          {!acoesGerencia && cur.status === "retroativo_devolvido" && "Reenviar para Gerência"}
-                          {!acoesGerencia && cur.status === "em_analise" && "Aprovar"}
-                        </button>
-                        {cur.status === "em_analise" && (
+                        {elegivel && (
+                          <button
+                            onClick={() => aprovar(cur, beneficiarioId)}
+                            className="text-sm bg-success text-success-foreground rounded-md px-3 py-2 hover:opacity-90 flex items-center gap-1.5"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {acoesGerencia && "Aprovar definitivamente"}
+                            {!acoesGerencia && cur.status === "retroativo_aguardando_analista" && "Aprovar (1ª alçada)"}
+                            {!acoesGerencia && cur.status === "retroativo_devolvido" && "Reenviar para Gerência"}
+                            {!acoesGerencia && cur.status === "em_analise" && "Aprovar"}
+                          </button>
+                        )}
+                        {elegivel && cur.status === "em_analise" && (
                           <button
                             onClick={() => setSubForm({ beneficiarioId, tipo: "ressalva" })}
                             className="text-sm border border-warning/40 text-warning rounded-md px-3 py-2 hover:bg-warning/5 flex items-center gap-1.5"
                           >
                             <AlertTriangle className="h-3.5 w-3.5" /> Aprovar com ressalva
+                          </button>
+                        )}
+                        {!cur.solicitacaoComplementar && (
+                          <button
+                            onClick={() => setSubForm({ beneficiarioId, tipo: "complementar" })}
+                            className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
+                          >
+                            <FilePlus className="h-3.5 w-3.5" /> Solicitar documento complementar
                           </button>
                         )}
                         {acoesGerencia && (
@@ -442,7 +496,9 @@ function Comprovantes() {
                                 ? "Descreva o que precisa ser corrigido..."
                                 : subForm.tipo === "devolver"
                                   ? "Explique por que está devolvendo ao Analista..."
-                                  : "Detalhe o motivo da recusa..."
+                                  : subForm.tipo === "complementar"
+                                    ? "Descreva qual documento complementar é necessário..."
+                                    : "Detalhe o motivo da recusa..."
                           }
                           className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                         />
@@ -490,6 +546,7 @@ function Comprovantes() {
                         {a.acao === "devolvido_analista" && "devolveu ao Analista"}
                         {a.acao === "documento_substituido" && "substituiu o documento"}
                         {a.acao === "reenviado" && "reenviou o documento"}
+                        {a.acao === "documento_complementar_solicitado" && "solicitou documento complementar"}
                         {a.beneficiarioId && ` — ${nomeBeneficiario(a.beneficiarioId)}`}
                         {" em "}
                         {new Date(a.data).toLocaleString("pt-BR")}

@@ -257,11 +257,68 @@ export type StatusComprovante =
   | 'retroativo_recusado';
 
 export interface CampoExtraido {
-  chave: 'nome' | 'cpf' | 'operadora' | 'competencia' | 'valor' | 'dataPagamento' | 'banco' | 'pagador';
+  chave:
+    | 'nome'
+    | 'cpf'
+    | 'operadora'
+    | 'competencia'
+    | 'valor'
+    | 'dataPagamento'
+    | 'banco'
+    | 'pagador'
+    | 'tipoAssistencia';
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
+  /** Nome do arquivo (dentre os anexados ao envio) que originou este campo — permite ao
+   *  Servidor/Analista/Gerência ver de qual documento cada informação veio. */
+  arquivoOrigem?: string;
 }
+
+/** Tipos de assistência amparados pelo Pró-Saúde. Odontológico não é reembolsável. */
+export type TipoAssistencia = 'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico';
+
+export const tipoAssistenciaLabels: Record<TipoAssistencia, string> = {
+  medico_hospitalar: 'Médico-hospitalar',
+  ambulatorial: 'Ambulatorial',
+  hospitalar: 'Hospitalar',
+  odontologico: 'Odontológico',
+};
+
+/** Tipos documentais que um arquivo anexado pode representar — um mesmo arquivo pode
+ *  conter mais de um (ex: fatura técnica que já inclui o comprovante de pagamento). */
+export type TipoDocumentoArquivo =
+  | 'fatura_tecnica'
+  | 'comprovante_pagamento'
+  | 'boleto'
+  | 'recibo'
+  | 'demonstrativo';
+
+export const tipoDocumentoArquivoLabels: Record<TipoDocumentoArquivo, string> = {
+  fatura_tecnica: 'Fatura Técnica',
+  comprovante_pagamento: 'Comprovante de Pagamento',
+  boleto: 'Boleto',
+  recibo: 'Recibo',
+  demonstrativo: 'Demonstrativo de Pagamento',
+};
+
+/** Um arquivo anexado a um envio, com os tipos documentais que o Servidor indicou que ele contém. */
+export interface ArquivoAnexado {
+  nome: string;
+  tipos: TipoDocumentoArquivo[];
+}
+
+/**
+ * Tipo de plano do cenário de referência — restringe quais tipos de documento podem ser
+ * anexados. Não há alternador de UI para trocar de plano neste protótipo: para demonstrar
+ * o ramo "empresarial", troque esta constante manualmente.
+ */
+export const tipoPlanoPagamento: 'empresarial' | 'individual_familiar' = 'individual_familiar';
+
+export const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
+  empresarial: ['fatura_tecnica', 'comprovante_pagamento'],
+  individual_familiar: ['boleto', 'recibo', 'demonstrativo', 'comprovante_pagamento'],
+};
 
 /** Registro de uma ação tomada sobre o comprovante (ou sobre um beneficiário específico dele). */
 export interface AcaoComprovante {
@@ -273,13 +330,22 @@ export interface AcaoComprovante {
     | 'recusado'
     | 'documento_substituido'
     | 'reenviado'
-    | 'devolvido_analista';
+    | 'devolvido_analista'
+    | 'documento_complementar_solicitado';
   aprovadoPor: string;
   data: string;
   motivo?: string;
   comentario?: string;
   /** Presente quando a ação se refere a apenas 1 beneficiário de um comprovante multi-beneficiário. */
   beneficiarioId?: string;
+}
+
+/** Pedido do Analista/Gerência por um documento adicional (não uma correção do documento
+ *  atual) — ex: solicitação de documento complementar pela GERDAB. Não altera o `status`. */
+export interface SolicitacaoComplementar {
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
 }
 
 /** Status individual de cada beneficiário dentro de um comprovante multi-beneficiário (fatura técnica). */
@@ -291,8 +357,8 @@ export interface StatusBeneficiarioComprovante {
 
 export interface Comprovante {
   id: string;
-  arquivo: string;
-  tipoDocumento: 'boleto_individual' | 'recibo' | 'demonstrativo' | 'fatura_tecnica';
+  /** Um envio pode ter mais de um arquivo complementar (ex: fatura técnica + comprovante de pagamento). */
+  arquivos: ArquivoAnexado[];
   beneficiarioIds: string[];
   competencia: string;
   isRetroativo: boolean;
@@ -309,6 +375,9 @@ export interface Comprovante {
   statusPorBeneficiario?: StatusBeneficiarioComprovante[];
   /** Versões anteriores do arquivo — preservadas ao substituir (ilegível) ou reenviar (correção solicitada). */
   versoesAnteriores?: { arquivo: string; dataEnvio: string; status: StatusComprovante }[];
+  /** Pedido ativo do Analista/Gerência por um documento complementar — não altera `status`;
+   *  removido automaticamente quando um novo documento chega para o beneficiário/competência. */
+  solicitacaoComplementar?: SolicitacaoComplementar;
   aprovacoes: AcaoComprovante[];
   dataEnvio: string;
 }
@@ -403,8 +472,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 1: individual aprovado
   {
     id: "comp001",
-    arquivo: "boleto_julho_carlos.pdf",
-    tipoDocumento: "boleto_individual",
+    arquivos: [{ nome: "boleto_julho_carlos.pdf", tipos: ["boleto"] }],
     beneficiarioIds: ["ben-titular"],
     competencia: competenciaAtual,
     isRetroativo: false,
@@ -426,8 +494,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 2: em análise
   {
     id: "comp002",
-    arquivo: "recibo_julho_marina.pdf",
-    tipoDocumento: "recibo",
+    arquivos: [{ nome: "recibo_julho_marina.pdf", tipos: ["recibo"] }],
     beneficiarioIds: ["ben-conjuge"],
     competencia: competenciaAtual,
     isRetroativo: false,
@@ -447,8 +514,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 3: ilegível com opção de reenvio
   {
     id: "comp003",
-    arquivo: "boleto_julho_pedro_ilegivel.pdf",
-    tipoDocumento: "boleto_individual",
+    arquivos: [{ nome: "boleto_julho_pedro_ilegivel.pdf", tipos: ["boleto"] }],
     beneficiarioIds: ["ben-filho"],
     competencia: competenciaAtual,
     isRetroativo: false,
@@ -460,8 +526,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 4: retroativo aguardando analista
   {
     id: "comp004",
-    arquivo: "recibo_maio_carlos_retroativo.pdf",
-    tipoDocumento: "recibo",
+    arquivos: [{ nome: "recibo_maio_carlos_retroativo.pdf", tipos: ["recibo"] }],
     beneficiarioIds: ["ben-titular"],
     competencia: competenciaRetroativa,
     isRetroativo: true,
@@ -482,8 +547,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 5: retroativo com divergência de valor
   {
     id: "comp005",
-    arquivo: "demonstrativo_julho_carlos_divergente.pdf",
-    tipoDocumento: "demonstrativo",
+    arquivos: [{ nome: "demonstrativo_julho_carlos_divergente.pdf", tipos: ["demonstrativo"] }],
     beneficiarioIds: ["ben-titular"],
     competencia: competenciaAtual,
     isRetroativo: false,

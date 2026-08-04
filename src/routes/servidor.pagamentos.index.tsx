@@ -205,7 +205,7 @@ function PagamentosHome() {
                   className="w-full text-left bg-card rounded-xl p-3 border border-border flex items-center gap-3 hover:border-primary/40 transition"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{c.arquivo}</p>
+                    <p className="text-sm font-medium truncate">{c.arquivos.map((a) => a.nome).join(", ")}</p>
                     <p className="text-xs text-muted-foreground">
                       {formatCompetencia(c.competencia)}
                       {c.isRetroativo && " • Retroativo"}
