@@ -32,6 +32,30 @@ function arquivoEhOdontologico(nomeArquivo: string): boolean {
   return nome.includes("odontologico") || nome.includes("odonto");
 }
 
+/** Palavras-chave que, no nome do arquivo, indicam qual(is) tipo(s) documental(is) marcar
+ *  automaticamente ao anexar — mesma convenção usada para ilegível/divergente/odontológico. */
+const palavrasChavePorTipo: Record<TipoDocumentoArquivo, string[]> = {
+  fatura_tecnica: ["fatura_tecnica", "fatura-tecnica", "faturatecnica"],
+  comprovante_pagamento: ["comprovante_pagamento", "comprovante-pagamento"],
+  boleto: ["boleto"],
+  recibo: ["recibo"],
+  demonstrativo: ["demonstrativo"],
+};
+
+/**
+ * Detecta, a partir do nome do arquivo, quais tipos documentais marcar automaticamente no
+ * upload — só considera os tipos presentes em `tiposPermitidos` (respeitando a restrição por
+ * tipo de plano). Ex: um arquivo "fatura_tecnica_julho.pdf" pré-marca "Fatura Técnica" apenas
+ * se o plano atual permitir esse tipo (ver `tiposDocumentoPorPlano`, `getTipoPlanoPagamento`).
+ */
+export function detectarTiposPeloNomeArquivo(
+  nomeArquivo: string,
+  tiposPermitidos: TipoDocumentoArquivo[],
+): TipoDocumentoArquivo[] {
+  const nome = nomeArquivo.toLowerCase();
+  return tiposPermitidos.filter((tipo) => palavrasChavePorTipo[tipo].some((kw) => nome.includes(kw)));
+}
+
 /**
  * Simula uma extração parcial da IA (nome e valor não identificados) para um beneficiário
  * específico dentro de uma fatura técnica. `"incompleto"` sozinho no nome afeta todos os

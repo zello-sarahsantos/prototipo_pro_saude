@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Upload, FileCheck, X } from "lucide-react";
 import { tipoDocumentoArquivoLabels, type TipoDocumentoArquivo } from "@/lib/mock-data";
+import { detectarTiposPeloNomeArquivo } from "@/lib/ocr-mock";
 
 export interface ArquivoComTipos {
   file: File;
@@ -24,7 +25,8 @@ export function ArquivosAnexadosUpload({
   const inputRef = useRef<HTMLInputElement>(null);
 
   function adicionarArquivo(file: File) {
-    onChange([...arquivos, { file, tipos: [] }]);
+    const tiposDetectados = detectarTiposPeloNomeArquivo(file.name, tiposPermitidos);
+    onChange([...arquivos, { file, tipos: tiposDetectados }]);
   }
 
   function removerArquivo(index: number) {

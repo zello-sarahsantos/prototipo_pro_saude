@@ -310,10 +310,10 @@ export interface ArquivoAnexado {
 
 /**
  * Tipo de plano do cenário de referência — restringe quais tipos de documento podem ser
- * anexados. Não há alternador de UI para trocar de plano neste protótipo: para demonstrar
- * o ramo "empresarial", troque esta constante manualmente.
+ * anexados. Este é o valor padrão; `getTipoPlanoPagamento()` (prosaude-storage.ts) permite
+ * simular o outro perfil via localStorage, sem editar código.
  */
-export const tipoPlanoPagamento: 'empresarial' | 'individual_familiar' = 'individual_familiar';
+export const tipoPlanoPagamentoPadrao: 'empresarial' | 'individual_familiar' = 'individual_familiar';
 
 export const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
   empresarial: ['fatura_tecnica', 'comprovante_pagamento'],

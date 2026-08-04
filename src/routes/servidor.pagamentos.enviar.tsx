@@ -14,16 +14,19 @@ import {
   competenciasFechadas,
   formatCompetencia,
   tiposDocumentoPorPlano,
-  tipoPlanoPagamento,
   type ArquivoAnexado,
   type Comprovante,
   type CampoExtraido,
 } from "@/lib/mock-data";
 import { arquivoEhIlegivel, gerarCamposExtraidos, mesclarCamposDeArquivos } from "@/lib/ocr-mock";
-import { addComprovantePagamento, getComprovantesUnificados, saveConclusaoCompetencia } from "@/lib/prosaude-storage";
+import {
+  addComprovantePagamento,
+  getComprovantesUnificados,
+  getTipoPlanoPagamento,
+  saveConclusaoCompetencia,
+} from "@/lib/prosaude-storage";
 
 const titularPagamento = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
-const tiposPermitidos = tiposDocumentoPorPlano[tipoPlanoPagamento];
 
 export const Route = createFileRoute("/servidor/pagamentos/enviar")({
   validateSearch: (search: Record<string, unknown>): { competencia?: string; beneficiario?: string } => ({
@@ -54,6 +57,7 @@ function stepIndex(step: Step): number {
 function EnviarComprovante() {
   const search = Route.useSearch();
   const navigate = useNavigate();
+  const tiposPermitidos = tiposDocumentoPorPlano[getTipoPlanoPagamento()];
   // Quando aberta a partir do alerta de "competência pendente", a competência vem preenchida e travada.
   const competenciaViaAlerta =
     search.competencia && competenciasFechadas.includes(search.competencia) ? search.competencia : undefined;
