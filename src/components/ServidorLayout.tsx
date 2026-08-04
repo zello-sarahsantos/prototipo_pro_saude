@@ -1,15 +1,10 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Home, FileText, Users, Plus, CreditCard } from "lucide-react";
+import { Home, FileText, Users, CreditCard, ClipboardList } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { getCompetenciasPendentes } from "@/lib/competencias-pendentes";
 
 export function ServidorLayout() {
-  const loc = useLocation();
   const competenciasPendentes = getCompetenciasPendentes().length;
-  const isNovo =
-    loc.pathname.startsWith("/servidor/requerimento") ||
-    loc.pathname.startsWith("/servidor/pagamentos") ||
-    loc.pathname === "/servidor/meus-dados";
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto shadow-elevated">
       <header className="bg-primary text-primary-foreground px-4 py-4 sticky top-0 z-10">
@@ -26,23 +21,19 @@ export function ServidorLayout() {
         <Outlet />
       </main>
 
-      {!isNovo && (
-        <Link
-          to="/servidor/requerimento/novo"
-          className="fixed bottom-20 right-4 sm:right-[calc(50%-13rem)] bg-primary text-primary-foreground rounded-full shadow-elevated px-4 py-3 flex items-center gap-2 text-sm font-medium hover:bg-primary-light transition"
-        >
-          <Plus className="h-4 w-4" /> Novo Requerimento
-        </Link>
-      )}
-
       <nav className="fixed bottom-0 left-0 right-0 sm:left-auto sm:right-auto sm:max-w-md sm:mx-auto bg-card border-t border-border">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           <NavTab to="/servidor/inicio" icon={<Home className="h-5 w-5" />} label="Início" />
           <NavTab
             to="/servidor/pagamentos"
             icon={<CreditCard className="h-5 w-5" />}
             label="Pagamentos"
             badge={competenciasPendentes > 0 ? competenciasPendentes : undefined}
+          />
+          <NavTab
+            to="/servidor/requerimento/novo"
+            icon={<ClipboardList className="h-5 w-5" />}
+            label="Requerimentos"
           />
           <NavTab to="/servidor/dependentes" icon={<Users className="h-5 w-5" />} label="Dependentes" />
           <NavTab to="/servidor/meus-dados" icon={<FileText className="h-5 w-5" />} label="Meus Dados" />
@@ -64,7 +55,7 @@ function NavTab({
   badge?: number;
 }) {
   const loc = useLocation();
-  const active = loc.pathname === to;
+  const active = loc.pathname === to || loc.pathname.startsWith(`${to}/`);
   return (
     <Link
       to={to}
