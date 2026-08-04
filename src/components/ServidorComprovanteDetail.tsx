@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X, RefreshCw, RotateCcw, XCircle, Loader2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { X, RefreshCw, RotateCcw, XCircle, Loader2, FilePlus } from "lucide-react";
 import { DocPreview } from "@/components/DocPreview";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ComprovanteUploadBox } from "@/components/ComprovanteUploadBox";
@@ -105,6 +106,27 @@ export function ServidorComprovanteDetail({
             <div className="bg-muted/50 rounded-lg p-3 text-xs">
               <p className="font-medium text-muted-foreground mb-1">Justificativa do atraso enviada:</p>
               <p>{comprovante.justificativaAtraso}</p>
+            </div>
+          )}
+
+          {comprovante.solicitacaoComplementar && (
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-2">
+              <p className="font-medium text-warning">GERDAB solicitou documento complementar</p>
+              <p>{comprovante.solicitacaoComplementar.motivo}</p>
+              <p className="text-muted-foreground">
+                {comprovante.solicitacaoComplementar.solicitadoPor} em{" "}
+                {new Date(comprovante.solicitacaoComplementar.data).toLocaleString("pt-BR")}
+              </p>
+              <Link
+                to="/servidor/pagamentos/enviar"
+                search={{
+                  competencia: comprovante.competencia,
+                  beneficiario: focusBeneficiarioId ?? comprovante.beneficiarioIds[0],
+                }}
+                className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-md px-3 py-2 text-sm font-medium hover:bg-primary-light"
+              >
+                <FilePlus className="h-3.5 w-3.5" /> Anexar documento complementar
+              </Link>
             </div>
           )}
 

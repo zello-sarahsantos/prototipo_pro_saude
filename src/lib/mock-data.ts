@@ -330,13 +330,22 @@ export interface AcaoComprovante {
     | 'recusado'
     | 'documento_substituido'
     | 'reenviado'
-    | 'devolvido_analista';
+    | 'devolvido_analista'
+    | 'documento_complementar_solicitado';
   aprovadoPor: string;
   data: string;
   motivo?: string;
   comentario?: string;
   /** Presente quando a ação se refere a apenas 1 beneficiário de um comprovante multi-beneficiário. */
   beneficiarioId?: string;
+}
+
+/** Pedido do Analista/Gerência por um documento adicional (não uma correção do documento
+ *  atual) — ex: solicitação de documento complementar pela GERDAB. Não altera o `status`. */
+export interface SolicitacaoComplementar {
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
 }
 
 /** Status individual de cada beneficiário dentro de um comprovante multi-beneficiário (fatura técnica). */
@@ -366,6 +375,9 @@ export interface Comprovante {
   statusPorBeneficiario?: StatusBeneficiarioComprovante[];
   /** Versões anteriores do arquivo — preservadas ao substituir (ilegível) ou reenviar (correção solicitada). */
   versoesAnteriores?: { arquivo: string; dataEnvio: string; status: StatusComprovante }[];
+  /** Pedido ativo do Analista/Gerência por um documento complementar — não altera `status`;
+   *  removido automaticamente quando um novo documento chega para o beneficiário/competência. */
+  solicitacaoComplementar?: SolicitacaoComplementar;
   aprovacoes: AcaoComprovante[];
   dataEnvio: string;
 }

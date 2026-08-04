@@ -46,5 +46,18 @@ export function getNotificacoesPagamento(): NotificacaoPagamento[] {
     mensagem: `Você não enviou comprovante da competência de ${formatCompetencia(c)} — prazo encerrado.`,
   }));
 
-  return [...notificacoesPendentes, ...notificacoesStatus];
+  // Pedidos ativos de documento complementar — fora do mapa por status, pois não mudam o `status`.
+  const notificacoesComplementar = comprovantes
+    .filter((c) => c.solicitacaoComplementar)
+    .flatMap((c) =>
+      c.beneficiarioIds.map((id) => {
+        const nome = beneficiariosPagamento.find((b) => b.id === id)?.nome ?? id;
+        return {
+          id: `complementar-${c.id}-${id}`,
+          mensagem: `GERDAB solicitou documento complementar para ${nome}.`,
+        };
+      }),
+    );
+
+  return [...notificacoesPendentes, ...notificacoesComplementar, ...notificacoesStatus];
 }

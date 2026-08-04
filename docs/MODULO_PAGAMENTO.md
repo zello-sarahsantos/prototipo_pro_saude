@@ -1,6 +1,6 @@
 # Documentação Técnica — Módulo de Pagamento (Pró-Saúde)
 
-> **Última atualização:** 2026-08-03 (via sessão de desenvolvimento assistido — rodada de multi-arquivo/consolidação, Etapa A da seção 3.17)
+> **Última atualização:** 2026-08-03 (via sessão de desenvolvimento assistido — Etapa A: multi-arquivo/consolidação, seção 3.17; Etapa B: elegibilidade por assistência + documento complementar, seção 3.18)
 > **Branch de trabalho:** `feature-modulo-pagamentos`
 > **Status de commit:** ver seção 13 (Histórico das Decisões) e `git log` — há trabalho commitado e trabalho ainda não commitado (ver `git status` no momento da leitura deste documento para o estado exato).
 
@@ -304,6 +304,34 @@ Duas ações do Servidor, por status:
 - Todo lugar que antes lia `comprovante.arquivo` para exibição (histórico do Servidor, fila do Analista/Gerência, `ServidorComprovanteDetail`, `DocPreview`) foi migrado para `comprovante.arquivos.map(a => a.nome).join(", ")`, e `DocPreview` agora é renderizado **uma vez por arquivo** (loop), não uma vez por comprovante.
 - O fluxo pós-submissão de substituição (`reenvio-comprovante.ts`, usado por `ServidorComprovanteDetail` para "ilegível → substituir" e "correção solicitada → corrigir e reenviar") continua tratando a substituição como **1 arquivo novo que colapsa tudo** — o novo `arquivos` gravado é `[{ nome: novoArquivo, tipos: <união de todos os tipos que o envio tinha antes> }]`. Ou seja, essa tela específica **não ganhou** suporte a multi-arquivo — decisão deliberada para não duplicar a complexidade em dois lugares (o upload multi-arquivo "de verdade" só existe no wizard de envio inicial).
 
+### 3.18 Elegibilidade por tipo de assistência e documento complementar solicitado pela GERDAB
+
+**Contexto:** continuação direta da rodada de multi-arquivo (mesma sessão, "Etapa B"), implementando as 3 regras de negócio que ainda estavam pendentes na seção 6: restrição de tipo de plano (na prática, já veio pronta junto da Etapa A — ver seção 3.17), elegibilidade por tipo de assistência, e documento complementar solicitado pela GERDAB.
+
+**Elegibilidade por tipo de assistência (`getElegibilidade`, em `comprovante-status.ts`):**
+```ts
+export function getElegibilidade(
+  comprovante: Comprovante,
+  beneficiarioId: string,
+): { elegivel: boolean; tipoAssistencia?: string } {
+  const campos = getCamposDoBeneficiario(comprovante, beneficiarioId);
+  const campo = campos.find((c) => c.chave === "tipoAssistencia");
+  return { elegivel: campo?.valor !== "odontologico", tipoAssistencia: campo?.valor };
+}
+```
+- Mesmo molde de `getDivergencia` (função pura, recebe comprovante + beneficiário, sem side-effects).
+- Em `admin.comprovantes.tsx`, dentro do `.map()` por beneficiário: `const { elegivel } = getElegibilidade(cur, beneficiarioId);`. Os botões "Aprovar" e "Aprovar com ressalva" são envolvidos em `{elegivel && (...)}` — quando não elegível, eles simplesmente **não existem no DOM** (não é um `disabled`, é ausência total do elemento). Um banner vermelho fixo ("Não elegível — Odontológico. O Pró-Saúde não cobre assistência odontológica como reembolsável...") é renderizado logo abaixo do `CamposExtraidosForm` de cada beneficiário não elegível, tanto para o Analista quanto para a Gerência.
+- **Testado manualmente:** arquivo com `odontologico` no nome, marcado como "Demonstrativo de Pagamento" (tipo que produz `tipoAssistencia`), bloqueia corretamente os dois botões de aprovação tanto na visão do Analista quanto da Gerência (troca de `localStorage.prosaude_role`), mantendo "Solicitar correção"/"Recusar"/"Solicitar documento complementar" disponíveis.
+
+**Documento complementar solicitado pela GERDAB:**
+- Novo campo `Comprovante.solicitacaoComplementar?: { motivo: string; solicitadoPor: string; data: string }` (mock-data.ts) e novo valor `'documento_complementar_solicitado'` no union `AcaoComprovante['acao']`.
+- Novo botão "Solicitar documento complementar" em `admin.comprovantes.tsx`, disponível junto das demais ações sempre que `acoesDisponiveis` for true e **não houver já** uma solicitação ativa (`!cur.solicitacaoComplementar`) — visível tanto quando elegível quanto não elegível (é independente da regra de elegibilidade). Abre o mesmo mecanismo de sub-formulário (`subForm.tipo === "complementar"`) com textarea obrigatória para o motivo.
+- Ao confirmar, `confirmarSubForm` grava `solicitacaoComplementar` via `updateComprovantePagamento` **e** registra uma entrada em `aprovacoes` (`acao: 'documento_complementar_solicitado'`) — visível no "Histórico de ações" do modal, igual a qualquer outra decisão. **Não altera `status`** — o comprovante continua no fluxo normal de aprovação em paralelo.
+- `ServidorComprovanteDetail.tsx`: quando `comprovante.solicitacaoComplementar` existe, renderiza um bloco destacado (motivo + autor + data) com botão "Anexar documento complementar" → `Link` para `/servidor/pagamentos/enviar` com `search: { competencia, beneficiario }` — abre o wizard como um **envio novo e independente** (não edita o comprovante original).
+- `addComprovantePagamento` (`prosaude-storage.ts`) chama a nova função privada `limparSolicitacaoComplementar(beneficiarioId, competencia)` sempre que um novo comprovante é persistido — ela varre `getComprovantesUnificados()` por comprovantes do mesmo beneficiário/competência com `solicitacaoComplementar` ativo e limpa o campo via `updateComprovantePagamento(id, { solicitacaoComplementar: undefined })`. Mesmo padrão já usado para `removerDispensaBeneficiario`.
+- `notificacoes-pagamento.ts`: nova lista `notificacoesComplementar`, fora do mapa `statusNotificaveis` (já que esta ação não é indexada por `status`) — 1 notificação por par (comprovante com solicitação ativa, beneficiário), mensagem `"GERDAB solicitou documento complementar para {nome}."`.
+- **Testado manualmente, incluindo F5:** solicitação criada pelo Analista aparece no sino do Servidor e no `ServidorComprovanteDetail`; ao anexar o documento complementar, a solicitação é removida automaticamente do comprovante original e a notificação desaparece; persistência confirmada após reload real da página (não apenas navegação).
+
 ---
 
 ## 4. Fluxo do Analista
@@ -320,8 +348,9 @@ const statusAcaoAnalista: StatusComprovante[] = [
 ];
 ```
 Ações (botões renderizados condicionalmente por status):
-- **Aprovar** (rótulo varia: "Aprovar" para `em_analise`; "Aprovar (1ª alçada)" para `retroativo_aguardando_analista`; "Reenviar para Gerência" para `retroativo_devolvido`) — chama `aprovar(comprovante, beneficiarioId)`.
-- **Aprovar com ressalva** — só aparece quando `cur.status === "em_analise"` (não aparece para retroativos, que usam o fluxo de divergência via modal em vez de um botão dedicado — ver 4.4).
+- **Aprovar** (rótulo varia: "Aprovar" para `em_analise`; "Aprovar (1ª alçada)" para `retroativo_aguardando_analista`; "Reenviar para Gerência" para `retroativo_devolvido`) — chama `aprovar(comprovante, beneficiarioId)`. **Não renderizado** quando `!getElegibilidade(cur, beneficiarioId).elegivel` (tipo de assistência odontológico — ver seção 3.18).
+- **Aprovar com ressalva** — só aparece quando `cur.status === "em_analise"` (não aparece para retroativos, que usam o fluxo de divergência via modal em vez de um botão dedicado — ver 4.4). Mesma restrição de elegibilidade do item acima.
+- **Solicitar documento complementar** (novo — seção 3.18) — sempre disponível quando há ações disponíveis e ainda não há uma solicitação ativa (`!cur.solicitacaoComplementar`), independente de elegibilidade ou papel. Não muda `status`.
 - **Solicitar correção** — não aparece quando `acoesGerencia` é true (a Gerência não "solicita correção", ela "devolve").
 - **Recusar** — sempre disponível quando há ações disponíveis, independente do papel.
 
@@ -343,6 +372,8 @@ Só disponível quando `!acoesGerencia`. Abre um sub-formulário inline (`subFor
 - Caso contrário → usa `proximoStatusAprovacao()` normalmente (ex: `em_analise` → `aprovado_com_ressalva`; `retroativo_aguardando_analista` → `retroativo_aguardando_gerencia`, preservando a ressalva no log).
 
 A divergência **nunca altera o cadastro do beneficiário** (`beneficiario.valorCadastrado` nunca é escrito por esse fluxo) — é sempre um alerta auxiliar sobre o dado extraído, nunca um "status principal" do comprovante.
+
+**Diferença para a checagem de elegibilidade (seção 3.18):** divergência de valor é um **modal bloqueante que pode ser superado** com justificativa (o Analista/Gerência ainda consegue aprovar, só que "com ressalva"). Elegibilidade por tipo de assistência é diferente — **não há caminho para aprovar** um comprovante odontológico; os botões de aprovação simplesmente não existem enquanto isso for verdade, não há modal de exceção. São duas checagens independentes, sem modal compartilhado.
 
 ### 4.5 Retroativos (papel do Analista = 1ª alçada)
 Analista vê e age sobre `retroativo_aguardando_analista` e `retroativo_aguardando_gerencia` **apenas quando `!isGerencia`** mostra a nota informativa "Aguardando 2ª alçada da Gerência — somente consulta" (sem botões de ação) quando o item já passou para a Gerência. Também vê e age sobre `retroativo_devolvido` (retroativo que a Gerência devolveu — aparece com destaque "Devolvido pela Gerência — ajuste necessário" e o comentário da devolução visível antes dos botões de ação).
@@ -443,16 +474,16 @@ Ver 5.2, item 1. É o único caminho que produz `retroativo_aprovado`.
 29. Ver seção 8 — regra geral: tudo que precisa sobreviver a F5 vive em `localStorage`; nada fica só em estado React entre navegações de página completas.
 30. Dados seed (`comprovantes` em `mock-data.ts`) são somente leitura em memória — qualquer alteração sobre um registro seed o "promove" para o `localStorage` como uma cópia modificada (nunca edita o array `comprovantes` original).
 
-### Tipo de plano (restrição de tipos de documento) — modelo pronto, aplicação pendente (Etapa B)
-31a. `tipoPlanoPagamento: 'empresarial' | 'individual_familiar'` (hoje fixo em `'individual_familiar'` para o cenário Carlos/Marina/Pedro) e `tiposDocumentoPorPlano` já existem em `mock-data.ts` e **já restringem** os tipos de documento oferecidos no upload multi-arquivo (`empresarial` → só Fatura Técnica + Comprovante de Pagamento; `individual_familiar` → Boleto, Recibo, Demonstrativo + Comprovante de Pagamento).
-31b. **Não existe** alternador de UI para trocar de plano — para demonstrar o ramo empresarial, é preciso trocar `tipoPlanoPagamento` manualmente no código e rebuildar. Isso é uma limitação conhecida (ver seção 12).
+### Tipo de plano (restrição de tipos de documento) — implementado
+31a. `tipoPlanoPagamento: 'empresarial' | 'individual_familiar'` (hoje fixo em `'individual_familiar'` para o cenário Carlos/Marina/Pedro) e `tiposDocumentoPorPlano` em `mock-data.ts` **restringem** os tipos de documento oferecidos no upload multi-arquivo (`empresarial` → só Fatura Técnica + Comprovante de Pagamento; `individual_familiar` → Boleto, Recibo, Demonstrativo + Comprovante de Pagamento).
+31b. **Não existe** alternador de UI para trocar de plano — para demonstrar o ramo empresarial, é preciso trocar `tipoPlanoPagamento` manualmente no código e rebuildar. Isso é uma limitação conhecida, aceita (ver seção 12).
 
-### Tipo de assistência (odontológico não reembolsável) — modelo pronto, bloqueio de aprovação pendente (Etapa B)
-31c. `CampoExtraido` já suporta a chave `'tipoAssistencia'` com valores `'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico'`, gerado pelo OCR mock (arquivos do tipo `fatura_tecnica`/`demonstrativo` o produzem; nome de arquivo contendo `"odontologico"`/`"odonto"` gera o valor `odontologico`, senão `medico_hospitalar` por padrão) e exibido com badge "Não elegível — Odontológico" em `CamposExtraidosForm` sempre que o valor for `odontologico`.
-31d. **Ainda não implementado:** o bloqueio efetivo da aprovação (automática ou com ressalva) pelo Analista/Gerência quando `tipoAssistencia === 'odontologico'`. Hoje o badge é só um alerta visual — `admin.comprovantes.tsx` ainda não verifica elegibilidade antes de permitir "Aprovar"/"Aprovar com ressalva". Ver seção 12 (Pendências) e seção 14 (Próximos Passos).
+### Tipo de assistência (odontológico não reembolsável) — implementado (seção 3.18)
+31c. `CampoExtraido` suporta a chave `'tipoAssistencia'` com valores `'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico'`, gerado pelo OCR mock (arquivos do tipo `fatura_tecnica`/`demonstrativo` o produzem; nome de arquivo contendo `"odontologico"`/`"odonto"` gera o valor `odontologico`, senão `medico_hospitalar` por padrão) e exibido com badge "Não elegível — Odontológico" em `CamposExtraidosForm` sempre que o valor for `odontologico`.
+31d. **Bloqueio de aprovação implementado:** `getElegibilidade(comprovante, beneficiarioId)` (`comprovante-status.ts`) retorna `elegivel: false` quando `tipoAssistencia === 'odontologico'`. Em `admin.comprovantes.tsx`, quando não elegível: os botões "Aprovar" e "Aprovar com ressalva" **não são renderizados** para aquele beneficiário (nem pelo Analista, nem pela Gerência) — só "Solicitar correção", "Recusar" e "Solicitar documento complementar" continuam disponíveis. Um banner vermelho explicativo também é exibido no card do beneficiário. Não há um segundo bloqueio dentro de `aprovar()` (a função nunca é chamada, pois o botão não existe) — o controle é 100% via ausência do botão na UI.
 
-### Documento complementar solicitado pela GERDAB — não implementado (Etapa B)
-31e. Hoje o Servidor já pode anexar documentos complementares por iniciativa própria a qualquer momento (regra 6 acima). O que ainda **não existe** é um mecanismo para o Analista/Gerência **solicitar explicitamente** um documento complementar (distinto de "Solicitar correção", que pressupõe que o documento atual está errado) e para isso aparecer destacado ao Servidor. Ver seção 12 e 14.
+### Documento complementar solicitado pela GERDAB — implementado (seção 3.18)
+31e. O Servidor já podia anexar documentos complementares por iniciativa própria a qualquer momento (regra 6 acima). Agora o Analista/Gerência também pode **solicitar explicitamente** um documento complementar (distinto de "Solicitar correção", que pressupõe que o documento atual está errado) via `Comprovante.solicitacaoComplementar`, destacado ao Servidor em `ServidorComprovanteDetail` com um botão de anexo direto.
 
 ### Permissões
 31. Gerência = Analista + 3 ações exclusivas sobre retroativos aguardando a 2ª alçada. Nunca o inverso.
@@ -527,15 +558,26 @@ interface AcaoComprovante {
     | 'recusado'
     | 'documento_substituido'
     | 'reenviado'
-    | 'devolvido_analista';
+    | 'devolvido_analista'
+    | 'documento_complementar_solicitado';  // NOVO — Etapa B (seção 3.18)
   aprovadoPor: string;
   data: string;              // ISO string
   motivo?: string;           // usado em recusas (dropdown de motivo)
-  comentario?: string;       // texto livre (justificativa/ressalva/correção/devolução)
+  comentario?: string;       // texto livre (justificativa/ressalva/correção/devolução/pedido de complementar)
   beneficiarioId?: string;   // presente só quando a ação é sobre 1 beneficiário específico de um multi-beneficiário
 }
 ```
 Representa 1 entrada do histórico append-only (`Comprovante.aprovacoes`). Nunca é editada ou removida, só adicionada.
+
+### `SolicitacaoComplementar` (novo — seção 3.18)
+```ts
+interface SolicitacaoComplementar {
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
+}
+```
+Registra um pedido ativo de documento complementar pelo Analista/Gerência. Vive em `Comprovante.solicitacaoComplementar` (opcional) — não é um array/histórico, é sempre "o pedido ativo atual" (removido quando atendido).
 
 ### `StatusBeneficiarioComprovante`
 ```ts
@@ -562,6 +604,7 @@ interface Comprovante {
   status: StatusComprovante;               // status geral — derivado de statusPorBeneficiario quando multi
   statusPorBeneficiario?: StatusBeneficiarioComprovante[];
   versoesAnteriores?: { arquivo: string; dataEnvio: string; status: StatusComprovante }[];
+  solicitacaoComplementar?: SolicitacaoComplementar; // NOVO — Etapa B (seção 3.18)
   aprovacoes: AcaoComprovante[];           // append-only
   dataEnvio: string;                      // ISO string — atualizada a cada substituição/reenvio
 }
@@ -629,7 +672,8 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 
 **Comprovantes:**
 - `loadComprovantesPagamento(): Comprovante[]` — lê a chave, retorna `[]` em SSR ou erro de parse.
-- `addComprovantePagamento(comprovante)` — **efeitos colaterais importantes**: além de gravar, chama `removerDispensaBeneficiario` para cada `beneficiarioId` do novo comprovante e `invalidarConclusaoCompetencia` para a competência dele. Isso é o único ponto de entrada para "novo documento" — qualquer código futuro que precise adicionar um Comprovante **deve** passar por esta função para preservar essas regras.
+- `addComprovantePagamento(comprovante)` — **efeitos colaterais importantes**: além de gravar, chama `removerDispensaBeneficiario` e `limparSolicitacaoComplementar` (NOVO — Etapa B) para cada `beneficiarioId` do novo comprovante, e `invalidarConclusaoCompetencia` para a competência dele. Isso é o único ponto de entrada para "novo documento" — qualquer código futuro que precise adicionar um Comprovante **deve** passar por esta função para preservar essas regras.
+- `limparSolicitacaoComplementar(beneficiarioId, competencia)` (NOVO, privada/não exportada) — varre `getComprovantesUnificados()` por comprovantes do mesmo beneficiário/competência com `solicitacaoComplementar` ativo e os limpa via `updateComprovantePagamento`. Chamada automaticamente por `addComprovantePagamento`.
 - `getComprovantesUnificados(): Comprovante[]` — mescla `comprovantes` (seed, `mock-data.ts`) com o array persistido, **deduplicando por `id`** com prioridade para a versão persistida. É a função canônica para "ler todos os comprovantes" em qualquer tela — nunca ler `comprovantes` (seed) diretamente numa tela de UI.
 - `updateComprovantePagamento(id, patch)` — atualiza um registro existente (seed ou persistido); se o registro só existir no seed, "promove" ele para o localStorage já com o patch aplicado (usado pelo Analista/Gerência para mudar status, e por `confirmarReenvio` para atualizar após reenvio).
 
@@ -643,6 +687,7 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - Comprovantes enviados, histórico, notificações, aprovações, correções e retroativos sobrevivem a reload completo.
 - Conclusão de competência sobrevive a F5, e é corretamente invalidada quando um novo documento chega depois.
 - Dispensa de beneficiário sobrevive a F5, e é corretamente removida quando um documento chega para aquele beneficiário depois.
+- **(Novo)** Solicitação de documento complementar sobrevive a F5, e é corretamente removida quando o documento complementar é anexado.
 
 ---
 
@@ -727,7 +772,7 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 ### `ServidorComprovanteDetail`
 - **Finalidade:** modal de detalhe/ação de um comprovante já persistido, do ponto de vista do Servidor — cobre todos os status possíveis com renderização condicional.
 - **Props:** `comprovante: Comprovante`, `focusBeneficiarioId?: string` (ordena a lista para colocar esse beneficiário primeiro), `onClose: () => void`, `onChanged: () => void` (callback para o pai forçar refresh).
-- **Comportamento:** ver seção 3.15 em detalhe. Título e preview agora iteram sobre `comprovante.arquivos` (1 `DocPreview` por arquivo) em vez de exibir 1 arquivo único.
+- **Comportamento:** ver seção 3.15 em detalhe. Título e preview agora iteram sobre `comprovante.arquivos` (1 `DocPreview` por arquivo) em vez de exibir 1 arquivo único. Quando `comprovante.solicitacaoComplementar` existe (Etapa B, seção 3.18), exibe bloco destacado (motivo + autor + data) com botão "Anexar documento complementar" (`Link` para o wizard como envio novo).
 - **Usado em:** `servidor.pagamentos.index.tsx` (todos os cards clicáveis), **`ConsolidadoCompetencia.tsx`** (novo uso — acionado por `corrigirEnvio()` quando o envio está `ilegivel` ou `correcao_solicitada`).
 
 ### `DivergenciaAprovacaoModal`
@@ -780,10 +825,13 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - Notificações derivadas do estado persistido.
 - **(Novo)** Envio com múltiplos arquivos complementares no mesmo envio, cada um com seus próprios tipos documentais marcados, com consolidação automática dos campos extraídos (e rastreabilidade de qual arquivo originou cada campo) — seção 3.17.
 - **(Novo)** Resumo da Competência como painel de navegação: lista todos os envios da competência, permite editar campos inline (envios ainda não decididos) ou abrir o fluxo de substituição de arquivo já existente (envios ilegíveis/com correção solicitada), e pular direto de uma pendência para o ponto exato que precisa de correção — seção 3.17.
+- **(Novo)** Restrição de tipos de documento por tipo de plano (empresarial x individual/familiar) no upload multi-arquivo — seção 3.17/6.
+- **(Novo)** Bloqueio de aprovação (automática e com ressalva) quando o tipo de assistência é odontológico, com banner explicativo para Analista e Gerência — seção 3.18.
+- **(Novo)** Documento complementar solicitado pela GERDAB: botão dedicado no Analista/Gerência, destaque + anexo direto no lado do Servidor, notificação e limpeza automática ao ser atendido — seção 3.18.
 
-**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1), fluxo do Analista + sino + detalhe (Etapa 2), 2ª alçada da Gerência (Etapa 3), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`).
+**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1), fluxo do Analista + sino + detalhe (Etapa 2), 2ª alçada da Gerência (Etapa 3), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`).
 
-**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): toda a feature de multi-arquivo/consolidação/navegação do Resumo descrita na seção 3.17 (Etapa A da rodada de multi-arquivo). As regras de negócio de tipo de plano, tipo de assistência (bloqueio de aprovação) e documento complementar solicitado pela GERDAB (Etapa B da mesma rodada) **ainda não foram implementadas** — só o modelo de dados de base (`tipoPlanoPagamento`, `tiposDocumentoPorPlano`, `tipoAssistencia`) já existe, ver seção 6 e 12.
+**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): toda a Etapa B descrita na seção 3.18 (elegibilidade por tipo de assistência + documento complementar solicitado pela GERDAB). Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido.
 
 ---
 
@@ -803,10 +851,10 @@ Itens **explicitamente identificados e ainda não implementados**, ou limitaçõ
 10. **`justificativaDivergencia` no `Comprovante`** — campo existe no tipo mas não é mais escrito ativamente por nenhum fluxo atual (era usado antes da centralização em `aprovacoes[]`). Pode ser removido ou mantido como está.
 11. **Nenhum teste automatizado** — toda a validação foi manual via navegador (Claude Browser tool). Não há testes unitários ou de integração para os fluxos documentados.
 12. **`justificativaAtraso` não é reaproveitada ao criar documento complementar via "Anexar comprovante do dependente"** — `handleAnexarDependente()` sempre reseta esse campo para string vazia, exigindo nova justificativa a cada documento retroativo adicional, mesmo que o motivo seja o mesmo.
-13. **(Novo) Bloqueio de aprovação por tipo de assistência odontológica não implementado** — o campo `tipoAssistencia` e o badge visual "Não elegível" já existem (seção 3.17/6), mas `admin.comprovantes.tsx` ainda não verifica elegibilidade antes de permitir "Aprovar"/"Aprovar com ressalva". É a próxima peça a implementar (Etapa B).
-14. **(Novo) Sem alternador de UI para `tipoPlanoPagamento`** — trocar entre "empresarial" e "individual_familiar" exige editar a constante em `mock-data.ts` manualmente; não há uma tela ou toggle no protótipo para isso.
-15. **(Novo) "Documento complementar solicitado pela GERDAB" não implementado** — não existe ainda o botão "Solicitar documento complementar" no lado do Analista/Gerência, nem o campo `solicitacaoComplementar` no `Comprovante`, nem a notificação/destaque correspondente ao Servidor (Etapa B).
-16. **(Novo) `LendoComprovante` não tem progresso por arquivo individual** — quando há múltiplos arquivos no mesmo envio, a checklist de 3 etapas trata o lote inteiro como uma unidade só; se um dos arquivos for ilegível, todos ficam "pausados" até a etapa de legibilidade apontar qual(is) falharam, sem indicar progresso incremental por arquivo.
+13. **Sem alternador de UI para `tipoPlanoPagamento`** — trocar entre "empresarial" e "individual_familiar" exige editar a constante em `mock-data.ts` manualmente; não há uma tela ou toggle no protótipo para isso.
+14. **`LendoComprovante` não tem progresso por arquivo individual** — quando há múltiplos arquivos no mesmo envio, a checklist de 3 etapas trata o lote inteiro como uma unidade só; se um dos arquivos for ilegível, todos ficam "pausados" até a etapa de legibilidade apontar qual(is) falharam, sem indicar progresso incremental por arquivo.
+15. **(Novo) Só 1 solicitação de documento complementar ativa por vez, por comprovante** — `solicitacaoComplementar` é um único objeto opcional, não um array/histórico. Se o Analista solicitar de novo antes do Servidor atender, o pedido anterior é sobrescrito (o botão já fica oculto enquanto há um pedido ativo, então isso só ocorreria por edição direta do storage). Decisão aceita por simplicidade — não há caso de uso identificado para múltiplos pedidos simultâneos no mesmo comprovante.
+16. **(Novo) "Solicitar documento complementar" não valida se já existe pendência do mesmo tipo no beneficiário** — o botão desaparece por comprovante (`!cur.solicitacaoComplementar`), mas nada impede solicitar complementar em 2 comprovantes diferentes do mesmo beneficiário/competência ao mesmo tempo (cada um gera sua própria notificação).
 
 ---
 
@@ -838,6 +886,9 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 22. **Edição do Resumo da Competência feita inline, sem reabrir o wizard** — pedido explícito do usuário, no meio da implementação desta rodada: *"Evite criar uma arquitetura excessivamente complexa... prefira a solução mais simples que preserve a experiência do usuário."* A ideia original do plano (parâmetros de rota `editarComprovanteId`/`focusBeneficiarioId` reabrindo o wizard em "modo edição") foi descartada em favor de editar campos diretamente dentro de `ConsolidadoCompetencia` (reaproveitando `CamposExtraidosForm` + `updateComprovantePagamento`, ambos já existentes), sem nenhum estado de rota novo.
 23. **Correção de documento ilegível/correção solicitada a partir do Resumo abre `ServidorComprovanteDetail`, não o formulário inline** — durante o teste manual desta rodada, descobriu-se que o formulário de edição inline (decisão 22) não faz sentido para esses dois status: "ilegível" não é uma decisão a reverter, é uma substituição de arquivo, que já tinha um fluxo dedicado e testado. A função `corrigirEnvio()` decide entre os dois caminhos com base no status do comprovante (`statusExigeSubstituicao`), evitando duplicar a lógica de substituição de arquivo em dois lugares.
 24. **`ComprovanteUploadBox` (single-file) mantido, não removido** — em vez de generalizar esse componente para suportar multi-arquivo, foi criado um componente novo (`ArquivosAnexadosUpload`) para o wizard de envio. `ComprovanteUploadBox` continua existindo porque o fluxo pós-submissão de substituição (`ServidorComprovanteDetail`, decisão de manter single-file na seção 3.17) ainda precisa dele — decisão de menor complexidade do que fazer 1 componente suportar 2 modos de uso muito diferentes.
+25. **Elegibilidade bloqueia via ausência do botão, não via modal** (Etapa B, seção 3.18) — diferente da divergência de valor (que usa `DivergenciaAprovacaoModal` para permitir uma exceção justificada), a elegibilidade por tipo de assistência **não tem caminho de exceção**: o Pró-Saúde categoricamente não cobre odontológico, então não faz sentido oferecer um modal de "aprovar mesmo assim com justificativa". Os botões de aprovação simplesmente não existem nesse caso — mais simples e correto do que copiar o padrão do modal de divergência para um caso que não admite exceção.
+26. **"Solicitar documento complementar" não muda `status`** — decisão explícita para diferenciar de "Solicitar correção" (que assume que o documento atual está errado e o tira da fila ativa). Documento complementar é um pedido adicional que roda em paralelo ao fluxo normal de aprovação — o comprovante continua "em_analise" (ou equivalente) enquanto se aguarda o anexo extra.
+27. **Limpeza automática da solicitação complementar reaproveita o padrão de dispensa/conclusão** — em vez de inventar um mecanismo novo, `limparSolicitacaoComplementar` segue exatamente o mesmo padrão já estabelecido por `removerDispensaBeneficiario`/`invalidarConclusaoCompetencia`: qualquer novo documento persistido dispara a limpeza de estados que "não fazem mais sentido" para aquele beneficiário/competência.
 
 ---
 
@@ -845,16 +896,16 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 
 Ordem sugerida, da menor para a maior complexidade/risco:
 
-0. **Implementar a Etapa B da rodada de multi-arquivo** (pendências 13-15 da seção 12): bloqueio de aprovação por tipo de assistência odontológica em `admin.comprovantes.tsx` (usando o mesmo molde de `getDivergencia`/`DivergenciaAprovacaoModal`), e o botão "Solicitar documento complementar" pelo Analista/Gerência com o destaque correspondente no lado do Servidor. É a continuação natural e já planejada do que foi entregue nesta rodada (seção 3.17) — recomendado como o próximo passo antes de qualquer outra coisa.
-1. **Decidir e resolver as pendências 1, 9 e 10 da seção 12** (campo `cpf` ausente no mock de OCR; status legados `processando`/`revisao`; campo `justificativaDivergencia` não utilizado) — são limpezas de baixo risco que não mudam comportamento visível.
-2. **Commitar o trabalho pendente** (ver seção 11 — "Ainda não commitado") antes de iniciar qualquer nova funcionalidade, para não acumular um diff gigante e difícil de revisar. Seguir o mesmo processo já estabelecido: build limpo, teste manual no navegador, teste de persistência com F5, apresentar resumo, aguardar autorização explícita antes de `git commit`/`git push`.
+1. **Commitar o trabalho da Etapa B** (ver seção 11 — "Ainda não commitado") — elegibilidade por tipo de assistência + documento complementar solicitado (seção 3.18). Aguardando autorização explícita do usuário, conforme processo já estabelecido.
+2. **Decidir e resolver as pendências 1, 9 e 10 da seção 12** (campo `cpf` ausente no mock de OCR; status legados `processando`/`revisao`; campo `justificativaDivergencia` não utilizado) — são limpezas de baixo risco que não mudam comportamento visível.
 3. **Estender "competência incompleta" para competências retroativas** (pendência 3) — hoje só cobre `competenciaAtual`; se o negócio precisar do mesmo alerta para os meses fechados, generalizar `getBeneficiariosFaltantes` para aceitar uma lista de competências e agregar o resultado na UI.
 4. **Resolver o deep-link de abas** (pendência 4) — adicionar um `search: { tab: string }` na rota `/admin/comprovantes` e fazer o card do dashboard linkar diretamente para a aba "Retroativos".
 5. **Reavaliar a regra de auto-confirmação em `ConferenciaBeneficiarios`** (pendência 8) — hoje o campo `banco` sempre bloqueia a auto-confirmação por vir com confiança "nenhuma"; decidir se isso é intencional (documentar explicitamente) ou se a regra deveria considerar só um subconjunto de campos "críticos" (ex: nome, valor, pagador) para a auto-confirmação.
 6. **Implementar validação de teto de R$ 4.000,00** (pendência 5) — hoje é só texto informativo; se o negócio precisar de bloqueio real, definir onde: no Resumo da Competência (soft warning) ou na aprovação do Analista/Gerência (hard block).
 7. **Adicionar testes automatizados** (pendência 11) — pelo menos para as funções puras de `comprovante-status.ts` e `competencias-pendentes.ts`, que concentram a lógica de negócio mais sensível a regressão.
 8. **Revisitar `arquivoPorBeneficiario`** (pendência 2) apenas se surgir um requisito real de rastrear múltiplos arquivos por beneficiário dentro do mesmo registro de fatura técnica — não antecipar essa complexidade sem necessidade concreta.
-9. **Escrever a história de usuário formal para qualquer nova etapa** (ex: "Fase 3 — Relatórios e integrações", já prevista em `regrasProSaude.fases` mas fora do escopo do Módulo de Pagamento) usando este documento como base de contexto.
+9. **Adicionar um alternador de UI para `tipoPlanoPagamento`** (pendência 13) se houver necessidade real de demonstrar o ramo empresarial em apresentações, sem depender de editar código.
+10. **Escrever a história de usuário formal para qualquer nova etapa** (ex: "Fase 3 — Relatórios e integrações", já prevista em `regrasProSaude.fases` mas fora do escopo do Módulo de Pagamento) usando este documento como base de contexto.
 
 ---
 

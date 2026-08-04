@@ -100,8 +100,20 @@ export function addComprovantePagamento(comprovante: Comprovante) {
     PROSAUDE_STORAGE_KEYS.comprovantesPagamento,
     JSON.stringify([...atuais, comprovante]),
   );
-  comprovante.beneficiarioIds.forEach((id) => removerDispensaBeneficiario(id, comprovante.competencia));
+  comprovante.beneficiarioIds.forEach((id) => {
+    removerDispensaBeneficiario(id, comprovante.competencia);
+    limparSolicitacaoComplementar(id, comprovante.competencia);
+  });
   invalidarConclusaoCompetencia(comprovante.competencia);
+}
+
+/** Remove o pedido de documento complementar de qualquer comprovante do beneficiário/competência
+ *  quando um novo documento chega — o pedido deixa de fazer sentido, já que foi atendido. */
+function limparSolicitacaoComplementar(beneficiarioId: string, competencia: string) {
+  const comPedidoAtivo = getComprovantesUnificados().filter(
+    (c) => c.competencia === competencia && c.beneficiarioIds.includes(beneficiarioId) && c.solicitacaoComplementar,
+  );
+  comPedidoAtivo.forEach((c) => updateComprovantePagamento(c.id, { solicitacaoComplementar: undefined }));
 }
 
 /**
