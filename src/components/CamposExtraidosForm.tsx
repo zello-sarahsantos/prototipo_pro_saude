@@ -54,6 +54,7 @@ export function CamposExtraidosForm({
         const divergente =
           (campo.chave === "valor" &&
             valorCadastrado !== undefined &&
+            !naoIdentificado &&
             parseFloat(campo.valor) !== valorCadastrado) ||
           (campo.chave === "pagador" &&
             nomeTitular !== undefined &&
