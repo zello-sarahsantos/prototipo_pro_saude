@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Stepper, StepNav, Field, inputCls } from "@/components/Stepper";
+import { Switch } from "@/components/ui/switch";
 import { Upload, CheckCircle2, User, Info, FileText, UserPlus, X } from "lucide-react";
 import { OPERADORAS } from "@/lib/form-options";
 import { servidorAtual, dependentes, formatCurrency, calcularReembolso, statusLabels } from "@/lib/mock-data";
@@ -49,6 +50,7 @@ function NovoPlano() {
     vigencia: "",
     numeroProposta: "",
     observacoes: "",
+    empresarial: false,
   });
 
   // Dependentes data
@@ -248,13 +250,33 @@ function StepNovoPlano({ data, setData }: {
         />
       </Field>
       <Field label="Modalidade do novo plano" required>
-        <input 
+        <input
           className={inputCls}
           placeholder="Ex: Coletivo Empresarial"
           value={data.modalidade}
           onChange={(e) => setData({ ...data, modalidade: e.target.value })}
         />
       </Field>
+      <Field label="Empresarial">
+        <div className={`${inputCls} flex items-center justify-between`}>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={data.empresarial}
+              onCheckedChange={(checked) => setData({ ...data, empresarial: checked })}
+            />
+            <span className="text-sm">{data.empresarial ? "Sim" : "Não"}</span>
+          </div>
+          <span className="text-xs text-muted-foreground">O novo plano é empresarial?</span>
+        </div>
+      </Field>
+      {data.empresarial && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 flex gap-2">
+          <Info className="h-4 w-4 shrink-0" />
+          <p>
+            Planos empresariais exigem o envio da fatura técnica no momento do envio de comprovantes de pagamento, pois o boleto empresarial isolado não permite identificar os valores individuais dos beneficiários.
+          </p>
+        </div>
+      )}
       <Field label="Valor individual do novo plano" required>
         <input 
           className={inputCls} 
@@ -700,6 +722,10 @@ function StepRevisao({
           <div>
             <span className="text-muted-foreground">Modalidade:</span>
             <p className="font-medium">{newPlanData.modalidade || "Não informado"}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Empresarial:</span>
+            <p className="font-medium">{newPlanData.empresarial ? "Sim" : "Não"}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Valor individual:</span>
