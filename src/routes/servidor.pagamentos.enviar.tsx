@@ -155,7 +155,7 @@ function EnviarComprovante() {
       justificativaAtraso: isRetroativo ? justificativaAtraso : undefined,
       camposExtraidos: primeiro?.campos ?? [],
       gruposExtraidos: gruposExtraidos.length > 1 ? gruposExtraidos : undefined,
-      status: isRetroativo ? "retroativo_aguardando_analista" : "em_analise",
+      status: isRetroativo ? "retroativo_aguardando_aprovacao" : "em_analise",
       aprovacoes: [],
       dataEnvio: new Date().toISOString(),
     };

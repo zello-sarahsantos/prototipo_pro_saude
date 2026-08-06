@@ -25,7 +25,7 @@ O protótipo simula 4 perfis, cada um com seu próprio layout e conjunto de rota
 | **Gerência** | `AdminLayout.tsx` (compartilhado com Analista) | Rota `/login` → opção "Gerência" → grava `localStorage.prosaude_role = "gerencia"` (também é o valor **default** se a chave não existir — ver `getAdminRole()` em `AdminLayout.tsx`) |
 | **Associação** | Layout próprio (`associacao.*`) | Rota `/login` → opção "Associação", ou link direto "Sou uma Associação Externa" |
 
-**Regra de permissão consolidada:** Gerência **herda todas as ações do Analista** e tem 3 ações exclusivas adicionais (2ª alçada de retroativos — ver seção 5). Nunca o inverso: nenhuma ação do Analista é escondida da Gerência.
+**Regra de permissão consolidada (atualizada — Etapa 1, ver seção 13, decisão 30):** Analista e Gerência têm **exatamente as mesmas ações** sobre comprovantes/retroativos — não há mais ações exclusivas de nenhum dos dois papéis nesse fluxo (a antiga 2ª alçada obrigatória da Gerência foi removida). A única diferença entre os dois perfis é o item "Parâmetros" no menu, exclusivo da Gerência e sem relação com o Módulo de Pagamento (ver seção 5.1).
 
 ### 1.3 Escopo atual do Módulo de Pagamento
 O Módulo de Pagamento cobre integralmente:
@@ -220,24 +220,24 @@ Módulo: `src/lib/competencias-pendentes.ts`. Dois conceitos **deliberadamente s
 Um beneficiário **dispensado** (`getBeneficiariosDispensadosIds`) nunca aparece em `getBeneficiariosFaltantes` — a dispensa suprime tanto o alerta de "sem envio" (indiretamente, pois dispensa só existe por competência que já tem outros documentos) quanto o de "incompleta".
 
 ### 3.12 Retroativos
-Ver detalhamento completo nas seções 4 e 5 (Analista/Gerência) — aqui documentamos só o lado do Servidor.
+Ver detalhamento completo na seção 4 (Analista/Gerência — hoje com ações idênticas) — aqui documentamos só o lado do Servidor.
 
-`isRetroativo = competencia !== competenciaAtual` (comparação genérica, não mais um valor único fixo `competenciaRetroativa` — generalizado na etapa das "competências sem comprovante" para suportar `competenciasFechadas` como lista). Ao selecionar uma competência fechada em `"selecao"`, o campo "Justificativa do atraso" torna-se obrigatório (`podeAvancarSelecao` exige `justificativaAtraso.trim().length > 0`). No momento da persistência (`confirmarDocumento()`), `status` inicial é `"retroativo_aguardando_analista"` em vez de `"em_analise"`.
+`isRetroativo = competencia !== competenciaAtual` (comparação genérica, não mais um valor único fixo `competenciaRetroativa` — generalizado na etapa das "competências sem comprovante" para suportar `competenciasFechadas` como lista). Ao selecionar uma competência fechada em `"selecao"`, o campo "Justificativa do atraso" torna-se obrigatório (`podeAvancarSelecao` exige `justificativaAtraso.trim().length > 0`). No momento da persistência (`confirmarDocumento()`), `status` inicial é `"retroativo_aguardando_aprovacao"` em vez de `"em_analise"`.
 
-Estados possíveis do ciclo de vida retroativo (todos em `StatusComprovante`):
+**(Atualizado — Etapa 1 do alinhamento de stakeholder, ver seção 13, decisão 30)** O retroativo **não exige mais 2ª alçada obrigatória**. Estados possíveis do ciclo de vida retroativo (todos em `StatusComprovante`):
 ```
-retroativo_aguardando_analista → retroativo_aguardando_gerencia → retroativo_aprovado
-                               ↘ retroativo_devolvido (pela Gerência) → volta pro Analista
-                               ↘ correcao_solicitada (pelo Analista, raro em retroativo)
-retroativo_aguardando_gerencia → retroativo_recusado (terminal, só a Gerência pode)
+retroativo_aguardando_aprovacao → retroativo_aprovado          (Analista OU Gerência — mesma ação, sem hierarquia)
+                                 ↘ retroativo_recusado (terminal — Analista OU Gerência)
+                                 ↘ correcao_solicitada (Analista OU Gerência)
 ```
+`retroativo_aguardando_analista`, `retroativo_aguardando_gerencia` e `retroativo_devolvido` continuam no union `StatusComprovante` **apenas como legado** — nenhum código novo os produz; existem só para exibir corretamente registros antigos já persistidos em `localStorage` de sessões de teste anteriores (ver seção 7).
 
 ### 3.13 Notificações
 Módulo: `src/lib/notificacoes-pagamento.ts`, consumido por `NotificationBell.tsx` (badge de contagem + dropdown). Duas fontes combinadas (nesta ordem: pendências primeiro, depois status):
 1. **Notificações por competência pendente** ("sem envio"): uma por competência em `getCompetenciasPendentes()`, mensagem "Você não enviou comprovante da competência de {mês} — prazo encerrado."
 2. **Notificações por status mais recente por beneficiário**: para cada beneficiário, pega o **último** comprovante relevante (competência atual OU qualquer retroativo, `relevantes = comprovantes.filter(c => c.competencia === competenciaAtual || c.isRetroativo)`) e, se o status dele tiver uma mensagem mapeada em `statusNotificaveis`, gera 1 notificação.
 
-Status mapeados para notificação: `ilegivel`, `correcao_solicitada`, `aprovado`, `aprovado_com_ressalva`, `recusado`, `retroativo_aguardando_gerencia`, `retroativo_devolvido`, `retroativo_aprovado`, `retroativo_recusado`. **Não gera notificação** para `em_analise`, `processando`, `revisao` (obsoleto), `retroativo_aguardando_analista` — nenhuma mensagem mapeada para esses.
+Status mapeados para notificação: `ilegivel`, `correcao_solicitada`, `aprovado`, `aprovado_com_ressalva`, `recusado`, `retroativo_aguardando_aprovacao`, `retroativo_aprovado`, `retroativo_recusado`. **Não gera notificação** para `em_analise`, `processando`, `revisao` (obsoleto), `retroativo_aguardando_analista`/`retroativo_aguardando_gerencia`/`retroativo_devolvido` (legado — ver 3.12) — nenhuma mensagem mapeada para esses.
 
 **Limitação conhecida:** notificações não são "lidas/marcadas" — são recalculadas do zero a cada render (`useEffect` em `NotificationBell`), não há persistência de "já vi essa notificação".
 
@@ -255,7 +255,7 @@ Duas ações do Servidor, por status:
 - **Status `ilegivel`** → botão "Substituir documento": upload de novo arquivo, reprocessa, se ainda ilegível mostra "O novo documento também está ilegível" com "Tentar novamente"; se legível, mostra `CamposExtraidosForm` editável e "Confirmar reenvio" → `confirmar(beneficiarioId, "em_analise")`.
 - **Status `correcao_solicitada`** → mostra o motivo informado pelo Analista (última entrada em `aprovacoes` com `acao === 'correcao_solicitada'`) + botão "Corrigir e reenviar" (mesma mecânica do "Substituir documento" acima).
 - **Status `recusado`** ou **`retroativo_recusado`** → **somente leitura, terminal**. Nenhum botão de ação — decisão explícita: "Recusar é sempre terminal; apenas Solicitar Correção permite reenvio" (ver seção 13).
-- Demais status (`em_analise`, `retroativo_aguardando_analista`, `retroativo_aguardando_gerencia`, `retroativo_devolvido`, `aprovado`, `aprovado_com_ressalva`, `retroativo_aprovado`) → somente leitura, cada um com seu próprio texto explicativo e, quando aplicável, `HistoricoAlcadas` (lista cronológica de todas as `aprovacoes` daquele beneficiário).
+- Demais status (`em_analise`, `retroativo_aguardando_aprovacao`, `aprovado`, `aprovado_com_ressalva`, `retroativo_aprovado`, e os legados `retroativo_aguardando_analista`/`retroativo_aguardando_gerencia`/`retroativo_devolvido` — ver 3.12) → somente leitura, cada um com seu próprio texto explicativo e, quando aplicável, `HistoricoAlcadas` (lista cronológica de todas as `aprovacoes` daquele beneficiário).
 
 ### 3.16 Histórico
 `servidor.pagamentos.index.tsx`, seção "Histórico de envios": lista **todos** os comprovantes da competência atual E de qualquer outra competência (`comprovantes` = todos, sem filtro de competência nessa lista especificamente — note que a seção "Situação da competência atual" É filtrada por competência, mas "Histórico de envios" mostra tudo), em ordem reversa (mais recente primeiro, via `.slice().reverse()`), cada item clicável abrindo `ServidorComprovanteDetail`.
@@ -340,44 +340,39 @@ export function getElegibilidade(
 Arquivo: `src/routes/admin.comprovantes.tsx`. Role determinado por `getAdminRole()` (lê `localStorage.prosaude_role`, default `"gerencia"` se ausente).
 
 ### 4.1 Todas as ações disponíveis (Analista)
-Aplicáveis quando `statusAcaoAnalista.includes(status)`, onde:
+**(Atualizado — Etapa 1, ver seção 13, decisão 30)** Aplicáveis quando `statusComAcaoDisponivel.includes(status)`, onde:
 ```ts
-const statusAcaoAnalista: StatusComprovante[] = [
-  "em_analise",
-  "retroativo_aguardando_analista",
-  "retroativo_devolvido",
-];
+const statusComAcaoDisponivel: StatusComprovante[] = ["em_analise", "retroativo_aguardando_aprovacao"];
 ```
-Ações (botões renderizados condicionalmente por status):
-- **Aprovar** (rótulo varia: "Aprovar" para `em_analise`; "Aprovar (1ª alçada)" para `retroativo_aguardando_analista`; "Reenviar para Gerência" para `retroativo_devolvido`) — chama `aprovar(comprovante, beneficiarioId)`. **Não renderizado** quando `!getElegibilidade(cur, beneficiarioId).elegivel` (tipo de assistência odontológico — ver seção 3.18).
-- **Aprovar com ressalva** — só aparece quando `cur.status === "em_analise"` (não aparece para retroativos, que usam o fluxo de divergência via modal em vez de um botão dedicado — ver 4.4). Mesma restrição de elegibilidade do item acima.
-- **Solicitar documento complementar** (novo — seção 3.18) — sempre disponível quando há ações disponíveis e ainda não há uma solicitação ativa (`!cur.solicitacaoComplementar`), independente de elegibilidade ou papel. Não muda `status`.
-- **Solicitar correção** — não aparece quando `acoesGerencia` é true (a Gerência não "solicita correção", ela "devolve").
+Ações (botões renderizados condicionalmente por status) — **idênticas para os dois status ativos**, sem rótulo dependente de alçada:
+- **Aprovar** — chama `aprovar(comprovante, beneficiarioId)`. **Não renderizado** quando `!getElegibilidade(cur, beneficiarioId).elegivel` (tipo de assistência odontológico — ver seção 3.18).
+- **Aprovar com ressalva** — disponível sempre que elegível, tanto para `em_analise` quanto para `retroativo_aguardando_aprovacao`.
+- **Solicitar documento complementar** (seção 3.18) — sempre disponível quando há ações disponíveis e ainda não há uma solicitação ativa (`!cur.solicitacaoComplementar`), independente de elegibilidade ou papel. Não muda `status`.
+- **Solicitar correção** — sempre disponível quando há ações disponíveis, para qualquer um dos dois papéis.
 - **Recusar** — sempre disponível quando há ações disponíveis, independente do papel.
 
 ### 4.2 Regras de aprovação
 Função `proximoStatusAprovacao(statusAtual)`:
 ```ts
-retroativo_aguardando_gerencia → retroativo_aprovado
-retroativo_aguardando_analista | retroativo_devolvido → retroativo_aguardando_gerencia
+retroativo_aguardando_aprovacao → retroativo_aprovado
 (qualquer outro, ex: em_analise) → aprovado
 ```
 Antes de aprovar, `aprovar()` verifica divergência via `getDivergencia(comprovante, beneficiario)` (compara campo `valor` extraído com `beneficiario.valorCadastrado`). Se divergente, **bloqueia a aprovação direta** e abre `DivergenciaAprovacaoModal`, exigindo justificativa obrigatória antes de prosseguir como "aprovado com ressalva" (ver 4.4).
 
 ### 4.3 Solicitação de correção
-Só disponível quando `!acoesGerencia`. Abre um sub-formulário inline (`subForm.tipo === "correcao"`) com textarea obrigatória. Ao confirmar, `confirmarSubForm()` chama `registrarAcao(comprovante, beneficiarioId, "correcao_solicitada", { etapa: etapaAtual, acao: "correcao_solicitada", aprovadoPor: autor, data, comentario })`. O comprovante sai da fila "Comprovantes"/"Retroativos" ativa e aparece na aba "Histórico" (pois `correcao_solicitada` está listado em `statusPorTab.historico`), mas **o Servidor** vê o status "Correção Solicitada" com destaque e pode agir (seção 3.15).
+Disponível para qualquer um dos dois papéis, em qualquer status com ação disponível. Abre um sub-formulário inline (`subForm.tipo === "correcao"`) com textarea obrigatória. Ao confirmar, `confirmarSubForm()` chama `registrarAcao(comprovante, beneficiarioId, "correcao_solicitada", { etapa: etapaAtual, acao: "correcao_solicitada", aprovadoPor: autor, data, comentario })`. O comprovante sai da fila "Comprovantes"/"Retroativos" ativa e aparece na aba "Histórico" (pois `correcao_solicitada` está listado em `statusPorTab.historico`), mas **o Servidor** vê o status "Correção Solicitada" com destaque e pode agir (seção 3.15).
 
 ### 4.4 Divergência
-`DivergenciaAprovacaoModal.tsx`: modal bloqueante, exige textarea de justificativa não-vazia antes de habilitar "Aprovar com ressalva". Ao confirmar (`confirmarDivergencia(justificativa)`):
-- Se o comprovante estava em `retroativo_aguardando_gerencia` → conclui direto como `retroativo_aprovado` (a divergência na 2ª alçada **não bloqueia a conclusão final**, apenas fica registrada no histórico como ressalva).
-- Caso contrário → usa `proximoStatusAprovacao()` normalmente (ex: `em_analise` → `aprovado_com_ressalva`; `retroativo_aguardando_analista` → `retroativo_aguardando_gerencia`, preservando a ressalva no log).
+`DivergenciaAprovacaoModal.tsx`: modal bloqueante, exige textarea de justificativa não-vazia antes de habilitar "Aprovar com ressalva". Ao confirmar (`confirmarDivergencia(justificativa)`), usa `proximoStatusAprovacao()` normalmente (ex: `em_analise` → `aprovado_com_ressalva`; `retroativo_aguardando_aprovacao` → `retroativo_aprovado`, preservando a ressalva no log).
 
 A divergência **nunca altera o cadastro do beneficiário** (`beneficiario.valorCadastrado` nunca é escrito por esse fluxo) — é sempre um alerta auxiliar sobre o dado extraído, nunca um "status principal" do comprovante.
 
 **Diferença para a checagem de elegibilidade (seção 3.18):** divergência de valor é um **modal bloqueante que pode ser superado** com justificativa (o Analista/Gerência ainda consegue aprovar, só que "com ressalva"). Elegibilidade por tipo de assistência é diferente — **não há caminho para aprovar** um comprovante odontológico; os botões de aprovação simplesmente não existem enquanto isso for verdade, não há modal de exceção. São duas checagens independentes, sem modal compartilhado.
 
-### 4.5 Retroativos (papel do Analista = 1ª alçada)
-Analista vê e age sobre `retroativo_aguardando_analista` e `retroativo_aguardando_gerencia` **apenas quando `!isGerencia`** mostra a nota informativa "Aguardando 2ª alçada da Gerência — somente consulta" (sem botões de ação) quando o item já passou para a Gerência. Também vê e age sobre `retroativo_devolvido` (retroativo que a Gerência devolveu — aparece com destaque "Devolvido pela Gerência — ajuste necessário" e o comentário da devolução visível antes dos botões de ação).
+### 4.5 Retroativos (Analista e Gerência têm exatamente as mesmas ações)
+**(Atualizado — Etapa 1, ver seção 13, decisão 30)** O Analista vê e age sobre `retroativo_aguardando_aprovacao` com as mesmas 5 ações da seção 4.1 — não há mais uma etapa intermediária esperando a Gerência. A Gerência vê e age sobre exatamente o mesmo status, com as mesmas ações (ver seção 5). Qualquer um dos dois pode aprovar, aprovar com ressalva, solicitar correção, recusar, ou solicitar documento complementar — o primeiro que agir decide o resultado.
+
+Registros legados de sessões de teste anteriores (`retroativo_aguardando_analista`, `retroativo_aguardando_gerencia`, `retroativo_devolvido`) continuam visíveis na aba "Retroativos" e no modal de detalhe, mas **somente leitura** — nenhum botão de ação é renderizado para eles (`statusComAcaoDisponivel` não os inclui).
 
 ### 4.6 Histórico de decisões
 Renderizado no rodapé do modal de detalhe (`cur.aprovacoes.length > 0`), lista cronológica com: quem (`aprovadoPor`), papel (`etapa`), ação (mapeada por texto: "aprovou", "aprovou com ressalva", "solicitou correção", "recusou", "devolveu ao Analista", "substituiu o documento", "reenviou o documento"), beneficiário afetado (se aplicável), data/hora, motivo (se houver) e comentário (se houver). Este array **nunca é limpo/reescrito** — cada ação sempre faz `[...comprovante.aprovacoes, novaAcao]` (append-only), preservando o histórico completo mesmo através de múltiplas idas e vindas entre Analista e Gerência.
@@ -389,33 +384,24 @@ Renderizado no rodapé do modal de detalhe (`cur.aprovacoes.length > 0`), lista 
 Mesma rota/arquivo que o Analista (`admin.comprovantes.tsx`), diferenciado por `role === "gerencia"` (`isGerencia`).
 
 ### 5.1 Diferenças em relação ao Analista
-- Gerência **vê e pode agir sobre tudo que o Analista vê e pode agir** (`statusAcaoAnalista` continua válido para ela) — **mais** 3 ações exclusivas quando `statusBeneficiario === "retroativo_aguardando_gerencia"` (`acoesGerencia = statusBeneficiario === "retroativo_aguardando_gerencia" && isGerencia`).
-- No menu lateral (`AdminLayout.tsx`), a Gerência vê um item adicional "Parâmetros" (`/admin/parametros`) que o Analista não vê — isso é herdado de antes do Módulo de Pagamento e não foi alterado.
+**(Atualizado — Etapa 1, ver seção 13, decisão 30)** Para o fluxo de comprovantes/retroativos, a Gerência **não tem mais nenhuma ação exclusiva** — vê e age sobre exatamente os mesmos status, com exatamente os mesmos botões, que o Analista (seção 4.1). A separação de papéis que existe hoje é só:
+- No menu lateral (`AdminLayout.tsx`), a Gerência vê um item adicional "Parâmetros" (`/admin/parametros`) que o Analista não vê — isso é herdado de antes do Módulo de Pagamento e não foi alterado, e não tem relação com comprovantes/retroativos.
 - Rodapé do menu mostra "Erandir / Gerência" vs "Rebeca / Luciana" / "Analista GERDAB — sem acesso a parâmetros" (texto estático, não reflete o `analistaReferencia`/`gerenteReferencia` usados na lógica de negócio — são apenas textos de exibição do menu, **não confundir com os nomes usados em `aprovacoes`**, que vêm de `autor = isGerencia ? gerenteReferencia : analistaReferencia` = "Francisco" ou "Sarah Santos").
+- O campo `etapa` continua sendo gravado em cada `AcaoComprovante` (`"analista"` ou `"gerencia"`) — serve só para o histórico mostrar **quem** decidiu, não para restringir **o que** cada papel pode fazer.
 
-### 5.2 Segunda alçada (ações exclusivas)
-Quando `acoesGerencia` é true, os botões exibidos são:
-1. **"Aprovar definitivamente"** — mesmo `aprovar()` do Analista, mas como `proximoStatusAprovacao("retroativo_aguardando_gerencia")` retorna `"retroativo_aprovado"`, esta é a conclusão final do fluxo retroativo. Se houver divergência, abre o mesmo `DivergenciaAprovacaoModal`, e mesmo assim conclui como `retroativo_aprovado` (ver 4.4).
-2. **"Devolver ao Analista"** — `subForm.tipo === "devolver"`, textarea obrigatória. Ao confirmar: `registrarAcao(comprovante, beneficiarioId, "retroativo_devolvido", { etapa: "gerencia", acao: "devolvido_analista", aprovadoPor: autor, data, comentario })`. **Nota:** aqui `etapa` é hardcoded como `"gerencia"` (não usa a variável `etapaAtual`), pois só a Gerência pode devolver.
-3. **"Recusar"** — mesmo botão do Analista, mas o status resultante é diferente (ver 5.4).
+### 5.2 Retroativo aprovado por qualquer um dos dois papéis
+Quando o Analista ou a Gerência clica "Aprovar" em um comprovante `retroativo_aguardando_aprovacao`, `proximoStatusAprovacao("retroativo_aguardando_aprovacao")` retorna `"retroativo_aprovado"` diretamente — não existe mais uma etapa intermediária "aguardando o outro papel". Se houver divergência, abre o mesmo `DivergenciaAprovacaoModal` e, mesmo assim, conclui como `retroativo_aprovado` (ver 4.4). O histórico de ações (seção 4.6) sempre registra qual papel decidiu, mesmo que a ação em si seja idêntica entre eles.
 
-### 5.3 Devolução ao Analista
-Status resultante: `retroativo_devolvido` (não reaproveita `retroativo_aguardando_analista`, para diferenciar visualmente "nunca passou pela 1ª alçada" de "já passou e foi devolvido" — decisão explícita, ver seção 13). O comprovante volta a aparecer na fila do Analista (`statusAcaoAnalista` inclui `retroativo_devolvido`) com destaque visual (banner âmbar "Devolvido pela Gerência — ajuste necessário" + o comentário da Gerência), tanto no painel do Analista quanto na tela do Servidor (`ServidorComprovanteDetail`).
-
-Quando o Analista reaprova a partir de `retroativo_devolvido`, o botão mostra "Reenviar para Gerência" (não "Aprovar (1ª alçada)", para não confundir com um retroativo que nunca foi analisado) e o resultado é `retroativo_aguardando_gerencia` de novo.
-
-### 5.4 Recusa (exclusiva da 2ª alçada)
-Quando `comprovante.status === "retroativo_aguardando_gerencia"` no momento da recusa, o status resultante é **`retroativo_recusado`** (não `recusado` genérico) — decisão explícita para permitir exibir corretamente, no detalhe: competência original, justificativa do atraso, a aprovação anterior do Analista (1ª alçada) **e** a decisão final da Gerência, lado a lado. Fora desse caso (recusa em `em_analise` ou `retroativo_aguardando_analista`), o status continua sendo `recusado` comum.
+### 5.3 Recusa de retroativo
+Quando `comprovante.status === "retroativo_aguardando_aprovacao"` no momento da recusa (por qualquer um dos dois papéis), o status resultante é **`retroativo_recusado`** (não `recusado` genérico) — decisão explícita para permitir exibir corretamente, no detalhe, a competência original e a justificativa do atraso junto com a decisão final. Fora desse caso (recusa em `em_analise`), o status continua sendo `recusado` comum.
 
 **Ambos os status (`recusado` e `retroativo_recusado`) são terminais** — nenhuma ação de reenvio é oferecida ao Servidor para eles (`ServidorComprovanteDetail` não renderiza nenhum botão nesses casos).
 
-### 5.5 Aprovação definitiva
-Ver 5.2, item 1. É o único caminho que produz `retroativo_aprovado`.
+### 5.4 Card "Retroativos pendentes" no dashboard
+`admin.dashboard.tsx` conta `status === "retroativo_aguardando_aprovacao"` — é **apenas informativo** ali (link para a fila), a ação em si acontece em `/admin/comprovantes`. Como não há mais hierarquia, o card não distingue "pendente do Analista" de "pendente da Gerência" — qualquer um dos dois pode resolver.
 
-### 5.6 Regras exclusivas da Gerência
-- Só a Gerência pode agir sobre `retroativo_aguardando_gerencia` (Analista vê somente leitura com nota "somente consulta").
-- Só a Gerência pode gerar os status `retroativo_devolvido`, `retroativo_aprovado`, `retroativo_recusado` (via 2ª alçada — este último status também é indiretamente exclusivo pois só ocorre a partir de `retroativo_aguardando_gerencia`).
-- Card "Retroativos pendentes" no dashboard admin (`admin.dashboard.tsx`) conta `status === "retroativo_aguardando_gerencia"` — hoje é **apenas informativo** ali (link para a fila), a ação em si acontece em `/admin/comprovantes`.
+### 5.5 Legado — 2ª alçada obrigatória (removida nesta rodada)
+Antes da Etapa 1 (ver plano de alinhamento de stakeholder, seção 13, decisão 30), retroativo passava por `retroativo_aguardando_analista → retroativo_aguardando_gerencia → retroativo_aprovado`, com um botão exclusivo "Devolver ao Analista" (status `retroativo_devolvido`) disponível só para a Gerência. Essa mecânica foi **removida do fluxo ativo** a pedido do stakeholder ("não deve mais existir a necessidade de segunda alçada, pode ser o Analista ou a Gerência"). Os 3 status legados continuam no union `StatusComprovante` e em `statusPorTab.retroativos` **somente para exibir registros antigos** já persistidos em `localStorage` de sessões de teste anteriores — nenhum botão de ação é renderizado para eles hoje.
 
 ---
 
@@ -446,8 +432,8 @@ Ver 5.2, item 1. É o único caminho que produz `retroativo_aprovado`.
 ### Retroativos
 13. `isRetroativo = competencia !== competenciaAtual` (qualquer competência diferente da atual é tratada como retroativa).
 14. Retroativo exige `justificativaAtraso` obrigatória antes de avançar do passo de seleção.
-15. Fluxo de dupla alçada sequencial e visível: `retroativo_aguardando_analista → retroativo_aguardando_gerencia → retroativo_aprovado`, com desvios possíveis para `retroativo_devolvido` (volta ao Analista) e `retroativo_recusado` (terminal, só a partir da 2ª alçada).
-16. Divergência de valor na 2ª alçada **não bloqueia** a conclusão — apenas fica registrada como ressalva.
+15. **(Atualizado — Etapa 1, ver seção 13, decisão 30)** Aprovação única, sem hierarquia: `retroativo_aguardando_aprovacao → retroativo_aprovado`, decidido por Analista **ou** Gerência — os dois papéis têm exatamente as mesmas ações (seção 4.1). Não existe mais uma etapa intermediária que exige que o outro papel também decida. Desvio possível para `retroativo_recusado` (terminal, por qualquer um dos dois papéis) ou `correcao_solicitada`.
+16. Divergência de valor em retroativo **não bloqueia** a conclusão — apenas fica registrada como ressalva (mesma regra de `em_analise`, ver 4.4).
 
 ### Conclusão de competência
 17. "Concluir envio da competência" **nunca** persiste um novo `Comprovante` — só grava um registro de conclusão (`ConclusaoCompetencia`).
@@ -491,7 +477,7 @@ Ver 5.2, item 1. É o único caminho que produz `retroativo_aprovado`.
 31f. O Servidor já podia anexar documentos complementares por iniciativa própria a qualquer momento (regra 6 acima). Agora o Analista/Gerência também pode **solicitar explicitamente** um documento complementar (distinto de "Solicitar correção", que pressupõe que o documento atual está errado) via `Comprovante.solicitacaoComplementar`, destacado ao Servidor em `ServidorComprovanteDetail` com um botão de anexo direto.
 
 ### Permissões
-31. Gerência = Analista + 3 ações exclusivas sobre retroativos aguardando a 2ª alçada. Nunca o inverso.
+31. **(Atualizado — Etapa 1, ver seção 13, decisão 30)** Gerência e Analista têm ações idênticas sobre comprovantes/retroativos — não há mais ações exclusivas de nenhum dos dois nesse fluxo.
 32. `getAdminRole()` faz default para `"gerencia"` quando a chave não existe no `localStorage` — **atenção**: isso significa que, sem login explícito, o comportamento padrão do admin é "Gerência" (mais permissivo), não "Analista".
 
 ---
@@ -511,13 +497,14 @@ type StatusComprovante =
   | 'aprovado'
   | 'aprovado_com_ressalva'
   | 'recusado'
-  | 'retroativo_aguardando_analista'
-  | 'retroativo_aguardando_gerencia'
-  | 'retroativo_devolvido'
+  | 'retroativo_aguardando_aprovacao'  // NOVO (Etapa 1) — substitui a dupla alçada abaixo em todo código novo
+  | 'retroativo_aguardando_analista'   // @deprecated — legado da 2ª alçada obrigatória, removida (ver seção 13, decisão 30)
+  | 'retroativo_aguardando_gerencia'   // @deprecated — idem
+  | 'retroativo_devolvido'             // @deprecated — idem
   | 'retroativo_aprovado'
   | 'retroativo_recusado';
 ```
-`'processando'` e `'revisao'` são resquícios de versões anteriores do fluxo — não são mais atribuídos por nenhum código atual, mas permanecem no union por segurança de tipos (podem ser removidos com segurança se confirmado que nenhum dado antigo em `localStorage` de sessões de teste os usa).
+`'processando'` e `'revisao'` são resquícios de versões anteriores do fluxo — não são mais atribuídos por nenhum código atual, mas permanecem no union por segurança de tipos (podem ser removidos com segurança se confirmado que nenhum dado antigo em `localStorage` de sessões de teste os usa). Os 3 status marcados `@deprecated` (dupla alçada) seguem a mesma lógica: nenhum código novo os produz desde a Etapa 1, mas permanecem no union e em `statusPorTab.retroativos` para não quebrar a exibição de registros antigos já persistidos.
 
 ### `CampoExtraido`
 ```ts
@@ -824,7 +811,7 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - Alertas de "competência sem envio" e "competência incompleta" (2 tipos distintos) na tela `/servidor/pagamentos`.
 - Badge de contagem no menu "Pagamentos" e no sino de notificações.
 - Fila do Analista com aprovar / aprovar com ressalva / solicitar correção / recusar.
-- Fluxo retroativo completo: 1ª alçada (Analista) → 2ª alçada (Gerência) → aprovado/devolvido/recusado.
+- Fluxo retroativo completo: aprovação única por Analista **ou** Gerência (sem hierarquia — Etapa 1) → aprovado/recusado/correção solicitada.
 - Substituição/correção pós-submissão pelo Servidor (`ServidorComprovanteDetail`), incluindo a partir do alerta de "competência incompleta".
 - Histórico append-only de todas as ações (Servidor/Analista/Gerência) visível em ambos os lados.
 - Notificações derivadas do estado persistido.
@@ -833,10 +820,11 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - **(Novo)** Restrição de tipos de documento por tipo de plano (empresarial x individual/familiar) no upload multi-arquivo — seção 3.17/6.
 - **(Novo)** Bloqueio de aprovação (automática e com ressalva) quando o tipo de assistência é odontológico, com banner explicativo para Analista e Gerência — seção 3.18.
 - **(Novo)** Documento complementar solicitado pela GERDAB: botão dedicado no Analista/Gerência, destaque + anexo direto no lado do Servidor, notificação e limpeza automática ao ser atendido — seção 3.18.
+- **(Novo — Etapa 1 do alinhamento de stakeholder)** Retroativo com aprovação única: removida a 2ª alçada obrigatória da Gerência. Analista e Gerência têm exatamente as mesmas ações sobre `retroativo_aguardando_aprovacao`, qualquer um dos dois pode decidir sozinho — seções 3.12, 4, 5, 13 (decisão 30).
 
-**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1), fluxo do Analista + sino + detalhe (Etapa 2), 2ª alçada da Gerência (Etapa 3), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`).
+**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1 original), fluxo do Analista + sino + detalhe (Etapa 2 original), 2ª alçada da Gerência (Etapa 3 original — **posteriormente removida**, ver decisão 30), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`).
 
-**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): toda a Etapa B descrita na seção 3.18 (elegibilidade por tipo de assistência + documento complementar solicitado pela GERDAB). Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido.
+**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): a Etapa 1 do plano de alinhamento de stakeholder (retroativo com aprovação única — este documento). Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido.
 
 ---
 
@@ -897,18 +885,29 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 27. **Limpeza automática da solicitação complementar reaproveita o padrão de dispensa/conclusão** — em vez de inventar um mecanismo novo, `limparSolicitacaoComplementar` segue exatamente o mesmo padrão já estabelecido por `removerDispensaBeneficiario`/`invalidarConclusaoCompetencia`: qualquer novo documento persistido dispara a limpeza de estados que "não fazem mais sentido" para aquele beneficiário/competência.
 28. **Tipo de plano simulável via `localStorage`, sem controle visível na UI** — pedido explícito do usuário por uma forma de testar o perfil empresarial "sem editar código". Em vez de criar uma tela/toggle permanente (que apareceria também em demonstrações para stakeholders, destoando do restante do fluxo "real"), a constante fixa virou uma leitura de `localStorage` (`getTipoPlanoPagamento`), seguindo exatamente o mesmo padrão já usado para `prosaude_role` (troca de perfil Analista/Gerência). Testável via console do navegador, invisível na UI normal.
 29. **Detecção automática de tipo documental pelo nome do arquivo** — pedido explícito do usuário para que nomear um arquivo como "fatura_tecnica" tivesse "o comportamento esperado", da mesma forma que já acontecia com "ilegivel". Estendida a convenção de nome de arquivo já existente (antes só para simular resultado de OCR) para também pré-marcar os checkboxes de tipo documental — `detectarTiposPeloNomeArquivo` só sugere tipos presentes em `tiposPermitidos`, então o resultado sempre respeita a restrição por plano vigente no momento (não é possível "forçar" fatura técnica nomeando o arquivo se o perfil ainda estiver em individual/familiar).
+30. **(Etapa 1 — alinhamento de stakeholder) Retroativo deixa de exigir 2ª alçada obrigatória** — pedido explícito do stakeholder, após reunião de alinhamento de expectativas: "não deve mais existir a necessidade de segunda alçada, pode ser o Analista ou a Gerência." As decisões 7 e 8 (`retroativo_devolvido` e `retroativo_recusado` como status próprios, para diferenciar as etapas da dupla alçada) ficaram parcialmente obsoletas: `retroativo_recusado` continua em uso (agora a partir de `retroativo_aguardando_aprovacao`, qualquer papel), mas `retroativo_devolvido` e a distinção `retroativo_aguardando_analista`/`retroativo_aguardando_gerencia` passaram a ser **legado** — mantidos no union `StatusComprovante` só para não quebrar a exibição de registros antigos já persistidos em `localStorage` de sessões de teste anteriores. Novo status único `retroativo_aguardando_aprovacao` substitui os dois antigos em todo código novo; `proximoStatusAprovacao()` resolve direto para `retroativo_aprovado`, sem etapa intermediária. Analista e Gerência passam a ter exatamente as mesmas ações sobre retroativos (seções 4 e 5).
 
 ---
 
 ## 14. Próximos Passos Recomendados
 
+### Em andamento — Etapas 2-7 do alinhamento de stakeholder (ver decisão 30, seção 13)
+
+Etapa 1 (retroativo com aprovação única, este documento) está implementada, testada e aguardando autorização de commit. As 6 etapas seguintes do mesmo plano (aprovadas pelo usuário, cada uma com seu próprio ciclo de build + teste manual + doc + autorização) ainda não foram implementadas:
+- **Etapa 2:** seleção de beneficiários agrupada automaticamente por operadora + modalidade de plano, excluindo quem tem vínculo de associação (sem bloquear o restante da família).
+- **Etapa 3:** documentos obrigatórios calculados pela modalidade do grupo selecionado (não mais um toggle global), com cobertura por beneficiário rastreada por arquivo.
+- **Etapa 4:** nova taxonomia de campos por tipo documental (Comprovante de Pagamento, Boleto, Recibo/Demonstrativo, Fatura Técnica), remoção dos campos Banco/Tipo de Assistência, generalização da detecção de situação não reembolsável (odontológico + multa + taxa administrativa + juros) como alerta.
+- **Etapa 5:** justificativas obrigatórias (mínimo 3 palavras) para divergência de valor e para retroativo.
+- **Etapa 6:** operadora divergente do cadastro oferece "Abrir requerimento de mudança de plano" ou "Continuar mesmo assim".
+- **Etapa 7:** botão "Solicitar requerimento" (mudança de plano / inclusão de dependente) para Analista/Gerência, e indicador de prazo do relatório mensal (2º dia útil) como preparação para um módulo futuro.
+
 ### Prioridade alta — requisito de produto (não é só limpeza de protótipo)
 
-1. **Substituir os mecanismos de teste (`localStorage` + nome de arquivo) pela integração real com o cadastro** (pendência 13, seção 12): o tipo de plano do usuário (empresarial x individual/familiar) deve ser lido do cadastro real (`prosaude_titular_cadastro.plano.empresarial`, já capturado no Primeiro Acesso — `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md`, seção 3), nunca de um toggle manual; e o reconhecimento do tipo documental de um arquivo deve vir de OCR/IA real analisando o **conteúdo**, nunca do nome do arquivo escolhido pelo usuário. Isso é uma diferença de comportamento entre protótipo e sistema real que deve ficar clara para quem for escrever a história de usuário de produção — o usuário final **nunca deve ver ou controlar** essa distinção; ela deve ser 100% determinada pelo backend a partir do cadastro dele.
+1. **Substituir os mecanismos de teste (`localStorage` + nome de arquivo) pela integração real com o cadastro** (pendência 13, seção 12): o tipo de plano do usuário (empresarial x individual/familiar) deve ser lido do cadastro real (`prosaude_titular_cadastro.plano.empresarial`, já capturado no Primeiro Acesso — `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md`, seção 3), nunca de um toggle manual; e o reconhecimento do tipo documental de um arquivo deve vir de OCR/IA real analisando o **conteúdo**, nunca do nome do arquivo escolhido pelo usuário. Isso é uma diferença de comportamento entre protótipo e sistema real que deve ficar clara para quem for escrever a história de usuário de produção — o usuário final **nunca deve ver ou controlar** essa distinção; ela deve ser 100% determinada pelo backend a partir do cadastro dele. **Nota:** a Etapa 2 do plano acima resolve isso parcialmente, ao mover a modalidade de plano do toggle global para o beneficiário/grupo — mas ainda como dado mock em `mock-data.ts`, não como integração real com o cadastro.
 
 ### Demais passos, da menor para a maior complexidade/risco
 
-2. **Commitar o trabalho da Etapa B** (ver seção 11 — "Ainda não commitado") — elegibilidade por tipo de assistência + documento complementar solicitado (seção 3.18). Aguardando autorização explícita do usuário, conforme processo já estabelecido.
+2. **Commitar a Etapa 1 deste documento** (ver seção 11 — "Ainda não commitado"). Aguardando autorização explícita do usuário, conforme processo já estabelecido.
 3. **Decidir e resolver as pendências 1, 9 e 10 da seção 12** (campo `cpf` ausente no mock de OCR; status legados `processando`/`revisao`; campo `justificativaDivergencia` não utilizado) — são limpezas de baixo risco que não mudam comportamento visível.
 4. **Estender "competência incompleta" para competências retroativas** (pendência 3) — hoje só cobre `competenciaAtual`; se o negócio precisar do mesmo alerta para os meses fechados, generalizar `getBeneficiariosFaltantes` para aceitar uma lista de competências e agregar o resultado na UI.
 5. **Resolver o deep-link de abas** (pendência 4) — adicionar um `search: { tab: string }` na rota `/admin/comprovantes` e fazer o card do dashboard linkar diretamente para a aba "Retroativos".

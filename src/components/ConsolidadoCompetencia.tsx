@@ -24,7 +24,7 @@ import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { ServidorComprovanteDetail } from "@/components/ServidorComprovanteDetail";
 
-const statusEditavelPeloServidor: Comprovante["status"][] = ["em_analise", "retroativo_aguardando_analista"];
+const statusEditavelPeloServidor: Comprovante["status"][] = ["em_analise", "retroativo_aguardando_aprovacao"];
 /** Nesses status a correção é sempre "substituir o arquivo" (fluxo já existente em
  *  ServidorComprovanteDetail), não uma simples edição de campos já extraídos. */
 const statusExigeSubstituicao: Comprovante["status"][] = ["ilegivel", "correcao_solicitada"];
