@@ -10,7 +10,7 @@ export const Route = createFileRoute("/admin/dashboard")({
 
 function Dashboard() {
   const retroativosPendentes = getComprovantesUnificados().filter(
-    (c) => c.status === "retroativo_aguardando_gerencia",
+    (c) => c.status === "retroativo_aguardando_aprovacao",
   );
 
   return (
@@ -61,7 +61,7 @@ function Dashboard() {
             <div>
               <h2 className="font-semibold text-sm">Retroativos pendentes</h2>
               <p className="text-xs text-muted-foreground">
-                Aguardando 2ª alçada da Gerência.
+                Aguardando aprovação (Analista ou Gerência).
               </p>
             </div>
           </div>

@@ -237,7 +237,17 @@ export function ServidorComprovanteDetail({
                   </div>
                 )}
 
-                {/* ===== Retroativo aguardando analista/gerência (somente leitura) ===== */}
+                {/* ===== Retroativo aguardando aprovação (Analista OU Gerência — somente leitura) ===== */}
+                {status === "retroativo_aguardando_aprovacao" && (
+                  <div className="space-y-2">
+                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <p className="text-xs text-muted-foreground italic">
+                      Aguardando aprovação da GERDAB (Analista ou Gerência) — somente leitura enquanto aguarda decisão.
+                    </p>
+                  </div>
+                )}
+
+                {/* ===== Legado: retroativo aguardando analista/gerência (2ª alçada obsoleta, somente leitura) ===== */}
                 {(status === "retroativo_aguardando_analista" || status === "retroativo_aguardando_gerencia") && (
                   <div className="space-y-2">
                     <CamposExtraidosForm campos={camposAtuais} readOnly />
@@ -249,7 +259,7 @@ export function ServidorComprovanteDetail({
                   </div>
                 )}
 
-                {/* ===== Retroativo devolvido pela Gerência (somente leitura para o servidor) ===== */}
+                {/* ===== Legado: retroativo devolvido pela Gerência (somente leitura para o servidor) ===== */}
                 {status === "retroativo_devolvido" && (
                   <div className="space-y-2">
                     <CamposExtraidosForm campos={camposAtuais} readOnly />

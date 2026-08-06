@@ -82,3 +82,39 @@ export function statusDoBeneficiarioNoDocumento(c: Comprovante, beneficiarioId: 
 export function beneficiarioTemCampoVazio(c: Comprovante, beneficiarioId: string): boolean {
   return getCamposDoBeneficiario(c, beneficiarioId).some((campo) => campo.valor.trim() === "");
 }
+
+/** Um grupo de beneficiários que podem ser enviados juntos no mesmo comprovante — mesma
+ *  operadora e mesma modalidade de plano. */
+export interface GrupoBeneficiarios {
+  chave: string;
+  operadora: string;
+  modalidadePlano: BeneficiarioPagamento["modalidadePlano"];
+  beneficiarios: BeneficiarioPagamento[];
+}
+
+/**
+ * Agrupa beneficiários elegíveis a envio individual por `operadora + modalidadePlano`, e
+ * separa quem tem `associacao` (comprovação coletiva, nunca participa de envio individual).
+ * Beneficiários do mesmo grupo podem ser selecionados juntos no mesmo comprovante; beneficiários
+ * de grupos diferentes exigem envios separados — ver `BeneficiarioSelector.tsx`.
+ */
+export function agruparBeneficiariosElegiveis(beneficiarios: BeneficiarioPagamento[]): {
+  grupos: GrupoBeneficiarios[];
+  vinculadosAssociacao: BeneficiarioPagamento[];
+} {
+  const elegiveis = beneficiarios.filter((b) => !b.associacao);
+  const vinculadosAssociacao = beneficiarios.filter((b) => b.associacao);
+
+  const porChave = new Map<string, GrupoBeneficiarios>();
+  for (const b of elegiveis) {
+    const chave = `${b.operadora}|${b.modalidadePlano}`;
+    const grupo = porChave.get(chave);
+    if (grupo) {
+      grupo.beneficiarios.push(b);
+    } else {
+      porChave.set(chave, { chave, operadora: b.operadora, modalidadePlano: b.modalidadePlano, beneficiarios: [b] });
+    }
+  }
+
+  return { grupos: [...porChave.values()], vinculadosAssociacao };
+}

@@ -1,6 +1,5 @@
 import {
   comprovantes as comprovantesSeed,
-  tipoPlanoPagamentoPadrao,
   type Comprovante,
   type ConclusaoCompetencia,
   type BeneficiarioDispensado,
@@ -12,26 +11,7 @@ export const PROSAUDE_STORAGE_KEYS = {
   comprovantesPagamento: "prosaude_comprovantes_pagamento",
   competenciasConcluidas: "prosaude_competencias_concluidas",
   beneficiariosDispensados: "prosaude_beneficiarios_dispensados",
-  tipoPlanoPagamento: "prosaude_tipo_plano_pagamento",
 } as const;
-
-/**
- * Tipo de plano do cenário de referência do Módulo de Pagamento — controla quais tipos de
- * documento (Boleto/Recibo/Demonstrativo x Fatura Técnica) podem ser marcados no upload.
- * Persistido em localStorage (mesmo padrão de `prosaude_role`) para permitir simular o perfil
- * "empresarial" sem editar código nem rebuildar — no console do navegador:
- * `localStorage.setItem('prosaude_tipo_plano_pagamento', 'empresarial')` e recarregar a página.
- */
-export function getTipoPlanoPagamento(): "empresarial" | "individual_familiar" {
-  if (typeof window === "undefined") return tipoPlanoPagamentoPadrao;
-  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.tipoPlanoPagamento);
-  return raw === "empresarial" || raw === "individual_familiar" ? raw : tipoPlanoPagamentoPadrao;
-}
-
-export function setTipoPlanoPagamento(tipo: "empresarial" | "individual_familiar") {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(PROSAUDE_STORAGE_KEYS.tipoPlanoPagamento, tipo);
-}
 
 export type TitularCadastroPlano = {
   operadora: string;

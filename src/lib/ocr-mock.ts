@@ -46,7 +46,7 @@ const palavrasChavePorTipo: Record<TipoDocumentoArquivo, string[]> = {
  * Detecta, a partir do nome do arquivo, quais tipos documentais marcar automaticamente no
  * upload — só considera os tipos presentes em `tiposPermitidos` (respeitando a restrição por
  * tipo de plano). Ex: um arquivo "fatura_tecnica_julho.pdf" pré-marca "Fatura Técnica" apenas
- * se o plano atual permitir esse tipo (ver `tiposDocumentoPorPlano`, `getTipoPlanoPagamento`).
+ * se a modalidade de plano do grupo selecionado permitir esse tipo (ver `tiposDocumentoPorPlano`).
  */
 export function detectarTiposPeloNomeArquivo(
   nomeArquivo: string,

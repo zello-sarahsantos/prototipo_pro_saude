@@ -14,10 +14,9 @@ const statusNotificaveis: Partial<Record<StatusComprovante, (nome: string) => st
   aprovado: (nome) => `Comprovante de ${nome} foi aprovado.`,
   aprovado_com_ressalva: (nome) => `Comprovante de ${nome} foi aprovado com ressalva.`,
   recusado: (nome) => `Comprovante de ${nome} foi recusado.`,
-  retroativo_aguardando_gerencia: (nome) => `Retroativo de ${nome} está aguardando aprovação da Gerência.`,
-  retroativo_devolvido: (nome) => `A Gerência devolveu o retroativo de ${nome} ao Analista para ajuste.`,
-  retroativo_aprovado: (nome) => `Retroativo de ${nome} foi aprovado pela Gerência.`,
-  retroativo_recusado: (nome) => `Retroativo de ${nome} foi recusado pela Gerência.`,
+  retroativo_aguardando_aprovacao: (nome) => `Retroativo de ${nome} está aguardando aprovação.`,
+  retroativo_aprovado: (nome) => `Retroativo de ${nome} foi aprovado.`,
+  retroativo_recusado: (nome) => `Retroativo de ${nome} foi recusado.`,
 };
 
 /**

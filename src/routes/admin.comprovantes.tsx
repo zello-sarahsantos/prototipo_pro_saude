@@ -42,7 +42,13 @@ type Tab = "comprovantes" | "retroativos" | "historico";
 
 const statusPorTab: Record<Tab, StatusComprovante[]> = {
   comprovantes: ["em_analise"],
-  retroativos: ["retroativo_aguardando_analista", "retroativo_devolvido", "retroativo_aguardando_gerencia"],
+  // Os 3 últimos são legado (registros antigos já persistidos); nenhum envio novo chega neles.
+  retroativos: [
+    "retroativo_aguardando_aprovacao",
+    "retroativo_aguardando_analista",
+    "retroativo_devolvido",
+    "retroativo_aguardando_gerencia",
+  ],
   historico: [
     "aprovado",
     "aprovado_com_ressalva",
@@ -53,14 +59,11 @@ const statusPorTab: Record<Tab, StatusComprovante[]> = {
   ],
 };
 
-// Status em que o Analista (1ª alçada) atua — inclui o retroativo devolvido pela Gerência
-const statusAcaoAnalista: StatusComprovante[] = [
-  "em_analise",
-  "retroativo_aguardando_analista",
-  "retroativo_devolvido",
-];
+// Status em que há ação disponível — Analista e Gerência têm exatamente as mesmas ações
+// (retroativo não exige mais 2ª alçada obrigatória).
+const statusComAcaoDisponivel: StatusComprovante[] = ["em_analise", "retroativo_aguardando_aprovacao"];
 
-type SubFormTipo = "ressalva" | "correcao" | "recusar" | "devolver" | "complementar";
+type SubFormTipo = "ressalva" | "correcao" | "recusar" | "complementar";
 
 function nomeBeneficiario(id: string): string {
   return beneficiariosPagamento.find((b) => b.id === id)?.nome ?? id;
@@ -129,12 +132,9 @@ function Comprovantes() {
     setComentario("");
   }
 
-  /** Próximo status ao aprovar, considerando em qual ponto do fluxo (normal ou retroativo) o comprovante está. */
+  /** Próximo status ao aprovar — retroativo tem aprovação única, por qualquer um dos dois papéis. */
   function proximoStatusAprovacao(statusAtual: StatusComprovante): StatusComprovante {
-    if (statusAtual === "retroativo_aguardando_gerencia") return "retroativo_aprovado";
-    if (statusAtual === "retroativo_aguardando_analista" || statusAtual === "retroativo_devolvido") {
-      return "retroativo_aguardando_gerencia";
-    }
+    if (statusAtual === "retroativo_aguardando_aprovacao") return "retroativo_aprovado";
     return "aprovado";
   }
 
@@ -166,12 +166,7 @@ function Comprovantes() {
     const comprovante = todos.find((c) => c.id === divergencia.comprovanteId);
     if (!comprovante) return;
 
-    const statusAtual = comprovante.status;
-    // Na 2ª alçada, a divergência não impede a conclusão — apenas fica registrada como ressalva no histórico.
-    const proximoStatus: StatusComprovante =
-      statusAtual === "retroativo_aguardando_gerencia" ? "retroativo_aprovado" : proximoStatusAprovacao(statusAtual);
-
-    registrarAcao(comprovante, divergencia.beneficiarioId, proximoStatus, {
+    registrarAcao(comprovante, divergencia.beneficiarioId, proximoStatusAprovacao(comprovante.status), {
       etapa: etapaAtual,
       acao: "aprovado_com_ressalva",
       aprovadoPor: autor,
@@ -201,24 +196,16 @@ function Comprovantes() {
         comentario,
       });
     } else if (subForm.tipo === "recusar") {
-      // Recusa na 2ª alçada (Gerência) usa um status próprio, para distinguir de uma recusa comum
-      // e permitir exibir a competência original, a justificativa do atraso e a aprovação anterior do Analista.
+      // Recusa em retroativo usa um status próprio, para distinguir de uma recusa comum
+      // e permitir exibir a competência original e a justificativa do atraso.
       const statusRecusa: StatusComprovante =
-        comprovante.status === "retroativo_aguardando_gerencia" ? "retroativo_recusado" : "recusado";
+        comprovante.status === "retroativo_aguardando_aprovacao" ? "retroativo_recusado" : "recusado";
       registrarAcao(comprovante, subForm.beneficiarioId, statusRecusa, {
         etapa: etapaAtual,
         acao: "recusado",
         aprovadoPor: autor,
         data: new Date().toISOString(),
         motivo,
-        comentario,
-      });
-    } else if (subForm.tipo === "devolver") {
-      registrarAcao(comprovante, subForm.beneficiarioId, "retroativo_devolvido", {
-        etapa: "gerencia",
-        acao: "devolvido_analista",
-        aprovadoPor: autor,
-        data: new Date().toISOString(),
         comentario,
       });
     } else if (subForm.tipo === "complementar") {
@@ -287,12 +274,12 @@ function Comprovantes() {
 
             {c.status === "retroativo_aguardando_gerencia" && !isGerencia && (
               <p className="text-xs text-muted-foreground italic mb-2">
-                Aguardando 2ª alçada da Gerência — somente consulta.
+                Registro legado (2ª alçada) — somente consulta.
               </p>
             )}
             {c.status === "retroativo_devolvido" && (
-              <p className="text-xs font-medium text-warning italic mb-2 flex items-center gap-1.5">
-                <Undo2 className="h-3.5 w-3.5" /> Devolvido pela Gerência — ajuste necessário
+              <p className="text-xs text-muted-foreground italic mb-2 flex items-center gap-1.5">
+                <Undo2 className="h-3.5 w-3.5" /> Registro legado — devolução da antiga 2ª alçada.
               </p>
             )}
 
@@ -353,9 +340,7 @@ function Comprovantes() {
                   .find((a) => a.etapa === "analista" && (a.acao === "aprovado" || a.acao === "aprovado_com_ressalva"));
                 const devolucaoGerencia = [...historico].reverse().find((a) => a.acao === "devolvido_analista");
 
-                const acoesAnalista = statusAcaoAnalista.includes(statusBeneficiario);
-                const acoesGerencia = statusBeneficiario === "retroativo_aguardando_gerencia" && isGerencia;
-                const acoesDisponiveis = acoesAnalista || acoesGerencia;
+                const acoesDisponiveis = statusComAcaoDisponivel.includes(statusBeneficiario);
                 const emSubForm = subForm?.beneficiarioId === beneficiarioId;
                 const { elegivel } = getElegibilidade(cur, beneficiarioId);
 
@@ -423,14 +408,10 @@ function Comprovantes() {
                             onClick={() => aprovar(cur, beneficiarioId)}
                             className="text-sm bg-success text-success-foreground rounded-md px-3 py-2 hover:opacity-90 flex items-center gap-1.5"
                           >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            {acoesGerencia && "Aprovar definitivamente"}
-                            {!acoesGerencia && cur.status === "retroativo_aguardando_analista" && "Aprovar (1ª alçada)"}
-                            {!acoesGerencia && cur.status === "retroativo_devolvido" && "Reenviar para Gerência"}
-                            {!acoesGerencia && cur.status === "em_analise" && "Aprovar"}
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
                           </button>
                         )}
-                        {elegivel && cur.status === "em_analise" && (
+                        {elegivel && (
                           <button
                             onClick={() => setSubForm({ beneficiarioId, tipo: "ressalva" })}
                             className="text-sm border border-warning/40 text-warning rounded-md px-3 py-2 hover:bg-warning/5 flex items-center gap-1.5"
@@ -446,22 +427,12 @@ function Comprovantes() {
                             <FilePlus className="h-3.5 w-3.5" /> Solicitar documento complementar
                           </button>
                         )}
-                        {acoesGerencia && (
-                          <button
-                            onClick={() => setSubForm({ beneficiarioId, tipo: "devolver" })}
-                            className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
-                          >
-                            <Undo2 className="h-3.5 w-3.5" /> Devolver ao Analista
-                          </button>
-                        )}
-                        {!acoesGerencia && (
-                          <button
-                            onClick={() => setSubForm({ beneficiarioId, tipo: "correcao" })}
-                            className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" /> Solicitar correção
-                          </button>
-                        )}
+                        <button
+                          onClick={() => setSubForm({ beneficiarioId, tipo: "correcao" })}
+                          className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" /> Solicitar correção
+                        </button>
                         <button
                           onClick={() => setSubForm({ beneficiarioId, tipo: "recusar" })}
                           className="text-sm border border-destructive/30 text-destructive rounded-md px-3 py-2 hover:bg-destructive/5 flex items-center gap-1.5"
@@ -494,11 +465,9 @@ function Comprovantes() {
                               ? "Justificativa obrigatória para aprovar com ressalva..."
                               : subForm.tipo === "correcao"
                                 ? "Descreva o que precisa ser corrigido..."
-                                : subForm.tipo === "devolver"
-                                  ? "Explique por que está devolvendo ao Analista..."
-                                  : subForm.tipo === "complementar"
-                                    ? "Descreva qual documento complementar é necessário..."
-                                    : "Detalhe o motivo da recusa..."
+                                : subForm.tipo === "complementar"
+                                  ? "Descreva qual documento complementar é necessário..."
+                                  : "Detalhe o motivo da recusa..."
                           }
                           className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                         />
