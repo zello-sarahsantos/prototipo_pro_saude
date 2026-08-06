@@ -33,6 +33,8 @@ export function getBeneficiariosFaltantes(competencia: string): BeneficiarioFalt
   const dispensadosIds = new Set(getBeneficiariosDispensadosIds(competencia));
 
   return beneficiariosPagamento.flatMap((b): BeneficiarioFaltante[] => {
+    // Vinculados a associação têm comprovação coletiva — nunca entram no checklist individual.
+    if (b.associacao) return [];
     if (dispensadosIds.has(b.id)) return [];
     const docs = comprovantes.filter((c) => c.beneficiarioIds.includes(b.id));
 

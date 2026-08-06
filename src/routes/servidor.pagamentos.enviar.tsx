@@ -14,6 +14,7 @@ import {
   competenciasFechadas,
   formatCompetencia,
   tiposDocumentoPorPlano,
+  tipoPlanoPagamentoPadrao,
   type ArquivoAnexado,
   type Comprovante,
   type CampoExtraido,
@@ -22,7 +23,6 @@ import { arquivoEhIlegivel, gerarCamposExtraidos, mesclarCamposDeArquivos } from
 import {
   addComprovantePagamento,
   getComprovantesUnificados,
-  getTipoPlanoPagamento,
   saveConclusaoCompetencia,
 } from "@/lib/prosaude-storage";
 
@@ -57,7 +57,6 @@ function stepIndex(step: Step): number {
 function EnviarComprovante() {
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const tiposPermitidos = tiposDocumentoPorPlano[getTipoPlanoPagamento()];
   // Quando aberta a partir do alerta de "competência pendente", a competência vem preenchida e travada.
   const competenciaViaAlerta =
     search.competencia && competenciasFechadas.includes(search.competencia) ? search.competencia : undefined;
@@ -88,6 +87,10 @@ function EnviarComprovante() {
   const beneficiariosEscolhidos = beneficiariosPagamento.filter((b) =>
     beneficiariosSelecionados.includes(b.id),
   );
+  // Modalidade do grupo selecionado determina os tipos de documento permitidos — não é mais
+  // um valor único e global do sistema (ver mock-data.ts, BeneficiarioPagamento.modalidadePlano).
+  const tiposPermitidos =
+    tiposDocumentoPorPlano[beneficiariosEscolhidos[0]?.modalidadePlano ?? tipoPlanoPagamentoPadrao];
 
   const podeAvancarSelecao =
     beneficiariosSelecionados.length > 0 && (!isRetroativo || justificativaAtraso.trim().length > 0);
@@ -229,7 +232,7 @@ function EnviarComprovante() {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Envios retroativos passam por dupla aprovação: Analista e Gerência.
+                Envios retroativos são aprovados pela GERDAB (Analista ou Gerência) antes de valer para fins de reembolso.
               </p>
             </div>
           )}

@@ -57,7 +57,9 @@ export function ConsolidadoCompetencia({
     const todos = getComprovantesUnificados().filter((c) => c.competencia === competencia);
     const dispensadosIds = new Set(getBeneficiariosDispensadosIds(competencia));
 
-    const linhas = beneficiariosPagamento.map((b) => {
+    // Vinculados a associação têm comprovação coletiva — não entram no checklist de pendência
+    // individual do Resumo (mesma regra da seleção de beneficiários, ver BeneficiarioSelector).
+    const linhas = beneficiariosPagamento.filter((b) => !b.associacao).map((b) => {
       const docs = todos.filter((c) => c.beneficiarioIds.includes(b.id));
       const dispensado = dispensadosIds.has(b.id);
 

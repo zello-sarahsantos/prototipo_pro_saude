@@ -312,15 +312,21 @@ export interface ArquivoAnexado {
 }
 
 /**
- * Tipo de plano do cenário de referência — restringe quais tipos de documento podem ser
- * anexados. Este é o valor padrão; `getTipoPlanoPagamento()` (prosaude-storage.ts) permite
- * simular o outro perfil via localStorage, sem editar código.
+ * Fallback usado apenas antes de qualquer beneficiário ser selecionado no wizard de envio
+ * (`servidor.pagamentos.enviar.tsx`). A partir da seleção, a modalidade de plano que restringe
+ * os tipos de documento vem do grupo de beneficiários escolhido (`BeneficiarioPagamento.modalidadePlano`),
+ * não mais de um valor único e global do sistema — ver seção 6 de docs/MODULO_PAGAMENTO.md.
  */
 export const tipoPlanoPagamentoPadrao: 'empresarial' | 'individual_familiar' = 'individual_familiar';
 
 export const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
   empresarial: ['fatura_tecnica', 'comprovante_pagamento'],
   individual_familiar: ['boleto', 'recibo', 'demonstrativo', 'comprovante_pagamento'],
+};
+
+export const modalidadePlanoLabels: Record<'empresarial' | 'individual_familiar', string> = {
+  empresarial: 'Empresarial',
+  individual_familiar: 'Individual/Familiar',
 };
 
 /** Registro de uma ação tomada sobre o comprovante (ou sobre um beneficiário específico dele). */
@@ -431,12 +437,27 @@ export interface BeneficiarioPagamento {
   operadora: string;
   valorCadastrado: number;
   situacao: 'ativo' | 'pendente_documentacao' | 'inativo';
+  /** Modalidade do plano deste beneficiário — determina a exigência documental do grupo de
+   *  envio que ele integra (Etapa 3). Não é mais um valor único e global do sistema. */
+  modalidadePlano: 'empresarial' | 'individual_familiar';
+  /** Quando presente, este beneficiário tem comprovação coletiva feita pela associação —
+   *  não participa de envio individual, não entra em checklist de pendência, e não aparece
+   *  no alerta de "competência incompleta". Independente de `servidorAtual.associacao`
+   *  (Módulo de Cadastro), que cobre o titular inteiro; aqui é por beneficiário. */
+  associacao?: string;
 }
 
+/**
+ * Cenário de referência "de fábrica": Carlos e Marina compartilham operadora e modalidade
+ * (formam 1 grupo de envio); Pedro está vinculado a uma associação (comprovação coletiva,
+ * excluído do envio individual sem bloquear Carlos/Marina). Demonstra automaticamente o
+ * padrão "titular em operadora normal + dependente em associação" — ver docs/MODULO_PAGAMENTO.md
+ * para como editar estes registros e demonstrar os outros 2 padrões descritos pelo stakeholder.
+ */
 export const beneficiariosPagamento: BeneficiarioPagamento[] = [
-  { id: 'ben-titular', nome: 'Carlos Eduardo Ramos', parentesco: 'Titular', operadora: 'Assefaz', valorCadastrado: 420, situacao: 'ativo' },
-  { id: 'ben-conjuge', nome: 'Marina Ramos', parentesco: 'Cônjuge', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo' },
-  { id: 'ben-filho', nome: 'Pedro Ramos', parentesco: 'Filho', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo' },
+  { id: 'ben-titular', nome: 'Carlos Eduardo Ramos', parentesco: 'Titular', operadora: 'Assefaz', valorCadastrado: 420, situacao: 'ativo', modalidadePlano: 'individual_familiar' },
+  { id: 'ben-conjuge', nome: 'Marina Ramos', parentesco: 'Cônjuge', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo', modalidadePlano: 'individual_familiar' },
+  { id: 'ben-filho', nome: 'Pedro Ramos', parentesco: 'Filho', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo', modalidadePlano: 'individual_familiar', associacao: 'Assetran' },
 ];
 
 export const analistaReferencia = "Sarah Santos";

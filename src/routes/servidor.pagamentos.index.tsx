@@ -161,6 +161,23 @@ function PagamentosHome() {
         </h3>
         <div className="space-y-2">
           {beneficiariosPagamento.map((b) => {
+            // Vinculados a associação têm comprovação coletiva — nunca enviam individualmente
+            // nesta competência, então não faz sentido mostrar "Sem comprovante" para eles.
+            if (b.associacao) {
+              return (
+                <div
+                  key={b.id}
+                  className="w-full bg-card rounded-xl p-3 border border-border flex items-center gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{b.nome}</p>
+                    <p className="text-xs text-muted-foreground">{b.parentesco} • Vinculado à {b.associacao}</p>
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground italic">Comprovação coletiva</span>
+                </div>
+              );
+            }
+
             const doBeneficiario = daCompetenciaAtual.filter((c) => c.beneficiarioIds.includes(b.id));
             // Último envio da lista = mais recente (seed em ordem cronológica + envios da sessão ao final)
             const maisRecente = doBeneficiario[doBeneficiario.length - 1];
