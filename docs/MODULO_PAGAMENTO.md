@@ -371,6 +371,48 @@ Função pura, sem side-effects — mesmo padrão de `getDivergencia`/`getElegib
 - **Removidos** (resolviam a pendência 13 da seção 12, agora parcialmente obsoleta): `getTipoPlanoPagamento()`, `setTipoPlanoPagamento()` e a chave `prosaude_tipo_plano_pagamento` (`prosaude-storage.ts`). `tipoPlanoPagamentoPadrao` (`mock-data.ts`) continua existindo, mas só como fallback para quando nenhum beneficiário está selecionado ainda (nunca deveria ser atingido na prática, já que o wizard exige seleção antes de avançar).
 - **Consequência para teste manual:** simular o perfil empresarial deixou de ser um toggle de `localStorage` — agora exige editar `modalidadePlano` de um beneficiário em `mock-data.ts` para `'empresarial'` (mesma convenção de edição temporária usada para demonstrar os padrões de agrupamento acima).
 
+### 3.20 Documentos obrigatórios por modalidade + cobertura por beneficiário (Etapa 3)
+
+**Contexto:** Etapa 3 do alinhamento de stakeholder (ver seção 13, decisão 32). Antes de implementar, os fluxogramas revisados foram validados com o usuário — feedback importante incorporado: (1) a UI deve responder diretamente "quais documentos preciso enviar", não expor o conceito interno de "modalidade"; (2) o checklist precisa mostrar o motivo de uma pendência, não só um X; (3) a cobertura de beneficiários pertence ao **tipo documental dentro do arquivo**, não ao arquivo inteiro — um único PDF pode ser Boleto **e** Comprovante ao mesmo tempo, cada um cobrindo beneficiários diferentes.
+
+**Regra de obrigatoriedade** (calculada a partir da `modalidadePlano` do grupo selecionado na Etapa 2 — `getCoberturaDocumental`, `comprovante-status.ts`):
+- **Empresarial:** Fatura Técnica **e** Comprovante de Pagamento.
+- **Individual/familiar:** (Boleto **e** Comprovante de Pagamento) **ou** Recibo **ou** Demonstrativo.
+
+**Modelo de dados (`mock-data.ts`) — mudança de arquitetura pedida explicitamente pelo usuário:**
+```ts
+export interface DocumentoDetectado {
+  tipo: TipoDocumentoArquivo;
+  beneficiarioIds?: string[]; // ausente = cobre todos os beneficiários do envio
+}
+
+export interface ArquivoAnexado {
+  nome: string;
+  documentos: DocumentoDetectado[]; // substituiu `tipos: TipoDocumentoArquivo[]`
+}
+```
+A cobertura passou de uma propriedade do **arquivo** (`ArquivoAnexado.beneficiarioIds`, como cheguei a propor antes da revisão) para uma propriedade de cada **documento/tipo dentro do arquivo** (`DocumentoDetectado.beneficiarioIds`). Motivo explícito do usuário: um mesmo PDF pode ser Boleto **e** Comprovante simultaneamente, e cada tipo pode cobrir um subconjunto diferente de beneficiários (ex: o Boleto só do Carlos, o Comprovante da família toda) — modelar por arquivo inteiro perderia essa distinção. Esse formato também já deixa a extração de campos por tipo (Etapa 4) apoiada na estrutura certa, sem precisar remodelar depois.
+
+**Regra de cobertura — igual para todos os 5 tipos documentais** (`beneficiariosCobertosPeloDocumento`, `comprovante-status.ts`): `beneficiarioIds` ausente cobre todos os beneficiários do envio; presente (mesmo vazio `[]`) usa exatamente essa lista. Nenhum tipo é obrigatoriamente individual — Recibo e Demonstrativo têm a mesma regra de Boleto/Fatura Técnica/Comprovante (correção de rota registrada na decisão 32).
+
+**UX do passo de upload — revisada uma 2ª vez após review do usuário (ver seção 13, decisão 32):**
+1. **Bloco de orientação antes da área de anexos**, calculado a partir da `modalidadePlano` do grupo, sem expor o termo "modalidade" ao servidor:
+   - Empresarial: "Para este grupo, é necessário enviar:" + lista (Fatura Técnica; Comprovante de Pagamento).
+   - Individual/familiar: "Para este grupo, envie uma destas combinações:" + lista (Boleto + Comprovante de Pagamento; ou Recibo; ou Demonstrativo de Pagamento).
+2. **Cobertura por beneficiário começa desmarcada, nunca pré-selecionada**, quando o envio tem mais de 1 beneficiário — `coberturaInicial()` grava `beneficiarioIds: []` (não `undefined`) em todo documento novo nesse caso, forçando declaração explícita. Com só 1 beneficiário no envio, permanece `undefined` (cobertura implícita, pergunta nem aparece — sem ambiguidade possível). Os chips viraram checkboxes reais (`☑`/`☐` + nome completo, mesmo padrão visual dos botões de tipo documental), com ação "Selecionar todos"/"Limpar seleção" por documento.
+3. **Feedback textual enquanto nada estiver marcado:** "Selecione quem está contemplado neste documento." — some assim que o servidor marca ao menos 1 beneficiário para aquele tipo.
+4. **Nova trava de avanço** (`todosDocumentosComCoberturaDefinida`, `comprovante-status.ts`): com mais de 1 beneficiário no grupo, bloqueia "Enviar para processamento" se **qualquer** documento anexado ainda tiver cobertura vazia — mesmo que a checklist já esteja satisfeita por outros documentos (evita avançar com um tipo "esquecido" sem declaração). `podeAvancarUpload` (`servidor.pagamentos.enviar.tsx`) agora exige `todosContemplados(...) && todosDocumentosComCoberturaDefinida(...)`.
+5. **Painel "Cobertura por beneficiário" padronizado**, mesma estrutura visual nos dois estados (ícone + texto, mesma hierarquia tipográfica): completo mostra `✓` verde + tipos unidos por `" + "` (ex: "Boleto + Comprovante de Pagamento"); pendência mostra `✕` vermelho + frase com inicial maiúscula ("Falta Comprovante de Pagamento", "Faltam Fatura Técnica e Comprovante de Pagamento" quando são 2 exigidos por AND, ou "Falta uma combinação válida de documentos" quando não há nenhum indício de qual dos 3 caminhos individual/familiar seguir).
+
+**Geração de campos respeita a cobertura por tipo (`iniciarProcessamento()`, `servidor.pagamentos.enviar.tsx`):** antes, todo beneficiário do envio recebia campos de **todos** os arquivos anexados, independente de quem cada um realmente cobria — um Boleto só do Carlos ainda "vazava" dados fabricados para a Marina. Agora, para cada beneficiário, só entram campos dos documentos (tipo dentro de um arquivo) que efetivamente o cobrem (`beneficiariosCobertosPeloDocumento`, mesma função usada pelo checklist) — **testado manualmente**: Boleto coberto só por Carlos + Comprovante coberto por ambos + Recibo coberto só por Marina resultou em Carlos com campos vindos de Boleto+Comprovante, e Marina com campos vindos de Recibo+Comprovante, sem nenhum campo de Marina rastreado até o Boleto.
+
+**Padrões testados manualmente no navegador, incluindo o boleto duplo pedido pelo usuário:**
+- 1 beneficiário no envio: nenhuma pergunta de cobertura aparece; cobertura implícita cobre o único beneficiário para qualquer tipo, incluindo Recibo/Demonstrativo.
+- Grupo de 2 beneficiários, upload de Boleto: ambos os checkboxes começam desmarcados; "Enviar para processamento" bloqueado; marcar só Carlos → checklist mostra "Falta Comprovante de Pagamento" para Carlos e a mensagem genérica para Marina (que segue sem nenhum tipo); marcar Marina também → os dois passam a mostrar "Falta Comprovante de Pagamento". Repetido com Comprovante de Pagamento: mesmo comportamento, checkboxes começam desmarcados; ao completar os dois, "✓ Boleto + Comprovante de Pagamento" aparece para ambos e o botão libera.
+- Desmarcar 1 beneficiário de um documento já declarado → checklist imediatamente volta a apontar a pendência específica dele, sem afetar o outro (o cenário "boletos separados" dos fluxogramas revisados).
+
+**Arquivos tocados, além dos 3 do plano original** (o rename `tipos` → `documentos` em `ArquivoAnexado` se propagou para todo consumidor do tipo, não só os 3 previstos): `mock-data.ts`, `comprovante-status.ts` (`getCoberturaDocumental`, `todosContemplados`, `todosDocumentosComCoberturaDefinida`, `beneficiariosCobertosPeloDocumento`), `ArquivosAnexadosUpload.tsx`, `servidor.pagamentos.enviar.tsx`, `ResumoPagamento.tsx`, `ConferenciaBeneficiarios.tsx`, `ConsolidadoCompetencia.tsx`, `reenvio-comprovante.ts` (o fluxo de substituição de arquivo agora reconstrói `documentos` a partir da união de tipos herdados, mantendo a decisão já documentada de não suportar multi-arquivo nessa tela).
+
 ---
 
 ## 4. Fluxo do Analista
@@ -463,6 +505,10 @@ Antes da Etapa 1 (ver plano de alinhamento de stakeholder, seção 13, decisão 
 9. Editar qualquer campo sempre marca `origem: 'manual'`, mesmo que o valor final seja igual ao original.
 9a. Um arquivo pode ter mais de um `TipoDocumentoArquivo` marcado simultaneamente (ex: um único PDF marcado como Fatura Técnica **e** Comprovante de Pagamento) — os tipos determinam quais campos aquele arquivo contribui na consolidação (ver seção 3.17), não são mutuamente exclusivos.
 9b. Ao consolidar múltiplos arquivos do mesmo envio, cada campo do resultado final vem do **primeiro arquivo (ordem de upload)** que o produziu — não há lógica de "melhor confiança vence" na consolidação entre arquivos (diferente da lógica de "Não identificado" dentro de 1 arquivo só, que já existia).
+9c. **(Nova — Etapa 3, ver seção 3.20)** A cobertura de beneficiários pertence ao **documento (tipo dentro de um arquivo)**, não ao arquivo inteiro — `ArquivoAnexado.documentos: DocumentoDetectado[]`, cada um com seu próprio `beneficiarioIds?`. Um arquivo com 2 tipos marcados pode ter coberturas diferentes por tipo.
+9d. Documentos obrigatórios por modalidade do grupo: Empresarial exige Fatura Técnica **e** Comprovante; Individual/familiar exige (Boleto **e** Comprovante) **ou** Recibo **ou** Demonstrativo — calculado por `getCoberturaDocumental()`, nunca mais um toggle global.
+9e. Recibo e Demonstrativo nunca cobrem mais de 1 beneficiário por padrão quando há mais de 1 no envio — ausente (`beneficiarioIds` não definido) significa "ainda não escolhido", não "cobre todos". Boleto, Fatura Técnica e Comprovante de Pagamento, ao contrário, cobrem todos por padrão até o servidor restringir manualmente.
+9f. A geração de campos de um beneficiário só considera documentos que efetivamente o cobrem — um Boleto que cobre só o Carlos nunca contribui campos para a Marina, mesmo que os dois estejam no mesmo envio.
 
 ### Pendências
 10. "Pendências" no Resumo da Competência conta **beneficiários únicos**, nunca documentos — um mesmo beneficiário nunca é contado duas vezes mesmo que tenha 2 motivos de pendência (ex: 1 documento ilegível + 1 documento com campo vazio).
@@ -562,22 +608,26 @@ type TipoAssistencia = 'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'od
 ```
 `pagador` foi adicionado antes (regra do usuário — pagamento deve ser feito pelo titular). `tipoAssistencia` e `arquivoOrigem` foram adicionados na rodada de multi-arquivo (seção 3.17) — `tipoAssistencia` sustenta a regra de assistência odontológica não reembolsável (seção 6), e `arquivoOrigem` sustenta a rastreabilidade de qual arquivo originou cada campo consolidado. `cpf` existe no tipo e nos dados seed, mas **não é gerado** por `gerarCamposExtraidos()` (assimetria conhecida, seção 12).
 
-### `TipoDocumentoArquivo` e `ArquivoAnexado`
+### `TipoDocumentoArquivo`, `DocumentoDetectado` e `ArquivoAnexado`
 ```ts
 type TipoDocumentoArquivo = 'fatura_tecnica' | 'comprovante_pagamento' | 'boleto' | 'recibo' | 'demonstrativo';
 
-interface ArquivoAnexado {
-  nome: string;
-  tipos: TipoDocumentoArquivo[]; // um arquivo pode ter mais de 1 tipo marcado
+interface DocumentoDetectado {
+  tipo: TipoDocumentoArquivo;
+  beneficiarioIds?: string[]; // ausente = cobre todos os beneficiários do envio — igual para os 5 tipos
 }
 
-const tipoPlanoPagamento: 'empresarial' | 'individual_familiar' = 'individual_familiar';
+interface ArquivoAnexado {
+  nome: string;
+  documentos: DocumentoDetectado[]; // um arquivo pode ter mais de 1 documento/tipo marcado
+}
+
 const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
   empresarial: ['fatura_tecnica', 'comprovante_pagamento'],
   individual_familiar: ['boleto', 'recibo', 'demonstrativo', 'comprovante_pagamento'],
 };
 ```
-Novos nesta rodada (seção 3.17). `TipoDocumentoArquivo` substitui o antigo `Comprovante['tipoDocumento']` (união única, removida) — `'boleto_individual'` foi renomeado para `'boleto'`.
+`TipoDocumentoArquivo` substitui o antigo `Comprovante['tipoDocumento']` (união única, removida) — `'boleto_individual'` foi renomeado para `'boleto'` (seção 3.17). **(Atualizado — Etapa 3, seção 3.20)** `ArquivoAnexado.tipos: TipoDocumentoArquivo[]` foi substituído por `documentos: DocumentoDetectado[]` — a cobertura de beneficiários (`beneficiarioIds`) passou a pertencer a cada documento/tipo, não ao arquivo inteiro, permitindo que um mesmo PDF com 2 tipos marcados (ex: Boleto + Comprovante) tenha coberturas diferentes por tipo. Nenhum tipo documental é obrigatoriamente individual — os 5 tipos (incluindo Recibo e Demonstrativo, corrigido após feedback do usuário) têm exatamente a mesma regra de cobertura: `beneficiarioIds` ausente cobre todos. `tiposDoArquivo(arquivo)` (`mock-data.ts`) é o helper de exibição que extrai só a lista de tipos, para telas que não precisam de cobertura (histórico, badges).
 
 ### `AcaoComprovante`
 ```ts
@@ -774,10 +824,10 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - **Comportamento:** mostra área tracejada "Tocar para enviar" quando vazio; mostra nome+tamanho do arquivo com botão de remover quando preenchido.
 - **Usado em:** `ServidorComprovanteDetail.tsx` (substituir/corrigir e reenviar) — único uso restante.
 
-### `ArquivosAnexadosUpload` (novo — seção 3.17)
-- **Finalidade:** upload de 1 ou mais arquivos complementares no mesmo envio, cada um com seu próprio grupo de tipos documentais marcáveis.
-- **Props:** `arquivos: { file: File; tipos: TipoDocumentoArquivo[] }[]`, `tiposPermitidos: TipoDocumentoArquivo[]` (filtrados por `tipoPlanoPagamento`), `onChange: (arquivos) => void`.
-- **Comportamento:** cada arquivo anexado mostra nome/tamanho + botão remover + linha de toggle-buttons (tipos permitidos, múltipla marcação); botão "Adicionar outro arquivo"/"Tocar para enviar" reaproveita o mesmo `<input type="file">` a cada clique (reseta `input.value` após cada seleção para permitir reselecionar o mesmo nome de arquivo).
+### `ArquivosAnexadosUpload` (novo — seção 3.17; reescrito — seção 3.20)
+- **Finalidade:** upload de 1 ou mais arquivos complementares no mesmo envio, cada um com seu próprio grupo de tipos documentais marcáveis e, quando há mais de 1 beneficiário no envio, a cobertura de cada tipo marcado.
+- **Props:** `arquivos: ArquivoComDocumentos[]` (`{ file: File; documentos: DocumentoDetectado[] }[]`), `tiposPermitidos: TipoDocumentoArquivo[]` (filtrados pela modalidade do grupo selecionado), `beneficiarios: BeneficiarioPagamento[]` (**novo**), `modalidadePlano` (**novo**), `onChange: (arquivos) => void`.
+- **Comportamento:** bloco de orientação no topo com os documentos esperados pela modalidade do grupo; cada arquivo anexado mostra nome/tamanho + botão remover + linha de toggle-buttons (tipos permitidos); quando `beneficiarios.length > 1`, cada tipo marcado ganha uma sub-pergunta "{Tipo} cobre:" com 1 checkbox (☑/☐) por beneficiário, começando **todos desmarcados** — igual para os 5 tipos documentais, nenhum é tratado como obrigatoriamente individual — mais atalho "Selecionar todos"/"Limpar seleção" e aviso "Selecione quem está contemplado neste documento." enquanto nenhum estiver marcado; painel "Cobertura por beneficiário" sempre visível (`getCoberturaDocumental`) mostra, por beneficiário, `✓` + tipos já encontrados (verde, unidos por "+") ou `✕` + motivo específico da pendência (vermelho, "Falta"/"Faltam" com inicial maiúscula); botão "Adicionar outro arquivo"/"Tocar para enviar" reaproveita o mesmo `<input type="file">` a cada clique.
 - **Usado em:** `servidor.pagamentos.enviar.tsx` (passo "upload").
 
 ### `CamposExtraidosForm`
@@ -864,10 +914,11 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - **(Novo)** Documento complementar solicitado pela GERDAB: botão dedicado no Analista/Gerência, destaque + anexo direto no lado do Servidor, notificação e limpeza automática ao ser atendido — seção 3.18.
 - **(Novo — Etapa 1 do alinhamento de stakeholder)** Retroativo com aprovação única: removida a 2ª alçada obrigatória da Gerência. Analista e Gerência têm exatamente as mesmas ações sobre `retroativo_aguardando_aprovacao`, qualquer um dos dois pode decidir sozinho — seções 3.12, 4, 5, 13 (decisão 30).
 - **(Novo — Etapa 2 do alinhamento de stakeholder)** Seleção de beneficiários agrupada automaticamente por operadora + modalidade de plano, com exclusão de quem tem comprovação coletiva via associação (sem bloquear o restante da família); tipos de documento permitidos passam a vir da modalidade do grupo selecionado, não mais de um toggle global — seções 3.19, 6, 13 (decisão 31).
+- **(Novo — Etapa 3 do alinhamento de stakeholder)** Documentos obrigatórios calculados pela modalidade do grupo, com cobertura de beneficiários por documento/tipo dentro do arquivo (não mais por arquivo inteiro); checklist visível no upload mostrando o motivo de cada pendência; geração de campos respeitando a cobertura real por beneficiário — seções 3.20, 6, 13 (decisão 32).
 
-**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1 original — nomenclatura antiga, anterior ao plano de 7 etapas do stakeholder), fluxo do Analista + sino + detalhe (Etapa 2 original), 2ª alçada da Gerência (Etapa 3 original — **posteriormente removida**, ver decisão 30), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`), Etapa 1 do plano de alinhamento de stakeholder — retroativo com aprovação única (commit `5aeee9f`).
+**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1 original — nomenclatura antiga, anterior ao plano de 7 etapas do stakeholder), fluxo do Analista + sino + detalhe (Etapa 2 original), 2ª alçada da Gerência (Etapa 3 original — **posteriormente removida**, ver decisão 30), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`), Etapa 1 do plano de alinhamento de stakeholder — retroativo com aprovação única (commit `5aeee9f`), Etapa 2 — seleção de beneficiários por grupo (commit `d03d8f7`).
 
-**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): a Etapa 2 do plano de alinhamento de stakeholder (seleção de beneficiários por grupo — este documento). Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido.
+**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): a Etapa 3 do plano de alinhamento de stakeholder (documentos obrigatórios + cobertura por beneficiário — este documento). Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido.
 
 ---
 
@@ -930,15 +981,15 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 29. **Detecção automática de tipo documental pelo nome do arquivo** — pedido explícito do usuário para que nomear um arquivo como "fatura_tecnica" tivesse "o comportamento esperado", da mesma forma que já acontecia com "ilegivel". Estendida a convenção de nome de arquivo já existente (antes só para simular resultado de OCR) para também pré-marcar os checkboxes de tipo documental — `detectarTiposPeloNomeArquivo` só sugere tipos presentes em `tiposPermitidos`, então o resultado sempre respeita a restrição por plano vigente no momento (não é possível "forçar" fatura técnica nomeando o arquivo se o perfil ainda estiver em individual/familiar).
 30. **(Etapa 1 — alinhamento de stakeholder) Retroativo deixa de exigir 2ª alçada obrigatória** — pedido explícito do stakeholder, após reunião de alinhamento de expectativas: "não deve mais existir a necessidade de segunda alçada, pode ser o Analista ou a Gerência." As decisões 7 e 8 (`retroativo_devolvido` e `retroativo_recusado` como status próprios, para diferenciar as etapas da dupla alçada) ficaram parcialmente obsoletas: `retroativo_recusado` continua em uso (agora a partir de `retroativo_aguardando_aprovacao`, qualquer papel), mas `retroativo_devolvido` e a distinção `retroativo_aguardando_analista`/`retroativo_aguardando_gerencia` passaram a ser **legado** — mantidos no union `StatusComprovante` só para não quebrar a exibição de registros antigos já persistidos em `localStorage` de sessões de teste anteriores. Novo status único `retroativo_aguardando_aprovacao` substitui os dois antigos em todo código novo; `proximoStatusAprovacao()` resolve direto para `retroativo_aprovado`, sem etapa intermediária. Analista e Gerência passam a ter exatamente as mesmas ações sobre retroativos (seções 4 e 5).
 31. **(Etapa 2 — alinhamento de stakeholder) Modalidade de plano migra de constante global para atributo por beneficiário; associação passa a ser por beneficiário, não só por titular** — o usuário corrigiu explicitamente minha primeira leitura do pedido ("não basta bloquear um checkbox"): a seleção de beneficiários precisa se auto-organizar por operadora + modalidade, e quem está vinculado a uma associação precisa ser excluído do envio individual **sem bloquear o resto da família** — 3 padrões concretos foram exigidos e testados (titular normal + dependente em associação; titular em associação + dependentes normais; dependentes em operadoras diferentes entre si). Optou-se por um algoritmo de agrupamento genérico (`agruparBeneficiariosElegiveis`) em vez de casos especiais hardcoded, para que os 3 padrões (e qualquer combinação futura) funcionem pela mesma lógica, sem `if`s por cenário. Como o cenário de referência tem só 3 beneficiários fixos, 2 dos 3 padrões exigem editar `beneficiariosPagamento` temporariamente para demonstrar — mesma convenção de "editar o mock para testar" já usada no protótipo, documentada explicitamente na seção 3.19 em vez de deixada implícita.
+32. **(Etapa 3 — alinhamento de stakeholder) Cobertura de beneficiários pertence ao documento/tipo, não ao arquivo inteiro** — antes de implementar, apresentei fluxogramas revisáveis (a pedido do próprio processo de planejamento em 2 etapas já estabelecido) com uma primeira modelagem `ArquivoAnexado.beneficiarioIds` (cobertura por arquivo inteiro). O usuário revisou os fluxogramas e apontou 8 ajustes de comunicação (UI responder "quais documentos preciso enviar" em vez de expor "modalidade"; checklist mostrar o motivo, não só um X; conceito de "conjunto documental"; diagrama faltando para IA e para o Resumo da Competência; texto de "cobertura automática" reformulado; exemplos visuais para boleto duplo e para recibos que não compartilham cobertura) **e 1 mudança real de arquitetura**: `Arquivo → Tipo documental → Beneficiários cobertos → Campos encontrados`, para que um mesmo PDF marcado como 2 tipos (ex: Boleto + Comprovante) possa ter coberturas diferentes por tipo, e para que a extração de campos por tipo (Etapa 4) já nasça apoiada na estrutura certa. Implementado como `DocumentoDetectado { tipo, beneficiarioIds? }` dentro de `ArquivoAnexado.documentos[]`, substituindo o `tipos: TipoDocumentoArquivo[]` anterior — mudança que se propagou a mais consumidores do que os 3 arquivos previstos no plano original, porque `tipos` era lido em vários componentes de exibição (seção 3.20). **Correção pós-implementação:** a primeira versão introduziu, por conta própria, uma regra não pedida — tratar Recibo/Demonstrativo como tipos obrigatoriamente individuais (`tiposDocumentoIndividual`), com seleção única e sem cobertura implícita quando havia mais de 1 beneficiário no envio. O usuário corrigiu: "Recibo e Demonstrativo não são obrigatoriamente individuais... conforme o conteúdo do documento" — removida a distinção especial; os 5 tipos documentais passaram a ter exatamente a mesma regra de cobertura (seleção múltipla, ausente = cobre todos). **2ª rodada de ajuste de UX (mesma etapa, antes do commit):** o usuário apontou que a tela ainda exigia "deduzir demais" — pediu (1) um bloco de orientação explícito com os documentos esperados por modalidade, antes da área de anexos; (2) cobertura por beneficiário começando **desmarcada** (não pré-selecionada) quando há mais de 1 beneficiário, com checkboxes reais em vez de chips e ação "Selecionar todos"; (3) aviso textual enquanto nada estiver marcado; (4) bloquear o avanço quando existir documento com cobertura não declarada, mesmo que a checklist geral já esteja satisfeita; (5) o painel de checklist padronizado nos dois estados (ícone + "Falta"/"Faltam" com inicial maiúscula + tipos unidos por "+"). Implementado como `coberturaInicial()` (retorna `[]` explícito em vez de `undefined` quando há >1 beneficiário) e `todosDocumentosComCoberturaDefinida()`, nova trava em paralelo a `todosContemplados()` — ver seção 3.20.
 
 ---
 
 ## 14. Próximos Passos Recomendados
 
-### Em andamento — Etapas 3-7 do alinhamento de stakeholder (ver decisões 30-31, seção 13)
+### Em andamento — Etapas 4-7 do alinhamento de stakeholder (ver decisões 30-32, seção 13)
 
-Etapa 1 (retroativo com aprovação única) e Etapa 2 (seleção de beneficiários por grupo, este documento) estão implementadas e testadas; Etapa 2 aguarda autorização de commit. As 5 etapas seguintes do mesmo plano (aprovadas pelo usuário, cada uma com seu próprio ciclo de build + teste manual + doc + autorização) ainda não foram implementadas:
-- **Etapa 3:** documentos obrigatórios calculados pela modalidade do grupo selecionado (não mais um toggle global), com cobertura por beneficiário rastreada por arquivo.
+Etapas 1 (retroativo com aprovação única), 2 (seleção de beneficiários por grupo) e 3 (documentos obrigatórios + cobertura por beneficiário, este documento) estão implementadas e testadas; Etapa 3 aguarda autorização de commit. As 4 etapas seguintes do mesmo plano (aprovadas pelo usuário, cada uma com seu próprio ciclo de build + teste manual + doc + autorização) ainda não foram implementadas:
 - **Etapa 4:** nova taxonomia de campos por tipo documental (Comprovante de Pagamento, Boleto, Recibo/Demonstrativo, Fatura Técnica), remoção dos campos Banco/Tipo de Assistência, generalização da detecção de situação não reembolsável (odontológico + multa + taxa administrativa + juros) como alerta.
 - **Etapa 5:** justificativas obrigatórias (mínimo 3 palavras) para divergência de valor e para retroativo.
 - **Etapa 6:** operadora divergente do cadastro oferece "Abrir requerimento de mudança de plano" ou "Continuar mesmo assim".
@@ -950,7 +1001,7 @@ Etapa 1 (retroativo com aprovação única) e Etapa 2 (seleção de beneficiári
 
 ### Demais passos, da menor para a maior complexidade/risco
 
-2. **Commitar a Etapa 1 deste documento** (ver seção 11 — "Ainda não commitado"). Aguardando autorização explícita do usuário, conforme processo já estabelecido.
+2. **Commitar a Etapa 3 deste documento** (ver seção 11 — "Ainda não commitado"). Aguardando autorização explícita do usuário, conforme processo já estabelecido.
 3. **Decidir e resolver as pendências 1, 9 e 10 da seção 12** (campo `cpf` ausente no mock de OCR; status legados `processando`/`revisao`; campo `justificativaDivergencia` não utilizado) — são limpezas de baixo risco que não mudam comportamento visível.
 4. **Estender "competência incompleta" para competências retroativas** (pendência 3) — hoje só cobre `competenciaAtual`; se o negócio precisar do mesmo alerta para os meses fechados, generalizar `getBeneficiariosFaltantes` para aceitar uma lista de competências e agregar o resultado na UI.
 5. **Resolver o deep-link de abas** (pendência 4) — adicionar um `search: { tab: string }` na rota `/admin/comprovantes` e fazer o card do dashboard linkar diretamente para a aba "Retroativos".

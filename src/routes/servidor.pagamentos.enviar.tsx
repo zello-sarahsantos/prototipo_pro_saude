@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { RefreshCw, XCircle } from "lucide-react";
 import { Stepper, StepNav } from "@/components/Stepper";
 import { BeneficiarioSelector } from "@/components/BeneficiarioSelector";
-import { ArquivosAnexadosUpload, type ArquivoComTipos } from "@/components/ArquivosAnexadosUpload";
+import { ArquivosAnexadosUpload, type ArquivoComDocumentos } from "@/components/ArquivosAnexadosUpload";
 import { ResumoPagamento } from "@/components/ResumoPagamento";
 import { LendoComprovante, type EtapaLeitura } from "@/components/LendoComprovante";
 import { ConferenciaBeneficiarios } from "@/components/ConferenciaBeneficiarios";
@@ -20,6 +20,12 @@ import {
   type CampoExtraido,
 } from "@/lib/mock-data";
 import { arquivoEhIlegivel, gerarCamposExtraidos, mesclarCamposDeArquivos } from "@/lib/ocr-mock";
+import {
+  beneficiariosCobertosPeloDocumento,
+  getCoberturaDocumental,
+  todosContemplados,
+  todosDocumentosComCoberturaDefinida,
+} from "@/lib/comprovante-status";
 import {
   addComprovantePagamento,
   getComprovantesUnificados,
@@ -72,7 +78,7 @@ function EnviarComprovante() {
   const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>(
     beneficiarioViaAlerta ? [beneficiarioViaAlerta] : [],
   );
-  const [arquivosSelecionados, setArquivosSelecionados] = useState<ArquivoComTipos[]>([]);
+  const [arquivosSelecionados, setArquivosSelecionados] = useState<ArquivoComDocumentos[]>([]);
   const [arquivosIlegiveis, setArquivosIlegiveis] = useState<string[]>([]);
   const [gruposExtraidos, setGruposExtraidos] = useState<
     { beneficiarioId: string; campos: CampoExtraido[] }[]
@@ -89,13 +95,16 @@ function EnviarComprovante() {
   );
   // Modalidade do grupo selecionado determina os tipos de documento permitidos — não é mais
   // um valor único e global do sistema (ver mock-data.ts, BeneficiarioPagamento.modalidadePlano).
-  const tiposPermitidos =
-    tiposDocumentoPorPlano[beneficiariosEscolhidos[0]?.modalidadePlano ?? tipoPlanoPagamentoPadrao];
+  const modalidadeDoGrupo = beneficiariosEscolhidos[0]?.modalidadePlano ?? tipoPlanoPagamentoPadrao;
+  const tiposPermitidos = tiposDocumentoPorPlano[modalidadeDoGrupo];
 
   const podeAvancarSelecao =
     beneficiariosSelecionados.length > 0 && (!isRetroativo || justificativaAtraso.trim().length > 0);
+  const coberturaDocumental = getCoberturaDocumental(beneficiariosEscolhidos, arquivosSelecionados, modalidadeDoGrupo);
   const podeAvancarUpload =
-    arquivosSelecionados.length > 0 && arquivosSelecionados.every((a) => a.tipos.length > 0);
+    arquivosSelecionados.length > 0 &&
+    todosContemplados(coberturaDocumental) &&
+    todosDocumentosComCoberturaDefinida(arquivosSelecionados, beneficiariosEscolhidos.length);
 
   function iniciarProcessamento() {
     setStep("lendo");
@@ -116,11 +125,18 @@ function EnviarComprovante() {
         }
         setEtapaLeitura(2);
         setTimeout(() => {
+          const todosIds = beneficiariosEscolhidos.map((b) => b.id);
           const grupos = beneficiariosEscolhidos.map((b) => {
-            const porArquivo = arquivosSelecionados.map((a) => ({
-              nome: a.file.name,
-              campos: gerarCamposExtraidos(b, competencia, a.file.name, a.tipos),
-            }));
+            // Só entram campos de arquivos com pelo menos 1 documento (tipo) que cobre este
+            // beneficiário — e só com os tipos que de fato o cobrem, não todos os do arquivo.
+            // Mesma regra de cobertura usada no checklist (`getCoberturaDocumental`).
+            const porArquivo = arquivosSelecionados.flatMap((a) => {
+              const tiposQueCobrem = a.documentos
+                .filter((d) => beneficiariosCobertosPeloDocumento(d, todosIds).includes(b.id))
+                .map((d) => d.tipo);
+              if (tiposQueCobrem.length === 0) return [];
+              return [{ nome: a.file.name, campos: gerarCamposExtraidos(b, competencia, a.file.name, tiposQueCobrem) }];
+            });
             return { beneficiarioId: b.id, campos: mesclarCamposDeArquivos(porArquivo) };
           });
           setGruposExtraidos(grupos);
@@ -146,7 +162,7 @@ function EnviarComprovante() {
   function confirmarDocumento() {
     const arquivosDoEnvio: ArquivoAnexado[] = arquivosSelecionados.map((a) => ({
       nome: a.file.name,
-      tipos: a.tipos,
+      documentos: a.documentos,
     }));
     const primeiro = gruposExtraidos[0];
     const novoComprovante: Comprovante = {
@@ -267,6 +283,8 @@ function EnviarComprovante() {
           <ArquivosAnexadosUpload
             arquivos={arquivosSelecionados}
             tiposPermitidos={tiposPermitidos}
+            beneficiarios={beneficiariosEscolhidos}
+            modalidadePlano={modalidadeDoGrupo}
             onChange={setArquivosSelecionados}
           />
           <StepNav
@@ -309,7 +327,7 @@ function EnviarComprovante() {
 
       {step === "conferencia_beneficiarios" && (
         <ConferenciaBeneficiarios
-          arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, tipos: a.tipos }))}
+          arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, documentos: a.documentos }))}
           beneficiarios={beneficiariosEscolhidos}
           gruposExtraidos={gruposExtraidos}
           onChangeGrupo={handleChangeGrupo}
@@ -322,7 +340,7 @@ function EnviarComprovante() {
       {step === "confirmar_documento" && (
         <div className="space-y-4">
           <ResumoPagamento
-            arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, tipos: a.tipos }))}
+            arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, documentos: a.documentos }))}
             beneficiarios={beneficiariosEscolhidos}
             competencia={competencia}
             isRetroativo={isRetroativo}

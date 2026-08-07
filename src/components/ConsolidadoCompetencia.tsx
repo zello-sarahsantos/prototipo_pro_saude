@@ -5,6 +5,7 @@ import {
   formatCompetencia,
   formatCurrency,
   tipoDocumentoArquivoLabels,
+  tiposDoArquivo,
   type CampoExtraido,
   type Comprovante,
 } from "@/lib/mock-data";
@@ -301,7 +302,7 @@ export function ConsolidadoCompetencia({
                         {c.arquivos.map((a) => (
                           <p key={a.nome} className="text-xs text-muted-foreground">
                             <span className="font-medium text-foreground">{a.nome}</span> —{" "}
-                            {a.tipos.map((t) => tipoDocumentoArquivoLabels[t]).join(", ") || "Nenhum tipo marcado"}
+                            {tiposDoArquivo(a).map((t) => tipoDocumentoArquivoLabels[t]).join(", ") || "Nenhum tipo marcado"}
                           </p>
                         ))}
                       </div>

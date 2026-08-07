@@ -2,10 +2,11 @@ import { FileText } from "lucide-react";
 import {
   tipoAssistenciaLabels,
   tipoDocumentoArquivoLabels,
+  tiposDoArquivo,
   type BeneficiarioPagamento,
   type CampoExtraido,
+  type DocumentoDetectado,
   type TipoAssistencia,
-  type TipoDocumentoArquivo,
 } from "@/lib/mock-data";
 
 function valorExibido(campo: CampoExtraido): string {
@@ -35,7 +36,7 @@ export function ResumoPagamento({
   justificativaAtraso,
   gruposExtraidos,
 }: {
-  arquivos: { nome: string; tipos: TipoDocumentoArquivo[] }[];
+  arquivos: { nome: string; documentos: DocumentoDetectado[] }[];
   beneficiarios: BeneficiarioPagamento[];
   competencia: string;
   isRetroativo: boolean;
@@ -50,7 +51,7 @@ export function ResumoPagamento({
             <FileText className="h-4 w-4 text-primary shrink-0" />
             <span className="truncate">{a.nome}</span>
             <span className="text-xs font-normal text-muted-foreground shrink-0">
-              ({a.tipos.map((t) => tipoDocumentoArquivoLabels[t]).join(", ")})
+              ({tiposDoArquivo(a).map((t) => tipoDocumentoArquivoLabels[t]).join(", ")})
             </span>
           </div>
         ))}
