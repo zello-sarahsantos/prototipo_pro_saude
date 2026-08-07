@@ -22,13 +22,18 @@ import {
   DocumentosDependenteUploads,
   OrientacaoTipoDependente,
 } from "@/components/DocumentosDependente";
+import { modalidadePlanoLabels, type ModalidadePlano } from "@/lib/mock-data";
 
 const steps = ["Dependente", "Plano", "Documentos", "Revisão"];
 
 export type IncluirDependentePlano = {
   operadora: string;
   outraOperadora: string;
-  modalidade: string;
+  /** Modalidade do plano do **dependente** — nunca herdada automaticamente do titular quando o
+   *  plano é diferente (`mesmoPlano === "nao"`): dependente e titular podem ter operadoras,
+   *  modalidades e vínculos de associação diferentes. Vocabulário compartilhado com o Módulo de
+   *  Pagamento (`ModalidadePlano`, `mock-data.ts`), para uso futuro sem tradução de valores. */
+  modalidade: ModalidadePlano | "";
   vigencia: string;
 };
 
@@ -98,7 +103,7 @@ export function IncluirDependenteForm({
     }
     if (s === 1) {
       if (mesmoPlano === "nao") {
-        if (!planoDependente.operadora || !planoDependente.modalidade.trim() || !planoDependente.vigencia) {
+        if (!planoDependente.operadora || !planoDependente.modalidade || !planoDependente.vigencia) {
           setError(validationMessages.obrigatorios);
           return false;
         }
@@ -301,15 +306,18 @@ export function IncluirDependenteForm({
                   <input className={inputCls} value={planoDependente.outraOperadora} onChange={e => setPlanoDependente({ ...planoDependente, outraOperadora: e.target.value })} />
                 </Field>
               )}
-              <Field label="Modalidade/tipo do plano" required>
-                <input
+              <Field label="Modalidade do plano do dependente" required>
+                <select
                   className={inputCls}
-                  placeholder="Ex: Coletivo Empresarial"
                   value={planoDependente.modalidade}
                   onChange={(e) =>
-                    setPlanoDependente({ ...planoDependente, modalidade: e.target.value })
+                    setPlanoDependente({ ...planoDependente, modalidade: e.target.value as ModalidadePlano })
                   }
-                />
+                >
+                  <option value="">Selecione a modalidade</option>
+                  <option value="individual_familiar">{modalidadePlanoLabels.individual_familiar}</option>
+                  <option value="empresarial">{modalidadePlanoLabels.empresarial}</option>
+                </select>
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Valor individual do plano do dependente" required>
@@ -355,6 +363,12 @@ export function IncluirDependenteForm({
             <Row k="Nome" v={nome || "—"} />
             <Row k="Tipo de dependente" v={parentesco} />
             <Row k="Plano" v={mesmoPlano === "sim" ? "Mesmo do titular" : "Plano diferente do titular"} />
+            {mesmoPlano === "nao" && (
+              <Row
+                k="Modalidade do plano do dependente"
+                v={planoDependente.modalidade ? modalidadePlanoLabels[planoDependente.modalidade] : "—"}
+              />
+            )}
             <Row k="Documentos" v={`${DOCUMENTOS_POR_TIPO_DEPENDENTE[parentesco].length} anexos`} />
           </div>
           <div className="space-y-3 pt-2">

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { X, RefreshCw, RotateCcw, XCircle, Loader2, FilePlus } from "lucide-react";
+import { X, RefreshCw, RotateCcw, XCircle, Loader2, FilePlus, FileSignature } from "lucide-react";
 import { DocPreview } from "@/components/DocPreview";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ComprovanteUploadBox } from "@/components/ComprovanteUploadBox";
@@ -8,6 +8,7 @@ import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import {
   beneficiariosPagamento,
   formatCompetencia,
+  tipoRequerimentoLabels,
   type Comprovante,
   type CampoExtraido,
   type StatusComprovante,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/comprovante-status";
 import { detectarSituacaoNaoReembolsavel } from "@/lib/ocr-mock";
 import { processarNovoArquivo, confirmarReenvio } from "@/lib/reenvio-comprovante";
+import { getBeneficiariosPagamentoAtual } from "@/lib/prosaude-storage";
 
 const titular = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
 const autorServidor = titular?.nome ?? "Servidor";
@@ -41,6 +43,9 @@ export function ServidorComprovanteDetail({
   const [campos, setCampos] = useState<CampoExtraido[]>([]);
   const [novoArquivoNome, setNovoArquivoNome] = useState<string>(comprovante.arquivos[0]?.nome ?? "documento.pdf");
 
+  // Cadastro "atual" (seed + correções já aplicadas pela GERDAB) — ver mock-data.ts.
+  const beneficiariosAtuais = getBeneficiariosPagamentoAtual();
+
   const lista = getListaStatusBeneficiario(comprovante);
   const ordenada = focusBeneficiarioId
     ? [...lista].sort((a, b) =>
@@ -57,7 +62,7 @@ export function ServidorComprovanteDetail({
   }
 
   function selecionarArquivo(beneficiarioId: string, arquivo: File) {
-    const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
+    const beneficiario = beneficiariosAtuais.find((b) => b.id === beneficiarioId);
     if (!beneficiario) return;
     setAcaoAtiva({ beneficiarioId, step: "processando" });
     setNovoArquivoNome(arquivo.name);
@@ -136,9 +141,33 @@ export function ServidorComprovanteDetail({
             </div>
           )}
 
+          {comprovante.solicitacaoRequerimento && (
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-2">
+              <p className="font-medium text-warning">
+                GERDAB solicitou requerimento de {tipoRequerimentoLabels[comprovante.solicitacaoRequerimento.tipo]}
+              </p>
+              <p>{comprovante.solicitacaoRequerimento.motivo}</p>
+              <p className="text-muted-foreground">
+                {comprovante.solicitacaoRequerimento.solicitadoPor} em{" "}
+                {new Date(comprovante.solicitacaoRequerimento.data).toLocaleString("pt-BR")}
+              </p>
+              <Link
+                to={
+                  comprovante.solicitacaoRequerimento.tipo === "mudanca_plano"
+                    ? "/servidor/requerimento/novo-plano"
+                    : "/servidor/requerimento/incluir-dependente"
+                }
+                className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-md px-3 py-2 text-sm font-medium hover:bg-primary-light"
+              >
+                <FileSignature className="h-3.5 w-3.5" /> Abrir requerimento de{" "}
+                {tipoRequerimentoLabels[comprovante.solicitacaoRequerimento.tipo]}
+              </Link>
+            </div>
+          )}
+
           {ordenada.map(({ beneficiarioId, status }) => {
             const camposAtuais = getCamposDoBeneficiario(comprovante, beneficiarioId);
-            const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
+            const beneficiario = beneficiariosAtuais.find((b) => b.id === beneficiarioId);
             const { situacao } = getElegibilidade(comprovante, beneficiarioId);
             const { divergente: boletoComprovanteDivergente } = beneficiario
               ? getDivergenciaBoletoComprovante(comprovante, beneficiario)

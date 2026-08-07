@@ -96,6 +96,8 @@ Nenhuma rota nova para Associação (fora do escopo desta entrega, por decisão 
 | `src/lib/competencias-pendentes.ts` | Cálculo de pendências de competência (sem envio / incompleta) |
 | `src/lib/notificacoes-pagamento.ts` | Deriva notificações do sino a partir do estado persistido |
 | `src/lib/reenvio-comprovante.ts` | Mecânica compartilhada de substituição/reenvio pós-submissão |
+| `src/lib/validation-pagamento.ts` | `temPeloMenosNPalavras` — validação de justificativas (Etapa 5, seção 3.22) |
+| `src/lib/prazo-competencia.ts` | `estaDentroDoPrazoRelatorio` — indicador de prazo do relatório mensal (Etapa 7, seção 3.24) |
 
 ### 2.5 Estrutura de armazenamento (localStorage)
 Ver seção 8 completa.
@@ -461,7 +463,7 @@ function temPeloMenosNPalavras(texto: string, n = 3): boolean {
 
 **Persistência:** o campo já existente e até então morto `Comprovante.justificativaDivergencia?: string` foi generalizado para `justificativasDivergencia?: { beneficiarioId: string; texto: string }[]` — suporta múltiplos beneficiários divergentes no mesmo envio (fatura técnica). O estado das justificativas é levantado para `enviar.tsx` (`Record<beneficiarioId, string>`) e convertido para o array só na hora de `confirmarDocumento()` persistir, filtrando entradas vazias. Resolve a pendência 10 antiga (seção 12) sobre esse campo não utilizado.
 
-**Visibilidade para GERDAB:** sem criar nenhum sistema de notificação novo — a justificativa do Servidor aparece em `admin.comprovantes.tsx`, dentro do card de cada beneficiário, logo abaixo do formulário de campos (mesmo bloco onde já aparecia a solicitação de documento complementar), destacada em um card com borda de alerta e rótulo "Justificativa da divergência (servidor)". Fica visível assim que o Analista/Gerência abre o comprovante — **antes** de clicar "Aprovar" e ver o `DivergenciaAprovacaoModal` (que continua existindo e é uma justificativa **diferente**, escrita pelo próprio Analista/Gerência para registrar por que está aprovando com ressalva — ver seção 4.4).
+**Visibilidade para GERDAB:** sem criar nenhum sistema de notificação novo — a justificativa do Servidor aparece em `admin.comprovantes.tsx`, dentro do card de cada beneficiário, logo abaixo do formulário de campos (mesmo bloco onde já aparecia a solicitação de documento complementar), destacada em um card com borda de alerta e rótulo "Justificativa da divergência (servidor)". Fica visível assim que o Analista/Gerência abre o comprovante — **antes** de clicar "Aprovar" e ver o `DivergenciaAprovacaoModal` (que continua existindo; **atualizado num ajuste posterior** para mostrar essa mesma justificativa dentro do próprio modal, junto de um painel valor cadastrado/encontrado/diferença e de 3 decisões explícitas — ver seção 3.25 — em vez do "aprovar com ressalva" genérico original).
 
 **Testado manualmente no navegador:** retroativo com justificativa de 2 palavras bloqueado ("Escreva pelo menos 3 palavras."), com 3 liberado; envio de Recibo com nome de arquivo `divergente` gerando badge "Divergente" no campo Valor + textarea de justificativa obrigatória; "Confirmar" bloqueado com 2 palavras, liberado com 3; após confirmar e enviar, `localStorage` contém `justificativasDivergencia: [{ beneficiarioId, texto }]`; no lado do Analista/Gerência (perfil Gerência), a justificativa do Servidor aparece destacada no card do beneficiário antes de qualquer clique em "Aprovar".
 
@@ -481,9 +483,64 @@ O botão "Confirmar" daquele beneficiário fica desabilitado até "Continuar mes
 
 **Persistência:** `Comprovante.operadoraDivergenteCadastro?: boolean` — `true` quando **qualquer** beneficiário do envio teve "Continuar mesmo assim" confirmado (`enviar.tsx`: `Object.values(operadoraDivergenteConfirmada).some(Boolean)`). É um flag no nível do Comprovante, não por beneficiário — suficiente para o gatilho da Etapa 7 (ver abaixo), sem precisar modelar qual beneficiário especificamente divergiu.
 
-**Badge para Analista/Gerência:** "Operadora divergente do cadastro" aparece em `admin.comprovantes.tsx` tanto no card da lista (abas Comprovantes/Retroativos/Histórico) quanto no cabeçalho do modal de detalhe — em ambos os casos, visível **antes** de abrir qualquer sub-formulário. Serve de gatilho natural para a ação "Solicitar requerimento" da Etapa 7 (ainda não implementada nesta rodada).
+**Badge para Analista/Gerência:** "Operadora divergente do cadastro" aparece em `admin.comprovantes.tsx` tanto no card da lista (abas Comprovantes/Retroativos/Histórico) quanto no cabeçalho do modal de detalhe — em ambos os casos, visível **antes** de abrir qualquer sub-formulário. Serve de gatilho natural para a ação "Solicitar requerimento" da Etapa 7 (ver seção 3.24).
 
 **Testado manualmente no navegador:** edição manual do campo Operadora (a extração mock sempre copia `beneficiario.operadora`, então divergência real só ocorre por edição do Servidor — não há uma palavra-chave de nome de arquivo para isso, diferente de `divergente`/`odontologico`/etc.) disparando o aviso; "Confirmar" bloqueado até "Continuar mesmo assim"; link "Abrir requerimento de mudança de plano" aponta para `/servidor/requerimento/novo-plano` com `target="_blank"`; após envio, `localStorage` contém `operadoraDivergenteCadastro: true`; badge visível no card da lista e no cabeçalho do modal do Analista/Gerência (perfil Gerência) antes de qualquer clique em "Aprovar".
+
+---
+
+### 3.24 Solicitar requerimento + indicador de prazo do relatório mensal (Etapa 7)
+
+**Contexto:** Etapa 7, última do alinhamento de stakeholder (ver seção 13, decisão 36). Duas peças independentes: (1) generalizar o padrão já existente de "Solicitar documento complementar" para um pedido de requerimento em outro módulo; (2) um indicador — só modelo + indicador, sem tela de relatório — preparando o terreno para um futuro módulo de Relatório Mensal.
+
+**Solicitar requerimento** (`SolicitacaoRequerimento`, `mock-data.ts`):
+```ts
+type TipoRequerimento = 'mudanca_plano' | 'inclusao_dependente';
+interface SolicitacaoRequerimento {
+  tipo: TipoRequerimento;
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
+  beneficiarioId?: string; // só quando o pedido mira 1 beneficiário específico de um comprovante multi-beneficiário
+}
+```
+- Novo botão "Solicitar requerimento" em `admin.comprovantes.tsx`, ao lado de "Solicitar documento complementar" — mesmo padrão de sub-formulário (`SubFormTipo` ganhou `"requerimento"`), com um `<select>` adicional para escolher o tipo (Mudança de Plano / Inclusão de Dependente) antes da textarea de motivo. Só disponível quando `!cur.solicitacaoRequerimento` (1 pedido ativo por vez, mesma simplificação já aceita para `solicitacaoComplementar` — pendência 15, seção 12).
+- Não altera `status` — mesmo raciocínio da decisão 26 (documento complementar): é um pedido adicional, paralelo ao fluxo normal de aprovação.
+- Grava uma entrada em `aprovacoes` com `acao: 'requerimento_solicitado'` — histórico completo, mesmo padrão do resto do sistema.
+- `ServidorComprovanteDetail.tsx` exibe o pedido destacado (mesmo estilo visual do bloco de documento complementar), com um `Link` que muda conforme o tipo: `/servidor/requerimento/novo-plano` ou `/servidor/requerimento/incluir-dependente`.
+- **Limitação aceita e documentada:** sem gatilho automático para "resolver" o pedido quando o Servidor abre o requerimento correspondente — não existe hoje uma ponte entre o Módulo de Pagamento e o módulo de Requerimentos. O pedido fica só registrado no histórico; não há um mecanismo que detecte "o requerimento X foi aberto/concluído" e feche `solicitacaoRequerimento` automaticamente.
+
+**Indicador de prazo do relatório mensal** (`estaDentroDoPrazoRelatorio`, novo `src/lib/prazo-competencia.ts`):
+```ts
+function segundoDiaUtilMesSeguinte(competencia: string): Date  // pula sáb/dom, sem calendário de feriados
+function estaDentroDoPrazoRelatorio(competencia: string, dataEnvio: string): boolean
+```
+- Calcula o 2º dia útil do mês seguinte à competência do comprovante e compara com a data de envio. Simplificação assumida e documentada: não há calendário de feriados — só pula sábado/domingo.
+- **Escopo explícito, para não confundir com o gatilho de retroativo:** este indicador é **independente** de `isRetroativo`/do fluxo de aprovação — é só uma informação adicional mostrada a Analista/Gerência, no cabeçalho do modal de detalhe em `admin.comprovantes.tsx` (badge: "Dentro do prazo do relatório de {mês}" / "Fora do prazo — computa como retroativo no relatório de {mês}"). **Não** altera quando um envio vira `retroativo_aguardando_aprovacao` — essa regra continua sendo só `competencia !== competenciaAtual` (seção 3.12/regra 13), sem nenhuma mudança. Não implementado no lado do Servidor (`ServidorComprovanteDetail.tsx`) — é informação de controle interno da GERDAB, não algo que o Servidor precise ver.
+- **Sem tela de relatório:** este indicador é só a preparação de modelo pedida pelo stakeholder para um módulo futuro — não existe hoje nenhuma tela `/admin/relatorio-mensal` nem agregação por competência desses indicadores.
+
+**Testado manualmente no navegador:** botão "Solicitar requerimento" abre o sub-formulário com o seletor de tipo; ao confirmar com "Inclusão de Dependente", o botão desaparece, um aviso "Requerimento de Inclusão de Dependente já solicitado em {data} por {autor}" aparece no card do beneficiário, e uma entrada "solicitou requerimento" aparece no histórico; `localStorage` contém `solicitacaoRequerimento: { tipo: 'inclusao_dependente', ... }`; no lado do Servidor, o comprovante correspondente mostra o bloco destacado "GERDAB solicitou requerimento de Inclusão de Dependente" com o link `Abrir requerimento de Inclusão de Dependente` apontando para `/servidor/requerimento/incluir-dependente`; badge de prazo do relatório mostrando "Dentro do prazo" para um envio de julho/2026 (competência `2026-07` → prazo calculado em 04/08/2026, uma terça-feira, já que 01/08/2026 cai num sábado).
+
+---
+
+### 3.25 Divergência de valor: cadastral × documental, e correção do cadastro pela GERDAB (ajuste pontual, pré-commit da Etapa 7)
+
+**Contexto:** ajuste pontual pedido pelo usuário antes de commitar a Etapa 7 (ver seção 13, decisão 37) — não é uma nova etapa do plano de 7 etapas, é uma correção/aprofundamento de uma regra já existente desde a Etapa 5. O pedido separou explicitamente 2 divergências de valor que o sistema já tratava de formas parecidas demais:
+
+- **Divergência documental** (Boleto × Comprovante de Pagamento, `getDivergenciaBoletoComprovante`, seção 3.21): os 2 documentos do mesmo envio trazem valores brutos diferentes. Gera só um alerta ("Valor diverge do boleto anexado") — **nunca bloqueia nem altera o cadastro**. Nenhuma mudança nesta rodada.
+- **Divergência cadastral** (valor extraído/informado × `beneficiario.valorCadastrado`, `valorDivergeDoCadastro`/`getDivergencia`, seções 3.22/4.4): agora com um badge próprio, **"Valor difere do cadastro"** (antes "Divergente", texto genérico compartilhado por engano com a divergência do campo Pagador — `CamposExtraidosForm.tsx` agora calcula `valorDivergeDoCadastro` e `pagadorDivergente` como 2 variáveis/badges separados, não mais 1 `divergente` só).
+
+**Painel de decisão para a GERDAB** (`DivergenciaAprovacaoModal.tsx`, reescrito): ao clicar "Aprovar" num beneficiário com divergência cadastral, o modal agora mostra explicitamente **valor cadastrado atual**, **valor encontrado/informado**, **diferença** (com sinal) e a **justificativa do Servidor** já escrita no envio (Etapa 5, `Comprovante.justificativasDivergencia`) — antes o modal só tinha uma textarea genérica para a GERDAB escrever uma justificativa de "aprovado com ressalva", sem mostrar a justificativa do Servidor lado a lado.
+
+**3 decisões explícitas, sem "aprovar com ressalva" genérico para este caso:**
+- **"Aprovar e atualizar valor cadastral"** — `aprovarEAtualizarCadastro()` (`admin.comprovantes.tsx`): grava o novo valor via `atualizarValorCadastradoBeneficiario()` (`prosaude-storage.ts`) e aprova o comprovante normalmente (`acao: 'aprovado'` → vira `status: 'aprovado'`, **não** `'aprovado_com_ressalva'` — depois da correção, o cadastro passou a bater com o documento, não é mais uma "ressalva"). Registra em `aprovacoes` uma entrada `acao: 'valor_cadastral_atualizado'` com `valorAnterior`, `valorNovo`, `aprovadoPor`, `data` e `comentario` (a justificativa do Servidor copiada para o registro, autocontido).
+- **"Solicitar correção"** — fecha o modal e reabre o sub-formulário padrão `tipo: "correcao"` (mesma textarea/confirmação já usada em qualquer outro comprovante) — nenhuma UI nova.
+- **"Recusar"** — idem, reabre `tipo: "recusar"` (com o dropdown de motivo padrão).
+- O botão "Aprovar com ressalva" (fora do modal, sempre visível para qualquer beneficiário elegível) continua existindo sem mudanças — é um mecanismo genérico de reserva, não exclusivo de divergência de valor; não foi tocado nesta rodada.
+
+**Persistência do cadastro atualizado** (`prosaude-storage.ts`, novo): `beneficiariosPagamento` (`mock-data.ts`) continua sendo o "seed", nunca mutado diretamente — igual ao padrão já usado para comprovantes. Uma nova chave `prosaude_valores_cadastrados_beneficiarios` guarda `{ [beneficiarioId]: novoValor }`; `getBeneficiariosPagamentoAtual()` sobrepõe esses overrides por cima do seed. **Todo consumidor do Módulo de Pagamento onde `valorCadastrado` importa passou a usar essa função em vez do array estático**, para que a correção se reflita imediatamente em toda a aplicação: `admin.comprovantes.tsx` (badge, modal, aprovação), `servidor.pagamentos.enviar.tsx` (seleção de beneficiários e conferência de um novo envio), `ServidorComprovanteDetail.tsx` (correção/reenvio pós-submissão) e `ConsolidadoCompetencia.tsx` (edição inline no Resumo). Consumidores que só precisam de identidade (nome/parentesco — nunca mudam) continuam lendo `beneficiariosPagamento` diretamente, sem necessidade do overlay.
+
+**Testado manualmente no navegador:** envio de Recibo com nome de arquivo `divergente` (valor R$ 520 contra cadastro de R$ 420 de Carlos) → badge "Valor difere do cadastro" no campo Valor (não mais "Divergente" genérico); no Analista/Gerência, clique em "Aprovar" abre o modal com o painel completo (R$ 420,00 / R$ 520,00 / +R$ 100,00) e a justificativa do Servidor; "Aprovar e atualizar valor cadastral" muda o status para "Aprovado" (não "com ressalva"), remove o badge de divergência (o cadastro já bate) e grava no histórico "atualizou o valor cadastral ... De R$ 420,00 para R$ 520,00 ... [justificativa]"; `localStorage.prosaude_valores_cadastrados_beneficiarios` contém `{ "ben-titular": 520 }`; ao abrir um novo envio para Carlos, a tela de seleção de beneficiários já mostra "R$ 520,00" (cadastro corrigido propagado ao lado do Servidor).
 
 ---
 
@@ -509,19 +566,23 @@ Função `proximoStatusAprovacao(statusAtual)`:
 retroativo_aguardando_aprovacao → retroativo_aprovado
 (qualquer outro, ex: em_analise) → aprovado
 ```
-Antes de aprovar, `aprovar()` verifica divergência via `getDivergencia(comprovante, beneficiario)` (compara campo `valor` extraído com `beneficiario.valorCadastrado`). Se divergente, **bloqueia a aprovação direta** e abre `DivergenciaAprovacaoModal`, exigindo justificativa obrigatória antes de prosseguir como "aprovado com ressalva" (ver 4.4).
+Antes de aprovar, `aprovar()` verifica divergência via `getDivergencia(comprovante, beneficiario)` (compara campo `valor` extraído com `beneficiario.valorCadastrado`, lido de `getBeneficiariosPagamentoAtual()`). Se divergente, **bloqueia a aprovação direta** e abre `DivergenciaAprovacaoModal` com 3 decisões explícitas (ver 4.4, seção 3.25).
 
 ### 4.3 Solicitação de correção
 Disponível para qualquer um dos dois papéis, em qualquer status com ação disponível. Abre um sub-formulário inline (`subForm.tipo === "correcao"`) com textarea obrigatória. Ao confirmar, `confirmarSubForm()` chama `registrarAcao(comprovante, beneficiarioId, "correcao_solicitada", { etapa: etapaAtual, acao: "correcao_solicitada", aprovadoPor: autor, data, comentario })`. O comprovante sai da fila "Comprovantes"/"Retroativos" ativa e aparece na aba "Histórico" (pois `correcao_solicitada` está listado em `statusPorTab.historico`), mas **o Servidor** vê o status "Correção Solicitada" com destaque e pode agir (seção 3.15).
 
 ### 4.4 Divergência
-`DivergenciaAprovacaoModal.tsx`: modal bloqueante, exige textarea de justificativa não-vazia antes de habilitar "Aprovar com ressalva". Ao confirmar (`confirmarDivergencia(justificativa)`), usa `proximoStatusAprovacao()` normalmente (ex: `em_analise` → `aprovado_com_ressalva`; `retroativo_aguardando_aprovacao` → `retroativo_aprovado`, preservando a ressalva no log).
+**(Reescrito — ajuste pontual pré-Etapa 7, ver seção 3.25)** `DivergenciaAprovacaoModal.tsx`: modal bloqueante disparado ao clicar "Aprovar" num beneficiário com divergência **cadastral** de valor (`getDivergencia`). Mostra valor cadastrado atual, valor encontrado/informado, diferença e a justificativa que o Servidor já escreveu no envio (`Comprovante.justificativasDivergencia`, Etapa 5) — e oferece 3 decisões explícitas, sem um "aprovar com ressalva" genérico para este caso específico:
+- **"Aprovar e atualizar valor cadastral"** (`aprovarEAtualizarCadastro()`) — corrige `beneficiario.valorCadastrado` (via `atualizarValorCadastradoBeneficiario()`, `prosaude-storage.ts`) e aprova o comprovante com `proximoStatusAprovacao()` normal (`status: 'aprovado'`, não mais "com ressalva" — o cadastro passou a bater). Registra `acao: 'valor_cadastral_atualizado'` em `aprovacoes`, com `valorAnterior`/`valorNovo`/`aprovadoPor`/`data`/a justificativa do Servidor copiada como `comentario`.
+- **"Solicitar correção"** e **"Recusar"** — fecham o modal e reabrem os sub-formulários padrão já existentes (`tipo: "correcao"`/`"recusar"`), sem duplicar UI.
 
-**(Nova — Etapa 5, ver seção 3.22)** Essa justificativa do modal é escrita pelo **Analista/Gerência**, no momento de decidir aprovar mesmo com a divergência — não confundir com a justificativa do **Servidor**, escrita no momento do envio (`Comprovante.justificativasDivergencia`), que aparece destacada no card do beneficiário **antes** de esse modal ser aberto, dando contexto para a decisão.
+O botão "Aprovar com ressalva" (fora do modal, sempre disponível para qualquer beneficiário elegível) não foi alterado — continua sendo um mecanismo genérico de reserva, independente de haver ou não divergência de valor detectada.
 
-A divergência **nunca altera o cadastro do beneficiário** (`beneficiario.valorCadastrado` nunca é escrito por esse fluxo) — é sempre um alerta auxiliar sobre o dado extraído, nunca um "status principal" do comprovante.
+**A justificativa do modal antigo era escrita pelo Analista/Gerência; a nova versão não pede mais texto novo dele** — a decisão "Aprovar e atualizar" reaproveita a justificativa que o **Servidor** já escreveu no envio (Etapa 5), exibida no próprio modal, em vez de pedir uma segunda justificativa redundante.
 
-**Diferença para a checagem de elegibilidade (seção 3.18):** divergência de valor é um **modal bloqueante que pode ser superado** com justificativa (o Analista/Gerência ainda consegue aprovar, só que "com ressalva"). Elegibilidade por tipo de assistência é diferente — **não há caminho para aprovar** um comprovante odontológico; os botões de aprovação simplesmente não existem enquanto isso for verdade, não há modal de exceção. São duas checagens independentes, sem modal compartilhado.
+**Diferença para a checagem de elegibilidade (seção 3.18):** divergência de valor é um **modal bloqueante com 3 saídas possíveis** (aprovar corrigindo o cadastro, corrigir o documento, ou recusar). Elegibilidade por tipo de assistência é diferente — **não há caminho para aprovar** um comprovante odontológico; os botões de aprovação simplesmente não existem enquanto isso for verdade, não há modal de exceção. São duas checagens independentes, sem modal compartilhado.
+
+**Divergência documental (Boleto × Comprovante, seção 3.21) nunca passa por este modal** — é só um alerta (`divergenciaBoletoComprovante`), nunca bloqueia aprovação nem altera o cadastro. As 2 divergências de valor (documental e cadastral) têm badges com texto diferente propositalmente ("Valor diverge do boleto anexado" vs. "Valor difere do cadastro") para não serem confundidas — ver seção 3.25.
 
 ### 4.5 Retroativos (Analista e Gerência têm exatamente as mesmas ações)
 **(Atualizado — Etapa 1, ver seção 13, decisão 30)** O Analista vê e age sobre `retroativo_aguardando_aprovacao` com as mesmas 5 ações da seção 4.1 — não há mais uma etapa intermediária esperando a Gerência. A Gerência vê e age sobre exatamente o mesmo status, com as mesmas ações (ver seção 5). Qualquer um dos dois pode aprovar, aprovar com ressalva, solicitar correção, recusar, ou solicitar documento complementar — o primeiro que agir decide o resultado.
@@ -613,8 +674,10 @@ Antes da Etapa 1 (ver plano de alinhamento de stakeholder, seção 13, decisão 
 
 ### Preenchimento manual
 25. Todo campo é editável no momento da conferência do Servidor (não há mais um modo "somente leitura de nome/valor" para documentos individuais — unificado com a fatura técnica).
-26. Campo `pagador` deve, por regra de negócio, corresponder ao **titular** do grupo familiar (Carlos Eduardo Ramos), independentemente de qual beneficiário o documento cobre. Se divergente, badge "Divergente" é exibido (mesmo visual da divergência de valor), mas **isso não bloqueia** o avanço do fluxo do Servidor — é apenas um alerta visual (o bloqueio por divergência de **valor** só acontece no lado do Analista/Gerência, na aprovação, não no envio pelo Servidor).
-26a. **(Nova — Etapa 5, ver seção 3.22)** Divergência de **valor**, ao contrário do pagador, **bloqueia o avanço já no envio pelo Servidor**: o beneficiário só pode ser "Confirmado" na conferência depois de uma justificativa com pelo menos 3 palavras (`valorDivergeDoCadastro`, `comprovante-status.ts` + `temPeloMenosNPalavras`). Essa justificativa é persistida em `Comprovante.justificativasDivergencia` e exibida para o Analista/Gerência antes da aprovação — é independente da justificativa que o Analista/Gerência escreve no `DivergenciaAprovacaoModal` ao aprovar com ressalva (seção 4.4).
+26. Campo `pagador` deve, por regra de negócio, corresponder ao **titular** do grupo familiar (Carlos Eduardo Ramos), independentemente de qual beneficiário o documento cobre. Se divergente, badge "Divergente" é exibido (visual compartilhado com a antiga divergência de valor, que agora tem rótulo próprio — ver regra 26c), mas **isso não bloqueia** o avanço do fluxo do Servidor — é apenas um alerta visual (o bloqueio por divergência de **valor** só acontece no lado do Analista/Gerência, na aprovação, não no envio pelo Servidor).
+26a. **(Nova — Etapa 5, ver seção 3.22)** Divergência de **valor**, ao contrário do pagador, **bloqueia o avanço já no envio pelo Servidor**: o beneficiário só pode ser "Confirmado" na conferência depois de uma justificativa com pelo menos 3 palavras (`valorDivergeDoCadastro`, `comprovante-status.ts` + `temPeloMenosNPalavras`). Essa justificativa é persistida em `Comprovante.justificativasDivergencia` e exibida para o Analista/Gerência antes da aprovação — é independente da justificativa que o Analista/Gerência via `DivergenciaAprovacaoModal` (seção 4.4).
+26b. **(Atualizada — ajuste pontual pré-Etapa 7, ver seção 3.25)** Divergência cadastral de valor **pode alterar o cadastro do beneficiário**, mas só por decisão explícita da GERDAB — "Aprovar e atualizar valor cadastral" no `DivergenciaAprovacaoModal`. Nunca acontece automaticamente, nunca a partir do lado do Servidor.
+26c. **(Nova — ajuste pontual pré-Etapa 7)** Badge da divergência **cadastral** de valor renomeado para **"Valor difere do cadastro"** (antes "Divergente", texto que também era usado — por engano — para a divergência de Pagador). `CamposExtraidosForm.tsx` calcula os 2 casos como variáveis/badges separados (`valorDivergeDoCadastro` e `pagadorDivergente`), para nunca serem confundidos entre si nem com o badge de divergência **documental** Boleto × Comprovante ("Valor diverge do boleto anexado", regra 9d/seção 3.21) — 3 badges de "algo não bate", 3 textos e 3 significados diferentes.
 
 ### Notificações
 27. Uma notificação por competência "sem envio" + uma notificação por beneficiário com status "notificável" mais recente (não uma notificação por evento histórico — só o estado mais recente gera notificação).
@@ -638,6 +701,10 @@ Antes da Etapa 1 (ver plano de alinhamento de stakeholder, seção 13, decisão 
 
 ### Documento complementar solicitado pela GERDAB — implementado (seção 3.18)
 31f. O Servidor já podia anexar documentos complementares por iniciativa própria a qualquer momento (regra 6 acima). Agora o Analista/Gerência também pode **solicitar explicitamente** um documento complementar (distinto de "Solicitar correção", que pressupõe que o documento atual está errado) via `Comprovante.solicitacaoComplementar`, destacado ao Servidor em `ServidorComprovanteDetail` com um botão de anexo direto.
+
+### Solicitar requerimento + prazo do relatório — implementado (seção 3.24)
+31g. **(Novo — Etapa 7)** Generaliza o padrão acima (31f) para requerimentos de outro módulo: o Analista/Gerência pode **solicitar** que o Servidor abra um requerimento de Mudança de Plano ou Inclusão de Dependente via `Comprovante.solicitacaoRequerimento`, destacado ao Servidor com um link direto para o requerimento certo. Não há ponte automática que feche o pedido quando o requerimento é aberto — fica só no histórico (limitação aceita).
+31h. **(Novo — Etapa 7)** Indicador de prazo do relatório mensal (2º dia útil do mês seguinte à competência, sem calendário de feriados) é **só informativo** para o Analista/Gerência — não altera a regra de retroativo (`competencia !== competenciaAtual`, regra 13) nem nenhum outro status. Preparação de modelo para um futuro módulo de Relatório Mensal, que ainda não existe.
 
 ### Permissões
 31. **(Atualizado — Etapa 1, ver seção 13, decisão 30)** Gerência e Analista têm ações idênticas sobre comprovantes/retroativos — não há mais ações exclusivas de nenhum dos dois nesse fluxo.
@@ -718,12 +785,16 @@ interface AcaoComprovante {
     | 'documento_substituido'
     | 'reenviado'
     | 'devolvido_analista'
-    | 'documento_complementar_solicitado';  // NOVO — Etapa B (seção 3.18)
+    | 'documento_complementar_solicitado'  // NOVO — Etapa B (seção 3.18)
+    | 'requerimento_solicitado'            // NOVO — Etapa 7 (seção 3.24)
+    | 'valor_cadastral_atualizado';        // NOVO — ajuste pontual pré-Etapa 7 (seção 3.25)
   aprovadoPor: string;
   data: string;              // ISO string
   motivo?: string;           // usado em recusas (dropdown de motivo)
   comentario?: string;       // texto livre (justificativa/ressalva/correção/devolução/pedido de complementar)
   beneficiarioId?: string;   // presente só quando a ação é sobre 1 beneficiário específico de um multi-beneficiário
+  valorAnterior?: number;    // NOVO — só em 'valor_cadastral_atualizado' (seção 3.25)
+  valorNovo?: number;        // NOVO — só em 'valor_cadastral_atualizado' (seção 3.25)
 }
 ```
 Representa 1 entrada do histórico append-only (`Comprovante.aprovacoes`). Nunca é editada ou removida, só adicionada.
@@ -737,6 +808,19 @@ interface SolicitacaoComplementar {
 }
 ```
 Registra um pedido ativo de documento complementar pelo Analista/Gerência. Vive em `Comprovante.solicitacaoComplementar` (opcional) — não é um array/histórico, é sempre "o pedido ativo atual" (removido quando atendido).
+
+### `SolicitacaoRequerimento` (novo — seção 3.24)
+```ts
+type TipoRequerimento = 'mudanca_plano' | 'inclusao_dependente';
+interface SolicitacaoRequerimento {
+  tipo: TipoRequerimento;
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
+  beneficiarioId?: string;  // só quando o pedido mira 1 beneficiário específico de um multi-beneficiário
+}
+```
+Generaliza `SolicitacaoComplementar` para pedidos que apontam para um requerimento em outro módulo. Vive em `Comprovante.solicitacaoRequerimento` (opcional), mesma convenção de "pedido ativo atual" — **sem** limpeza automática ao ser atendido (diferente de `solicitacaoComplementar`, que é removida quando um novo documento chega): não há hoje uma ponte entre o Módulo de Pagamento e o módulo de Requerimentos que detecte "o requerimento foi aberto", então o pedido fica visível indefinidamente até alguém removê-lo manualmente do `localStorage` (limitação aceita e documentada — seção 3.24).
 
 ### `StatusBeneficiarioComprovante`
 ```ts
@@ -765,6 +849,7 @@ interface Comprovante {
   statusPorBeneficiario?: StatusBeneficiarioComprovante[];
   versoesAnteriores?: { arquivo: string; dataEnvio: string; status: StatusComprovante }[];
   solicitacaoComplementar?: SolicitacaoComplementar; // NOVO — Etapa B (seção 3.18)
+  solicitacaoRequerimento?: SolicitacaoRequerimento; // NOVO — Etapa 7 (seção 3.24)
   aprovacoes: AcaoComprovante[];           // append-only
   dataEnvio: string;                      // ISO string — atualizada a cada substituição/reenvio
 }
@@ -828,6 +913,7 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 | `prosaude_comprovantes_pagamento` | `comprovantesPagamento` | `Comprovante[]` — **todos** os comprovantes persistidos nesta sessão (novos envios do Servidor + qualquer comprovante seed que já foi "tocado"/atualizado por Analista/Gerência/Servidor) | **Pagamento** |
 | `prosaude_competencias_concluidas` | `competenciasConcluidas` | `ConclusaoCompetencia[]` — 1 entrada por competência concluída | **Pagamento** |
 | `prosaude_beneficiarios_dispensados` | `beneficiariosDispensados` | `BeneficiarioDispensado[]` — 1 entrada por par (beneficiário, competência) dispensado | **Pagamento** |
+| `prosaude_valores_cadastrados_beneficiarios` | `valoresCadastradosBeneficiarios` | `Record<beneficiarioId, number>` — overrides de `valorCadastrado` aplicados pela GERDAB (NOVO — ajuste pontual pré-Etapa 7, seção 3.25) | **Pagamento** |
 | `prosaude_role` | *(constante inline em `AdminLayout.tsx`, não faz parte de `PROSAUDE_STORAGE_KEYS`)* | `"analista"` \| `"gerencia"` | Autenticação simulada (compartilhado, mas relevante para Pagamento) |
 
 ### Funções de acesso (`prosaude-storage.ts`)
@@ -844,6 +930,10 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 
 **Dispensa de beneficiário:**
 - `loadBeneficiariosDispensados()`, `getBeneficiariosDispensadosIds(competencia): string[]`, `dispensarBeneficiario(beneficiarioId, competencia)`, `removerDispensaBeneficiario(beneficiarioId, competencia)`.
+
+**Valores cadastrados (NOVO — ajuste pontual pré-Etapa 7, seção 3.25):**
+- `atualizarValorCadastradoBeneficiario(beneficiarioId, novoValor)` — grava/atualiza o override de 1 beneficiário. Usado só por `aprovarEAtualizarCadastro()` (`admin.comprovantes.tsx`) ao resolver uma divergência cadastral.
+- `getBeneficiariosPagamentoAtual(): BeneficiarioPagamento[]` — `beneficiariosPagamento` (seed, `mock-data.ts`) com os overrides sobrepostos. **Função canônica para "ler os beneficiários com o cadastro atual"** sempre que `valorCadastrado` importa (badges de divergência, formulários de conferência, geração de campos mock) — nunca ler `beneficiariosPagamento` diretamente nesses casos. Consumidores que só precisam de identidade (nome/parentesco, que nunca mudam) continuam podendo ler o array estático direto.
 
 ### Comportamento validado após F5 (testado manualmente em múltiplas sessões de desenvolvimento)
 - Comprovantes enviados, histórico, notificações, aprovações, correções e retroativos sobrevivem a reload completo.
@@ -938,9 +1028,9 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - **Usado em:** `servidor.pagamentos.index.tsx` (todos os cards clicáveis), **`ConsolidadoCompetencia.tsx`** (novo uso — acionado por `corrigirEnvio()` quando o envio está `ilegivel` ou `correcao_solicitada`).
 
 ### `DivergenciaAprovacaoModal`
-- **Finalidade:** modal bloqueante de justificativa quando o Analista/Gerência tenta aprovar um comprovante com valor divergente do cadastro.
-- **Props:** `open: boolean`, `beneficiarioNome: string`, `valorExtraido: number`, `valorCadastrado: number`, `onConfirm: (justificativa) => void`, `onCancel: () => void`.
-- **Comportamento:** usa os primitivos `Dialog` do shadcn/ui; botão "Aprovar com ressalva" só habilita com justificativa não-vazia.
+- **Finalidade:** painel de decisão quando o Analista/Gerência tenta aprovar um comprovante com valor **cadastral** divergente (ver seção 3.25).
+- **Props (reescritas — ajuste pontual pré-Etapa 7):** `open: boolean`, `beneficiarioNome: string`, `valorExtraido: number`, `valorCadastrado: number`, `justificativaServidor?: string`, `onAprovarEAtualizar: () => void`, `onSolicitarCorrecao: () => void`, `onRecusar: () => void`, `onCancel: () => void`. Antes tinha só `onConfirm: (justificativa) => void`.
+- **Comportamento:** usa os primitivos `Dialog` do shadcn/ui; mostra um painel valor cadastrado/encontrado/diferença + a justificativa do Servidor (se houver); 3 botões de ação, sem textarea própria (a decisão "Solicitar correção"/"Recusar" delega para os sub-formulários padrão já existentes em `admin.comprovantes.tsx`).
 - **Usado em:** `admin.comprovantes.tsx`.
 
 ### `DocPreview`
@@ -996,10 +1086,13 @@ Todas as chaves vivem em `PROSAUDE_STORAGE_KEYS` (`src/lib/prosaude-storage.ts`)
 - **(Novo — Etapa 4 do alinhamento de stakeholder)** Taxonomia de campos própria por tipo documental (Banco/Tipo de Assistência removidos do formulário; Vencimento adicionado); situações não reembolsáveis (odontológico, multa, taxa administrativa, juros) generalizadas como banner único, visível para Servidor, Analista e Gerência; nova validação cruzada Boleto × Comprovante — seções 3.21, 6, 13 (decisão 33).
 - **(Novo — Etapa 5 do alinhamento de stakeholder)** Justificativas obrigatórias com pelo menos 3 palavras: retroativo (já exigia justificativa, agora exige conteúdo mínimo) e divergência de valor (justificativa nova, escrita pelo Servidor no envio, persistida em `Comprovante.justificativasDivergencia` e exibida para o Analista/Gerência antes da aprovação) — seções 3.22, 6, 13 (decisão 34).
 - **(Novo — Etapa 6 do alinhamento de stakeholder)** Operadora divergente do cadastro: aviso por beneficiário com 2 ações ("Abrir requerimento de mudança de plano" em nova aba, ou "Continuar mesmo assim"), flag `Comprovante.operadoraDivergenteCadastro` persistido e badge visível para Analista/Gerência antes de abrir qualquer sub-formulário — seções 3.23, 6, 13 (decisão 35).
+- **(Novo — Etapa 7 do alinhamento de stakeholder, última etapa do plano)** "Solicitar requerimento" (Mudança de Plano / Inclusão de Dependente) generaliza o padrão de "Solicitar documento complementar", com link direto para o Servidor conforme o tipo; indicador de prazo do relatório mensal (2º dia útil do mês seguinte à competência) como preparação de modelo para um futuro módulo de Relatório Mensal, sem tela própria — seções 3.24, 6, 13 (decisão 36).
+- **(Novo — ajuste pontual pré-commit da Etapa 7)** Divergência cadastral de valor separada da divergência documental (Boleto × Comprovante): badge próprio "Valor difere do cadastro"; painel de decisão no `DivergenciaAprovacaoModal` com valor cadastrado/encontrado/diferença/justificativa do Servidor; 3 decisões explícitas para a GERDAB (aprovar e atualizar cadastro / solicitar correção / recusar); cadastro efetivamente atualizado via novo overlay `getBeneficiariosPagamentoAtual()` — seções 3.25, 4.4, 6, 13 (decisão 37).
+- **(Novo — ajuste pontual pré-commit da Etapa 7)** Campo "Modalidade/tipo do plano" do dependente, nos fluxos de Inclusão de Dependente e de Mudança de Plano (dependente migrando para plano diferente do titular), deixou de ser texto livre — vira `<select>` estruturado (Individual/Familiar / Empresarial), mesmo vocabulário `ModalidadePlano` do Módulo de Pagamento, nunca herdado do titular — ver `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md`, seção 6.
 
-**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1 original — nomenclatura antiga, anterior ao plano de 7 etapas do stakeholder), fluxo do Analista + sino + detalhe (Etapa 2 original), 2ª alçada da Gerência (Etapa 3 original — **posteriormente removida**, ver decisão 30), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`), Etapa 1 do plano de alinhamento de stakeholder — retroativo com aprovação única (commit `5aeee9f`), Etapa 2 — seleção de beneficiários por grupo (commit `d03d8f7`), Etapa 3 — documentos obrigatórios + cobertura por beneficiário (commit `730f828`), Etapa 4 — taxonomia de campos + situações não reembolsáveis (commit `1dc2190`), Etapa 5 — justificativas obrigatórias (commit `7988d58`).
+**Commitado no git** (branch `feature-modulo-pagamentos`, ver seção 13 para lista de commits): fluxo do Servidor (Etapa 1 original — nomenclatura antiga, anterior ao plano de 7 etapas do stakeholder), fluxo do Analista + sino + detalhe (Etapa 2 original), 2ª alçada da Gerência (Etapa 3 original — **posteriormente removida**, ver decisão 30), alertas de competências sem comprovante, os 3 novos estados do fluxo de envio + campo Pagador + alerta de competência incompleta (commit `cd324da`), multi-arquivo/consolidação/navegação do Resumo (commit `f15a028`), Etapa 1 do plano de alinhamento de stakeholder — retroativo com aprovação única (commit `5aeee9f`), Etapa 2 — seleção de beneficiários por grupo (commit `d03d8f7`), Etapa 3 — documentos obrigatórios + cobertura por beneficiário (commit `730f828`), Etapa 4 — taxonomia de campos + situações não reembolsáveis (commit `1dc2190`), Etapa 5 — justificativas obrigatórias (commit `7988d58`), Etapa 6 — operadora divergente (commit `de16ad0`).
 
-**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): a Etapa 6 do plano de alinhamento de stakeholder (operadora divergente — este documento). Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido.
+**Ainda não commitado no momento da escrita desta atualização** (verificar `git status` para confirmar o estado exato): a Etapa 7 do plano de alinhamento de stakeholder — **última etapa das 7 aprovadas** (solicitar requerimento + indicador de prazo) — **mais os 2 ajustes pontuais pedidos pelo usuário antes de fechar o commit** (divergência cadastral × documental com correção de cadastro, seção 3.25; campo de modalidade do dependente estruturado, `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md` seção 6) — tudo será commitado junto, como parte do mesmo commit da Etapa 7. Aguardando autorização explícita do usuário para commit, conforme processo já estabelecido. Com este commit, o plano completo de alinhamento de stakeholder (7 etapas) estará implementado, testado e documentado.
 
 ---
 
@@ -1039,7 +1132,7 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 6. **Sino de notificações substitui o ícone de sair no header; botão "Sair" movido para "Meus Dados"** — pedido explícito do usuário ao notar a lacuna, alinhado ao handoff original de design.
 7. **`retroativo_devolvido` como status próprio (não reaproveitar `retroativo_aguardando_analista`)** — decisão explícita para diferenciar visualmente "nunca passou pela 1ª alçada" de "já passou, foi devolvido pela Gerência" — evita confundir o Analista sobre o histórico do item.
 8. **`retroativo_recusado` como status próprio (não reaproveitar `recusado`)** — mesma lógica: permite exibir competência original + justificativa do atraso + decisão do Analista + decisão da Gerência juntas, o que um `recusado` genérico não contextualizaria bem.
-9. **Divergência de valor bloqueia aprovação direta, mas nunca altera o cadastro do beneficiário** — regra de negócio explícita: divergência é sempre um alerta auxiliar, nunca o "status principal", e a correção do cadastro (se necessária) está fora do escopo deste módulo.
+9. **Divergência de valor bloqueia aprovação direta** — regra de negócio explícita: divergência é sempre um alerta auxiliar, nunca o "status principal" do comprovante. **Parcialmente superada (ver decisão 37, seção 13):** a parte "nunca altera o cadastro" valia só para a divergência **documental** (Boleto × Comprovante, que nunca altera o cadastro, sem exceção) — a divergência **cadastral** (valor × `valorCadastrado`) passou a poder alterar o cadastro, mas só por escolha explícita da GERDAB ("Aprovar e atualizar valor cadastral"), nunca automaticamente.
 10. **Modelo de envio "incremental" em vez de "lote"** — ao desenhar o Resumo da Competência, havia 2 opções: (a) cada documento é persistido assim que sua própria revisão termina (o Resumo vira uma tela de contexto pós-persistência), ou (b) nada é salvo até um "enviar tudo" final em lote. **Escolhida a opção (a)**, explicitamente, porque reaproveita 100% da mecânica já construída e testada, e porque a opção (b) arriscava perda de progresso se o servidor abandonasse o fluxo no meio.
 11. **"Concluir envio da competência" nunca salva comprovantes de novo** — consequência direta da decisão 10: uma vez que tudo já é persistido incrementalmente, esse botão só pode ser um registro de conclusão, sob pena de reenviar/duplicar dados.
 12. **Invalidação automática de conclusão ao chegar novo documento** — decisão explícita para impedir que uma competência marcada como "concluída" fique com essa marca inválida depois que seu conjunto de documentos mudou.
@@ -1066,15 +1159,16 @@ Ordem cronológica aproximada (por etapa de desenvolvimento), com o **porquê** 
 33. **(Etapa 4 — alinhamento de stakeholder) Situação não reembolsável vira alerta calculado, não campo; taxonomia de campos por tipo documental é literal, seguida à risca** — a lista de campos por tipo (Comprovante/Boleto/Recibo/Demonstrativo/Fatura Técnica) veio pronta e explícita do stakeholder na reunião original; implementada palavra por palavra, incluindo a consequência assumida de Recibo/Demonstrativo não extraírem `operadora` (documentada, não "corrigida" silenciosamente). Banco e Tipo de Assistência, que antes eram campos editáveis (`CampoExtraido['chave']`), viraram: Banco simplesmente removido (não tinha uso real além de exibição, confiança sempre "nenhuma" — pendência 8 antiga fica resolvida por eliminação do campo); Tipo de Assistência generalizado para `SituacaoNaoReembolsavel` (odontológico + multa + taxa administrativa + juros), calculado a partir do nome do arquivo, nunca mais editável manualmente pelo Servidor — decisão consciente: não faria sentido permitir que o próprio servidor "corrija" uma situação não reembolsável que a IA identificou, isso abriria uma brecha de contornar o bloqueio. O banner que antes só existia (mais detalhado) em `admin.comprovantes.tsx` foi consolidado em 1 único banner genérico dentro de `CamposExtraidosForm`, compartilhado pelos 3 perfis — evita 2 fontes de verdade para a mesma mensagem.
 34. **(Etapa 5 — alinhamento de stakeholder) Divergência de valor ganha justificativa própria do Servidor, distinta da justificativa que o Analista/Gerência já escrevia ao aprovar com ressalva** — o pedido do stakeholder era só "exigir justificativa com no mínimo 3 palavras" para retroativo e divergência, mas ao implementar ficou claro que a divergência de valor **já tinha** uma justificativa no fluxo (a do `DivergenciaAprovacaoModal`, escrita pelo Analista/Gerência no momento de aprovar com ressalva — decisão 9). Reaproveitar esse mesmo campo para a nova exigência do Servidor misturaria autoria (quem escreveu o quê, e quando) em um único texto. Optou-se por manter os dois: a nova justificativa do Servidor (`Comprovante.justificativasDivergencia`, escrita no envio, bloqueia o "Confirmar" da conferência) e a justificativa já existente do Analista/Gerência (escrita na aprovação, continua no `DivergenciaAprovacaoModal`) — a primeira dá contexto para a segunda, mas não a substitui. Isso também resolveu, de forma direta, a pendência 10 antiga (seção 12): o campo `justificativaDivergencia` que já existia no tipo `Comprovante`, mas nunca era escrito por nenhum fluxo ativo, era exatamente o lugar certo para essa nova justificativa — só precisou ser generalizado para um array (`justificativasDivergencia`), para suportar mais de 1 beneficiário divergente no mesmo envio (fatura técnica).
 35. **(Etapa 6 — alinhamento de stakeholder) Divergência de operadora resolvida por escolha binária, não por justificativa de texto; link do requerimento abre em nova aba** — diferente da divergência de valor (Etapa 5, que exige texto), o plano do stakeholder pedia só 2 ações para operadora divergente: abrir requerimento ou continuar mesmo assim. Não havia pedido explícito de justificativa escrita, então não foi adicionada uma — decisão de seguir a especificação literal em vez de generalizar por simetria com a Etapa 5. Quanto ao link do requerimento: como o wizard de envio de comprovante (`ConferenciaBeneficiarios`) só persiste dados na confirmação final, e o wizard de requerimento de mudança de plano é outro fluxo grande e independente (6 passos próprios), navegar `to="/servidor/requerimento/novo-plano"` na mesma aba perderia todo o progresso do envio em andamento — decisão consciente de abrir em nova aba (`target="_blank"`) em vez de tentar preservar estado entre 2 wizards não relacionados, o que exigiria uma complexidade de sincronização não pedida pelo stakeholder.
+36. **(Etapa 7 — alinhamento de stakeholder, última etapa do plano) "Solicitar requerimento" sem ponte automática de volta; indicador de prazo é só informativo, não altera o gatilho de retroativo** — para "Solicitar requerimento", o padrão óbvio a seguir era o já existente de `solicitacaoComplementar` (Etapa B), incluindo a mesma limitação aceita então: sem uma integração real entre o Módulo de Pagamento e o módulo de Requerimentos, não há como detectar automaticamente que o Servidor abriu/concluiu o requerimento solicitado, então o pedido fica só registrado no histórico — mesma decisão de simplicidade já validada, reaplicada aqui em vez de inventar um mecanismo de sincronização novo. Para o indicador de prazo do relatório, a decisão explícita foi **não** tocar na regra existente de retroativo (`competencia !== competenciaAtual`): o stakeholder pediu "preparar modelo e indicadores" para um módulo futuro, não uma mudança na regra atual de quando um envio é tratado como retroativo — misturar os dois exigiria repensar toda a máquina de estados de retroativo (seção 3.12) por um requisito que ainda não foi pedido, então o indicador foi implementado como informação pura, isolada de qualquer lógica de status.
+37. **(Ajuste pontual pré-commit da Etapa 7) Divergência cadastral pode corrigir o cadastro, mas só por escolha explícita da GERDAB; divergência documental nunca pode** — pedido direto do usuário revisando o comportamento da divergência de valor antes de fechar a Etapa 7: separar claramente a divergência **documental** (Boleto × Comprovante — 2 documentos do mesmo envio discordando entre si, nunca prova qual dos dois está certo, então só gera alerta) da divergência **cadastral** (documento × cadastro — aqui faz sentido perguntar "o cadastro está desatualizado?"). Decisão de design: a correção do cadastro nunca é automática nem inferida — exige a GERDAB escolher ativamente "Aprovar e atualizar valor cadastral" no modal, vendo lado a lado o valor cadastrado, o valor encontrado, a diferença e a justificativa que o próprio Servidor já tinha escrito no envio. Optou-se por **não** reaproveitar "aprovado com ressalva" para esse caminho — depois de corrigido, o cadastro passa a bater com o documento, então vira uma aprovação normal (`status: 'aprovado'`), não uma ressalva (que sugeriria que algo ainda está errado). Para persistir a correção, foi criado um mecanismo de overlay (`prosaude_valores_cadastrados_beneficiarios` + `getBeneficiariosPagamentoAtual()`) que segue exatamente o mesmo padrão já usado para comprovantes (`comprovantes` seed + localStorage, deduplicado) — decisão de reaproveitar uma convenção já validada em vez de inventar uma nova forma de "seed + override".
 
 ---
 
 ## 14. Próximos Passos Recomendados
 
-### Em andamento — Etapa 7 do alinhamento de stakeholder (ver decisões 30-35, seção 13)
+### Concluído — as 7 etapas do alinhamento de stakeholder (ver decisões 30-36, seção 13)
 
-Etapas 1 (retroativo com aprovação única), 2 (seleção de beneficiários por grupo), 3 (documentos obrigatórios + cobertura por beneficiário), 4 (taxonomia de campos + situações não reembolsáveis), 5 (justificativas obrigatórias) e 6 (operadora divergente do cadastro, este documento) estão implementadas e testadas; Etapa 6 aguarda autorização de commit. A última etapa do mesmo plano (aprovada pelo usuário, com o mesmo ciclo de build + teste manual + doc + autorização) ainda não foi implementada:
-- **Etapa 7:** botão "Solicitar requerimento" (mudança de plano / inclusão de dependente) para Analista/Gerência, e indicador de prazo do relatório mensal (2º dia útil) como preparação para um módulo futuro.
+Etapas 1 (retroativo com aprovação única), 2 (seleção de beneficiários por grupo), 3 (documentos obrigatórios + cobertura por beneficiário), 4 (taxonomia de campos + situações não reembolsáveis), 5 (justificativas obrigatórias), 6 (operadora divergente do cadastro) e 7 (solicitar requerimento + indicador de prazo, este documento) estão implementadas e testadas; Etapa 7 aguarda autorização de commit. Com esse commit, **o plano completo de 7 etapas do alinhamento de stakeholder está finalizado** — nenhuma etapa nova está aprovada além destas; próximos incrementos exigiriam um novo ciclo de alinhamento com o stakeholder.
 
 ### Prioridade alta — requisito de produto (não é só limpeza de protótipo)
 
@@ -1082,7 +1176,7 @@ Etapas 1 (retroativo com aprovação única), 2 (seleção de beneficiários por
 
 ### Demais passos, da menor para a maior complexidade/risco
 
-2. **Commitar a Etapa 6 deste documento** (ver seção 11 — "Ainda não commitado"). Aguardando autorização explícita do usuário, conforme processo já estabelecido.
+2. **Commitar a Etapa 7 deste documento** (ver seção 11 — "Ainda não commitado") — último commit do plano de 7 etapas. Aguardando autorização explícita do usuário, conforme processo já estabelecido.
 3. **Decidir e resolver as pendências 1 e 9 da seção 12** (campo `cpf` ausente no mock de OCR; status legados `processando`/`revisao`) — são limpezas de baixo risco que não mudam comportamento visível. (Pendência 10 — `justificativaDivergencia` não utilizado — já foi resolvida na Etapa 5, seção 12.)
 4. **Estender "competência incompleta" para competências retroativas** (pendência 3) — hoje só cobre `competenciaAtual`; se o negócio precisar do mesmo alerta para os meses fechados, generalizar `getBeneficiariosFaltantes` para aceitar uma lista de competências e agregar o resultado na UI.
 5. **Resolver o deep-link de abas** (pendência 4) — adicionar um `search: { tab: string }` na rota `/admin/comprovantes` e fazer o card do dashboard linkar diretamente para a aba "Retroativos".

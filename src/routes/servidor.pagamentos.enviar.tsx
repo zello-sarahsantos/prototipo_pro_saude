@@ -31,6 +31,7 @@ import {
   addComprovantePagamento,
   getComprovantesUnificados,
   saveConclusaoCompetencia,
+  getBeneficiariosPagamentoAtual,
 } from "@/lib/prosaude-storage";
 
 const titularPagamento = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
@@ -91,9 +92,12 @@ function EnviarComprovante() {
   const [refreshResumoKey, setRefreshResumoKey] = useState(0);
 
   const comprovantesExistentes = useMemo(() => getComprovantesUnificados(), [step]);
+  // Cadastro "atual" (seed + correções já aplicadas pela GERDAB) — garante que uma divergência
+  // cadastral já resolvida não volte a ser sinalizada num novo envio deste beneficiário.
+  const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [step]);
 
   const isRetroativo = competencia !== competenciaAtual;
-  const beneficiariosEscolhidos = beneficiariosPagamento.filter((b) =>
+  const beneficiariosEscolhidos = beneficiariosAtuais.filter((b) =>
     beneficiariosSelecionados.includes(b.id),
   );
   // Modalidade do grupo selecionado determina os tipos de documento permitidos — não é mais
@@ -275,7 +279,7 @@ function EnviarComprovante() {
           <div>
             <label className="block text-sm font-medium mb-1.5">Beneficiários</label>
             <BeneficiarioSelector
-              beneficiarios={beneficiariosPagamento}
+              beneficiarios={beneficiariosAtuais}
               competencia={competencia}
               comprovantesExistentes={comprovantesExistentes}
               selecionados={beneficiariosSelecionados}

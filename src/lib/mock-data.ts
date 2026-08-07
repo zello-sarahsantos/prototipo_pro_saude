@@ -338,14 +338,21 @@ export function tiposDoArquivo(arquivo: { documentos: DocumentoDetectado[] }): T
  * os tipos de documento vem do grupo de beneficiários escolhido (`BeneficiarioPagamento.modalidadePlano`),
  * não mais de um valor único e global do sistema — ver seção 6 de docs/MODULO_PAGAMENTO.md.
  */
-export const tipoPlanoPagamentoPadrao: 'empresarial' | 'individual_familiar' = 'individual_familiar';
+/** Vocabulário compartilhado de modalidade de plano — usado pelo Módulo de Pagamento
+ *  (`BeneficiarioPagamento.modalidadePlano`) e também pelo módulo de Requerimentos (Inclusão de
+ *  Dependente / Mudança de Plano, ver `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md`, seção 6) —
+ *  os dois módulos continuam com cenários de dados isolados (Carlos/Marina/Pedro vs. João/Ana),
+ *  só o tipo/rótulo é reaproveitado, para que uma futura integração não precise traduzir valores. */
+export type ModalidadePlano = 'empresarial' | 'individual_familiar';
 
-export const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
+export const tipoPlanoPagamentoPadrao: ModalidadePlano = 'individual_familiar';
+
+export const tiposDocumentoPorPlano: Record<ModalidadePlano, TipoDocumentoArquivo[]> = {
   empresarial: ['fatura_tecnica', 'comprovante_pagamento'],
   individual_familiar: ['boleto', 'recibo', 'demonstrativo', 'comprovante_pagamento'],
 };
 
-export const modalidadePlanoLabels: Record<'empresarial' | 'individual_familiar', string> = {
+export const modalidadePlanoLabels: Record<ModalidadePlano, string> = {
   empresarial: 'Empresarial',
   individual_familiar: 'Individual/Familiar',
 };
@@ -361,13 +368,20 @@ export interface AcaoComprovante {
     | 'documento_substituido'
     | 'reenviado'
     | 'devolvido_analista'
-    | 'documento_complementar_solicitado';
+    | 'documento_complementar_solicitado'
+    | 'requerimento_solicitado'
+    | 'valor_cadastral_atualizado';
   aprovadoPor: string;
   data: string;
   motivo?: string;
   comentario?: string;
   /** Presente quando a ação se refere a apenas 1 beneficiário de um comprovante multi-beneficiário. */
   beneficiarioId?: string;
+  /** Presentes só em `acao: 'valor_cadastral_atualizado'` — registram a mudança de
+   *  `BeneficiarioPagamento.valorCadastrado` decidida pelo Analista/Gerência ao resolver uma
+   *  divergência cadastral (ver seção 3.25, docs/MODULO_PAGAMENTO.md). */
+  valorAnterior?: number;
+  valorNovo?: number;
 }
 
 /** Pedido do Analista/Gerência por um documento adicional (não uma correção do documento
@@ -376,6 +390,27 @@ export interface SolicitacaoComplementar {
   motivo: string;
   solicitadoPor: string;
   data: string;
+}
+
+export type TipoRequerimento = 'mudanca_plano' | 'inclusao_dependente';
+
+export const tipoRequerimentoLabels: Record<TipoRequerimento, string> = {
+  mudanca_plano: 'Mudança de Plano',
+  inclusao_dependente: 'Inclusão de Dependente',
+};
+
+/** Pedido do Analista/Gerência para que o Servidor abra um requerimento em outro módulo (ex:
+ *  mudança de plano, após ver que a operadora do documento diverge do cadastro). Generaliza o
+ *  mesmo padrão de `SolicitacaoComplementar`, mas aponta para um requerimento fora do Módulo de
+ *  Pagamento — não há hoje uma ponte automática que "resolva" este pedido quando o requerimento
+ *  correspondente é aberto, fica só registrado no histórico. */
+export interface SolicitacaoRequerimento {
+  tipo: TipoRequerimento;
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
+  /** Presente só quando o pedido se refere a 1 beneficiário específico de um comprovante multi-beneficiário. */
+  beneficiarioId?: string;
 }
 
 /** Status individual de cada beneficiário dentro de um comprovante multi-beneficiário (fatura técnica). */
@@ -413,6 +448,9 @@ export interface Comprovante {
   /** Pedido ativo do Analista/Gerência por um documento complementar — não altera `status`;
    *  removido automaticamente quando um novo documento chega para o beneficiário/competência. */
   solicitacaoComplementar?: SolicitacaoComplementar;
+  /** Pedido ativo do Analista/Gerência para que o Servidor abra um requerimento (mudança de
+   *  plano ou inclusão de dependente) em outro módulo — não altera `status`. */
+  solicitacaoRequerimento?: SolicitacaoRequerimento;
   aprovacoes: AcaoComprovante[];
   dataEnvio: string;
 }
@@ -465,7 +503,7 @@ export interface BeneficiarioPagamento {
   situacao: 'ativo' | 'pendente_documentacao' | 'inativo';
   /** Modalidade do plano deste beneficiário — determina a exigência documental do grupo de
    *  envio que ele integra (Etapa 3). Não é mais um valor único e global do sistema. */
-  modalidadePlano: 'empresarial' | 'individual_familiar';
+  modalidadePlano: ModalidadePlano;
   /** Quando presente, este beneficiário tem comprovação coletiva feita pela associação —
    *  não participa de envio individual, não entra em checklist de pendência, e não aparece
    *  no alerta de "competência incompleta". Independente de `servidorAtual.associacao`

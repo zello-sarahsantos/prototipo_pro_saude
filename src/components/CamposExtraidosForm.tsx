@@ -31,7 +31,9 @@ export function CamposExtraidosForm({
   titulo?: string;
   campos: CampoExtraido[];
   onChange?: (campos: CampoExtraido[]) => void;
-  /** Quando informado, exibe alerta "Divergente" se o campo `valor` não bater com o valor cadastrado. */
+  /** Quando informado, exibe alerta "Valor difere do cadastro" se o campo `valor` não bater com
+   *  o valor cadastrado do beneficiário — divergência **cadastral**, distinta da divergência
+   *  **documental** Boleto × Comprovante (`divergenciaBoletoComprovante`, abaixo). */
   valorCadastrado?: number;
   /** Quando informado, exibe alerta "Divergente" se o campo `pagador` não for o titular — o
    *  pagamento deve ter sido feito obrigatoriamente por ele, mesmo quando o beneficiário é outro. */
@@ -67,15 +69,18 @@ export function CamposExtraidosForm({
       )}
       {campos.map((campo) => {
         const naoIdentificado = campo.valor.trim() === "";
-        const divergente =
-          (campo.chave === "valor" &&
-            valorCadastrado !== undefined &&
-            !naoIdentificado &&
-            parseFloat(campo.valor) !== valorCadastrado) ||
-          (campo.chave === "pagador" &&
-            nomeTitular !== undefined &&
-            !naoIdentificado &&
-            campo.valor !== nomeTitular);
+        // Divergência cadastral (valor extraído/informado × valor cadastrado do beneficiário) —
+        // rótulo próprio para não ser confundida com a divergência documental Boleto × Comprovante.
+        const valorDivergeDoCadastro =
+          campo.chave === "valor" &&
+          valorCadastrado !== undefined &&
+          !naoIdentificado &&
+          parseFloat(campo.valor) !== valorCadastrado;
+        const pagadorDivergente =
+          campo.chave === "pagador" &&
+          nomeTitular !== undefined &&
+          !naoIdentificado &&
+          campo.valor !== nomeTitular;
         return (
         <div key={campo.chave} className="space-y-1">
           <div className="flex items-center justify-between">
@@ -91,7 +96,15 @@ export function CamposExtraidosForm({
                   <AlertTriangle className="h-3 w-3" /> Não identificado
                 </span>
               )}
-              {divergente && (
+              {valorDivergeDoCadastro && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
+                >
+                  <AlertTriangle className="h-3 w-3" /> Valor difere do cadastro
+                </span>
+              )}
+              {pagadorDivergente && (
                 <span
                   className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                   style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}

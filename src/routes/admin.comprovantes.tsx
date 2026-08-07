@@ -10,6 +10,8 @@ import {
   ArrowUpCircle,
   Undo2,
   FilePlus,
+  FileSignature,
+  Clock,
 } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { DocPreview } from "@/components/DocPreview";
@@ -19,13 +21,21 @@ import { getAdminRole } from "@/components/AdminLayout";
 import {
   beneficiariosPagamento,
   formatCompetencia,
+  formatCurrency,
   analistaReferencia,
   gerenteReferencia,
+  tipoRequerimentoLabels,
   type Comprovante,
   type StatusComprovante,
   type AcaoComprovante,
+  type TipoRequerimento,
 } from "@/lib/mock-data";
-import { getComprovantesUnificados, updateComprovantePagamento } from "@/lib/prosaude-storage";
+import {
+  getComprovantesUnificados,
+  updateComprovantePagamento,
+  getBeneficiariosPagamentoAtual,
+  atualizarValorCadastradoBeneficiario,
+} from "@/lib/prosaude-storage";
 import {
   getCamposDoBeneficiario,
   getDivergencia,
@@ -34,6 +44,7 @@ import {
   recomputeStatusGeral,
   getListaStatusBeneficiario,
 } from "@/lib/comprovante-status";
+import { estaDentroDoPrazoRelatorio } from "@/lib/prazo-competencia";
 
 export const Route = createFileRoute("/admin/comprovantes")({
   component: Comprovantes,
@@ -64,7 +75,7 @@ const statusPorTab: Record<Tab, StatusComprovante[]> = {
 // (retroativo não exige mais 2ª alçada obrigatória).
 const statusComAcaoDisponivel: StatusComprovante[] = ["em_analise", "retroativo_aguardando_aprovacao"];
 
-type SubFormTipo = "ressalva" | "correcao" | "recusar" | "complementar";
+type SubFormTipo = "ressalva" | "correcao" | "recusar" | "complementar" | "requerimento";
 
 function nomeBeneficiario(id: string): string {
   return beneficiariosPagamento.find((b) => b.id === id)?.nome ?? id;
@@ -81,14 +92,19 @@ function Comprovantes() {
   const [subForm, setSubForm] = useState<{ beneficiarioId: string; tipo: SubFormTipo } | null>(null);
   const [comentario, setComentario] = useState("");
   const [motivo, setMotivo] = useState("Documento ilegível");
+  const [requerimentoTipo, setRequerimentoTipo] = useState<TipoRequerimento>("mudanca_plano");
   const [divergencia, setDivergencia] = useState<{
     comprovanteId: string;
     beneficiarioId: string;
     valorExtraido: number;
     valorCadastrado: number;
+    justificativaServidor?: string;
   } | null>(null);
 
   const todos = useMemo(() => getComprovantesUnificados(), [refreshKey]);
+  // Sempre o cadastro "atual" (seed + correções já aplicadas pela GERDAB) — nunca o seed puro,
+  // para que uma divergência cadastral já resolvida não volte a aparecer em outro comprovante.
+  const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [refreshKey]);
   const cur = todos.find((c) => c.id === openId) ?? null;
   const filtrados = todos.filter((c) => statusPorTab[tab].includes(c.status));
 
@@ -101,6 +117,7 @@ function Comprovantes() {
     setSubForm(null);
     setComentario("");
     setMotivo("Documento ilegível");
+    setRequerimentoTipo("mudanca_plano");
   }
 
   function registrarAcao(
@@ -140,7 +157,7 @@ function Comprovantes() {
   }
 
   function aprovar(comprovante: Comprovante, beneficiarioId: string) {
-    const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
+    const beneficiario = beneficiariosAtuais.find((b) => b.id === beneficiarioId);
     if (!beneficiario) return;
     const { divergente, valorExtraido } = getDivergencia(comprovante, beneficiario);
 
@@ -150,6 +167,9 @@ function Comprovantes() {
         beneficiarioId,
         valorExtraido,
         valorCadastrado: beneficiario.valorCadastrado,
+        justificativaServidor: comprovante.justificativasDivergencia?.find(
+          (j) => j.beneficiarioId === beneficiarioId,
+        )?.texto,
       });
       return;
     }
@@ -162,20 +182,38 @@ function Comprovantes() {
     });
   }
 
-  function confirmarDivergencia(justificativa: string) {
+  /** GERDAB decide que o valor encontrado está correto: corrige o cadastro do beneficiário e
+   *  aprova o comprovante normalmente (não é mais "com ressalva" — o cadastro passou a bater). */
+  function aprovarEAtualizarCadastro() {
     if (!divergencia) return;
     const comprovante = todos.find((c) => c.id === divergencia.comprovanteId);
     if (!comprovante) return;
 
+    atualizarValorCadastradoBeneficiario(divergencia.beneficiarioId, divergencia.valorExtraido);
     registrarAcao(comprovante, divergencia.beneficiarioId, proximoStatusAprovacao(comprovante.status), {
       etapa: etapaAtual,
-      acao: "aprovado_com_ressalva",
+      acao: "valor_cadastral_atualizado",
       aprovadoPor: autor,
       data: new Date().toISOString(),
-      comentario: justificativa,
+      comentario: divergencia.justificativaServidor,
+      valorAnterior: divergencia.valorCadastrado,
+      valorNovo: divergencia.valorExtraido,
     });
     setDivergencia(null);
-    refresh();
+  }
+
+  /** Fecha o modal de divergência e reabre o fluxo padrão de "Solicitar correção"/"Recusar" —
+   *  reaproveita 100% da textarea/confirmação já existente, sem duplicar UI. */
+  function solicitarCorrecaoDivergencia() {
+    if (!divergencia) return;
+    setSubForm({ beneficiarioId: divergencia.beneficiarioId, tipo: "correcao" });
+    setDivergencia(null);
+  }
+
+  function recusarDivergencia() {
+    if (!divergencia) return;
+    setSubForm({ beneficiarioId: divergencia.beneficiarioId, tipo: "recusar" });
+    setDivergencia(null);
   }
 
   function confirmarSubForm(comprovante: Comprovante) {
@@ -227,6 +265,34 @@ function Comprovantes() {
       refresh();
       setSubForm(null);
       setComentario("");
+    } else if (subForm.tipo === "requerimento") {
+      // Também não altera o status — generaliza o mesmo padrão de "complementar", mas aponta
+      // para um requerimento em outro módulo (sem ponte automática de volta, ver mock-data.ts).
+      const beneficiarioIdAlvo = comprovante.beneficiarioIds.length > 1 ? subForm.beneficiarioId : undefined;
+      updateComprovantePagamento(comprovante.id, {
+        solicitacaoRequerimento: {
+          tipo: requerimentoTipo,
+          motivo: comentario,
+          solicitadoPor: autor,
+          data: new Date().toISOString(),
+          beneficiarioId: beneficiarioIdAlvo,
+        },
+        aprovacoes: [
+          ...comprovante.aprovacoes,
+          {
+            etapa: etapaAtual,
+            acao: "requerimento_solicitado",
+            aprovadoPor: autor,
+            data: new Date().toISOString(),
+            comentario,
+            beneficiarioId: beneficiarioIdAlvo,
+          },
+        ],
+      });
+      refresh();
+      setSubForm(null);
+      setComentario("");
+      setRequerimentoTipo("mudanca_plano");
     }
   }
 
@@ -321,6 +387,16 @@ function Comprovantes() {
                     requerimento de mudança de plano
                   </span>
                 )}
+                <span
+                  className={`inline-flex items-center gap-1 text-xs font-medium mt-1 ${
+                    estaDentroDoPrazoRelatorio(cur.competencia, cur.dataEnvio) ? "text-muted-foreground" : "text-warning"
+                  }`}
+                >
+                  <Clock className="h-3 w-3" />
+                  {estaDentroDoPrazoRelatorio(cur.competencia, cur.dataEnvio)
+                    ? `Dentro do prazo do relatório de ${formatCompetencia(cur.competencia)}`
+                    : `Fora do prazo — computa como retroativo no relatório de ${formatCompetencia(cur.competencia)}`}
+                </span>
               </div>
               <button onClick={fecharModal} className="p-1 hover:bg-muted rounded-md">
                 <X className="h-4 w-4" />
@@ -342,7 +418,7 @@ function Comprovantes() {
               )}
 
               {getListaStatusBeneficiario(cur).map(({ beneficiarioId, status: statusBeneficiario }) => {
-                const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
+                const beneficiario = beneficiariosAtuais.find((b) => b.id === beneficiarioId);
                 const campos = getCamposDoBeneficiario(cur, beneficiarioId);
                 const historico = cur.aprovacoes.filter(
                   (a) => !a.beneficiarioId || a.beneficiarioId === beneficiarioId,
@@ -361,6 +437,9 @@ function Comprovantes() {
                 const justificativaDivergenciaServidor = cur.justificativasDivergencia?.find(
                   (j) => j.beneficiarioId === beneficiarioId,
                 )?.texto;
+                const requerimentoRelevante =
+                  cur.solicitacaoRequerimento &&
+                  (!cur.solicitacaoRequerimento.beneficiarioId || cur.solicitacaoRequerimento.beneficiarioId === beneficiarioId);
 
                 return (
                   <div key={beneficiarioId} className="border border-border rounded-xl p-4 space-y-3">
@@ -391,6 +470,14 @@ function Comprovantes() {
                         Documento complementar já solicitado em{" "}
                         {new Date(cur.solicitacaoComplementar.data).toLocaleString("pt-BR")} por{" "}
                         {cur.solicitacaoComplementar.solicitadoPor} — aguardando o Servidor anexar.
+                      </p>
+                    )}
+
+                    {requerimentoRelevante && cur.solicitacaoRequerimento && (
+                      <p className="text-xs text-muted-foreground italic">
+                        Requerimento de {tipoRequerimentoLabels[cur.solicitacaoRequerimento.tipo]} já solicitado em{" "}
+                        {new Date(cur.solicitacaoRequerimento.data).toLocaleString("pt-BR")} por{" "}
+                        {cur.solicitacaoRequerimento.solicitadoPor} — aguardando o Servidor abrir.
                       </p>
                     )}
 
@@ -445,6 +532,14 @@ function Comprovantes() {
                             <FilePlus className="h-3.5 w-3.5" /> Solicitar documento complementar
                           </button>
                         )}
+                        {!cur.solicitacaoRequerimento && (
+                          <button
+                            onClick={() => setSubForm({ beneficiarioId, tipo: "requerimento" })}
+                            className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
+                          >
+                            <FileSignature className="h-3.5 w-3.5" /> Solicitar requerimento
+                          </button>
+                        )}
                         <button
                           onClick={() => setSubForm({ beneficiarioId, tipo: "correcao" })}
                           className="text-sm border border-border rounded-md px-3 py-2 hover:bg-muted flex items-center gap-1.5"
@@ -474,6 +569,16 @@ function Comprovantes() {
                             <option>Outro</option>
                           </select>
                         )}
+                        {subForm.tipo === "requerimento" && (
+                          <select
+                            value={requerimentoTipo}
+                            onChange={(e) => setRequerimentoTipo(e.target.value as TipoRequerimento)}
+                            className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
+                          >
+                            <option value="mudanca_plano">{tipoRequerimentoLabels.mudanca_plano}</option>
+                            <option value="inclusao_dependente">{tipoRequerimentoLabels.inclusao_dependente}</option>
+                          </select>
+                        )}
                         <textarea
                           value={comentario}
                           onChange={(e) => setComentario(e.target.value)}
@@ -485,7 +590,9 @@ function Comprovantes() {
                                 ? "Descreva o que precisa ser corrigido..."
                                 : subForm.tipo === "complementar"
                                   ? "Descreva qual documento complementar é necessário..."
-                                  : "Detalhe o motivo da recusa..."
+                                  : subForm.tipo === "requerimento"
+                                    ? "Descreva o motivo do requerimento..."
+                                    : "Detalhe o motivo da recusa..."
                           }
                           className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                         />
@@ -534,10 +641,15 @@ function Comprovantes() {
                         {a.acao === "documento_substituido" && "substituiu o documento"}
                         {a.acao === "reenviado" && "reenviou o documento"}
                         {a.acao === "documento_complementar_solicitado" && "solicitou documento complementar"}
+                        {a.acao === "requerimento_solicitado" && "solicitou requerimento"}
+                        {a.acao === "valor_cadastral_atualizado" && "atualizou o valor cadastral"}
                         {a.beneficiarioId && ` — ${nomeBeneficiario(a.beneficiarioId)}`}
                         {" em "}
                         {new Date(a.data).toLocaleString("pt-BR")}
                         {a.motivo && ` • Motivo: ${a.motivo}`}
+                        {a.valorAnterior !== undefined &&
+                          a.valorNovo !== undefined &&
+                          ` • De ${formatCurrency(a.valorAnterior)} para ${formatCurrency(a.valorNovo)}`}
                         {a.comentario && ` • "${a.comentario}"`}
                       </li>
                     ))}
@@ -561,7 +673,10 @@ function Comprovantes() {
           beneficiarioNome={nomeBeneficiario(divergencia.beneficiarioId)}
           valorExtraido={divergencia.valorExtraido}
           valorCadastrado={divergencia.valorCadastrado}
-          onConfirm={confirmarDivergencia}
+          justificativaServidor={divergencia.justificativaServidor}
+          onAprovarEAtualizar={aprovarEAtualizarCadastro}
+          onSolicitarCorrecao={solicitarCorrecaoDivergencia}
+          onRecusar={recusarDivergencia}
           onCancel={() => setDivergencia(null)}
         />
       )}
