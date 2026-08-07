@@ -265,11 +265,10 @@ export interface CampoExtraido {
     | 'cpf'
     | 'operadora'
     | 'competencia'
+    | 'vencimento'
     | 'valor'
     | 'dataPagamento'
-    | 'banco'
-    | 'pagador'
-    | 'tipoAssistencia';
+    | 'pagador';
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
@@ -278,14 +277,20 @@ export interface CampoExtraido {
   arquivoOrigem?: string;
 }
 
-/** Tipos de assistência amparados pelo Pró-Saúde. Odontológico não é reembolsável. */
-export type TipoAssistencia = 'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico';
+/**
+ * Situações que a IA identifica automaticamente a partir do documento e que tornam o gasto
+ * não reembolsável pelo Pró-Saúde — não são mais um `CampoExtraido` editável (como era
+ * `tipoAssistencia`), e sim um alerta calculado, exibido como banner para Servidor, Analista
+ * e Gerência (ver `getElegibilidade`/`getSituacaoNaoReembolsavel`, `comprovante-status.ts`).
+ * No protótipo a detecção é por nome de arquivo; no sistema real seria pelo conteúdo do documento.
+ */
+export type SituacaoNaoReembolsavel = 'odontologico' | 'multa' | 'taxa_administrativa' | 'juros';
 
-export const tipoAssistenciaLabels: Record<TipoAssistencia, string> = {
-  medico_hospitalar: 'Médico-hospitalar',
-  ambulatorial: 'Ambulatorial',
-  hospitalar: 'Hospitalar',
-  odontologico: 'Odontológico',
+export const situacaoNaoReembolsavelLabels: Record<SituacaoNaoReembolsavel, string> = {
+  odontologico: 'Assistência odontológica',
+  multa: 'Multa',
+  taxa_administrativa: 'Taxa administrativa',
+  juros: 'Juros/encargos',
 };
 
 /** Tipos documentais que um arquivo anexado pode representar — um mesmo arquivo pode
@@ -333,14 +338,21 @@ export function tiposDoArquivo(arquivo: { documentos: DocumentoDetectado[] }): T
  * os tipos de documento vem do grupo de beneficiários escolhido (`BeneficiarioPagamento.modalidadePlano`),
  * não mais de um valor único e global do sistema — ver seção 6 de docs/MODULO_PAGAMENTO.md.
  */
-export const tipoPlanoPagamentoPadrao: 'empresarial' | 'individual_familiar' = 'individual_familiar';
+/** Vocabulário compartilhado de modalidade de plano — usado pelo Módulo de Pagamento
+ *  (`BeneficiarioPagamento.modalidadePlano`) e também pelo módulo de Requerimentos (Inclusão de
+ *  Dependente / Mudança de Plano, ver `docs/PORTAL_SERVIDOR_NAVEGACAO_E_CADASTRO.md`, seção 6) —
+ *  os dois módulos continuam com cenários de dados isolados (Carlos/Marina/Pedro vs. João/Ana),
+ *  só o tipo/rótulo é reaproveitado, para que uma futura integração não precise traduzir valores. */
+export type ModalidadePlano = 'empresarial' | 'individual_familiar';
 
-export const tiposDocumentoPorPlano: Record<'empresarial' | 'individual_familiar', TipoDocumentoArquivo[]> = {
+export const tipoPlanoPagamentoPadrao: ModalidadePlano = 'individual_familiar';
+
+export const tiposDocumentoPorPlano: Record<ModalidadePlano, TipoDocumentoArquivo[]> = {
   empresarial: ['fatura_tecnica', 'comprovante_pagamento'],
   individual_familiar: ['boleto', 'recibo', 'demonstrativo', 'comprovante_pagamento'],
 };
 
-export const modalidadePlanoLabels: Record<'empresarial' | 'individual_familiar', string> = {
+export const modalidadePlanoLabels: Record<ModalidadePlano, string> = {
   empresarial: 'Empresarial',
   individual_familiar: 'Individual/Familiar',
 };
@@ -356,13 +368,20 @@ export interface AcaoComprovante {
     | 'documento_substituido'
     | 'reenviado'
     | 'devolvido_analista'
-    | 'documento_complementar_solicitado';
+    | 'documento_complementar_solicitado'
+    | 'requerimento_solicitado'
+    | 'valor_cadastral_atualizado';
   aprovadoPor: string;
   data: string;
   motivo?: string;
   comentario?: string;
   /** Presente quando a ação se refere a apenas 1 beneficiário de um comprovante multi-beneficiário. */
   beneficiarioId?: string;
+  /** Presentes só em `acao: 'valor_cadastral_atualizado'` — registram a mudança de
+   *  `BeneficiarioPagamento.valorCadastrado` decidida pelo Analista/Gerência ao resolver uma
+   *  divergência cadastral (ver seção 3.25, docs/MODULO_PAGAMENTO.md). */
+  valorAnterior?: number;
+  valorNovo?: number;
 }
 
 /** Pedido do Analista/Gerência por um documento adicional (não uma correção do documento
@@ -371,6 +390,27 @@ export interface SolicitacaoComplementar {
   motivo: string;
   solicitadoPor: string;
   data: string;
+}
+
+export type TipoRequerimento = 'mudanca_plano' | 'inclusao_dependente';
+
+export const tipoRequerimentoLabels: Record<TipoRequerimento, string> = {
+  mudanca_plano: 'Mudança de Plano',
+  inclusao_dependente: 'Inclusão de Dependente',
+};
+
+/** Pedido do Analista/Gerência para que o Servidor abra um requerimento em outro módulo (ex:
+ *  mudança de plano, após ver que a operadora do documento diverge do cadastro). Generaliza o
+ *  mesmo padrão de `SolicitacaoComplementar`, mas aponta para um requerimento fora do Módulo de
+ *  Pagamento — não há hoje uma ponte automática que "resolva" este pedido quando o requerimento
+ *  correspondente é aberto, fica só registrado no histórico. */
+export interface SolicitacaoRequerimento {
+  tipo: TipoRequerimento;
+  motivo: string;
+  solicitadoPor: string;
+  data: string;
+  /** Presente só quando o pedido se refere a 1 beneficiário específico de um comprovante multi-beneficiário. */
+  beneficiarioId?: string;
 }
 
 /** Status individual de cada beneficiário dentro de um comprovante multi-beneficiário (fatura técnica). */
@@ -392,8 +432,13 @@ export interface Comprovante {
   camposExtraidos: CampoExtraido[];
   /** Usado quando `beneficiarioIds.length > 1` (ex: fatura técnica) — 1 conjunto de campos por beneficiário. */
   gruposExtraidos?: { beneficiarioId: string; campos: CampoExtraido[] }[];
-  /** Preenchida quando o valor extraído diverge do valor cadastrado do beneficiário. */
-  justificativaDivergencia?: string;
+  /** Justificativas do Servidor quando o valor extraído diverge do valor cadastrado — 1 por
+   *  beneficiário divergente, obrigatória (≥3 palavras) antes de confirmar aquele beneficiário. */
+  justificativasDivergencia?: { beneficiarioId: string; texto: string }[];
+  /** `true` quando o Servidor optou por "Continuar mesmo assim" após ver que a operadora
+   *  identificada no documento diverge do cadastro de algum beneficiário — sinaliza para o
+   *  Analista/Gerência que pode valer a pena solicitar um requerimento de mudança de plano. */
+  operadoraDivergenteCadastro?: boolean;
   /** Status geral do comprovante (fila, badges). Em comprovantes multi-beneficiário, é derivado de `statusPorBeneficiario`. */
   status: StatusComprovante;
   /** Usado quando `beneficiarioIds.length > 1` — permite aprovar/corrigir cada beneficiário individualmente. */
@@ -403,6 +448,9 @@ export interface Comprovante {
   /** Pedido ativo do Analista/Gerência por um documento complementar — não altera `status`;
    *  removido automaticamente quando um novo documento chega para o beneficiário/competência. */
   solicitacaoComplementar?: SolicitacaoComplementar;
+  /** Pedido ativo do Analista/Gerência para que o Servidor abra um requerimento (mudança de
+   *  plano ou inclusão de dependente) em outro módulo — não altera `status`. */
+  solicitacaoRequerimento?: SolicitacaoRequerimento;
   aprovacoes: AcaoComprovante[];
   dataEnvio: string;
 }
@@ -455,7 +503,7 @@ export interface BeneficiarioPagamento {
   situacao: 'ativo' | 'pendente_documentacao' | 'inativo';
   /** Modalidade do plano deste beneficiário — determina a exigência documental do grupo de
    *  envio que ele integra (Etapa 3). Não é mais um valor único e global do sistema. */
-  modalidadePlano: 'empresarial' | 'individual_familiar';
+  modalidadePlano: ModalidadePlano;
   /** Quando presente, este beneficiário tem comprovação coletiva feita pela associação —
    *  não participa de envio individual, não entra em checklist de pendência, e não aparece
    *  no alerta de "competência incompleta". Independente de `servidorAtual.associacao`
@@ -524,8 +572,7 @@ export const comprovantes: Comprovante[] = [
       { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '420.00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'dataPagamento', valor: '31/07/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Banco do Brasil', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '10/07/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'aprovado',
     aprovacoes: [
@@ -543,11 +590,9 @@ export const comprovantes: Comprovante[] = [
     camposExtraidos: [
       { chave: 'nome', valor: 'Marina Ramos', origem: 'ocr', confianca: 'alta' },
       { chave: 'cpf', valor: '234.567.890-11', origem: 'ocr', confianca: 'alta' },
-      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '310.00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'dataPagamento', valor: '28/07/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Banco Bradesco', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '08/07/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'em_analise',
     aprovacoes: [],
@@ -576,11 +621,9 @@ export const comprovantes: Comprovante[] = [
     camposExtraidos: [
       { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
       { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-05', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '420.00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'dataPagamento', valor: '30/05/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Caixa Econômica', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '08/05/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'retroativo_aguardando_aprovacao',
     aprovacoes: [],
@@ -596,11 +639,9 @@ export const comprovantes: Comprovante[] = [
     camposExtraidos: [
       { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
       { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '520.00', origem: 'ocr', confianca: 'alta' }, // Divergente do cadastrado (420)
-      { chave: 'dataPagamento', valor: '31/07/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Banco do Brasil', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '10/07/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'em_analise',
     aprovacoes: [],

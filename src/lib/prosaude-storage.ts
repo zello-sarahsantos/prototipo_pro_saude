@@ -1,5 +1,7 @@
 import {
   comprovantes as comprovantesSeed,
+  beneficiariosPagamento,
+  type BeneficiarioPagamento,
   type Comprovante,
   type ConclusaoCompetencia,
   type BeneficiarioDispensado,
@@ -11,6 +13,7 @@ export const PROSAUDE_STORAGE_KEYS = {
   comprovantesPagamento: "prosaude_comprovantes_pagamento",
   competenciasConcluidas: "prosaude_competencias_concluidas",
   beneficiariosDispensados: "prosaude_beneficiarios_dispensados",
+  valoresCadastradosBeneficiarios: "prosaude_valores_cadastrados_beneficiarios",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -218,4 +221,46 @@ export function removerDispensaBeneficiario(beneficiarioId: string, competencia:
     (d) => !(d.beneficiarioId === beneficiarioId && d.competencia === competencia),
   );
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.beneficiariosDispensados, JSON.stringify(atuais));
+}
+
+/**
+ * Valores cadastrados atualizados pelo Analista/Gerência ao resolver uma divergência cadastral
+ * (ver `DivergenciaAprovacaoModal`, "Aprovar e atualizar valor cadastral"). `beneficiariosPagamento`
+ * (`mock-data.ts`) continua sendo o cadastro "seed", nunca mutado diretamente — o valor efetivo
+ * de cada beneficiário é sempre resolvido via `getBeneficiariosPagamentoAtual()`, que sobrepõe
+ * esses overrides por cima do seed, mesmo padrão já usado para comprovantes.
+ */
+function loadValoresCadastradosBeneficiarios(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.valoresCadastradosBeneficiarios);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+/** Atualiza o valor cadastrado de 1 beneficiário — usado quando a GERDAB resolve uma divergência
+ *  cadastral escolhendo "Aprovar e atualizar valor cadastral". O histórico da própria mudança
+ *  (valor anterior/novo/responsável/data/justificativa) fica em `Comprovante.aprovacoes`
+ *  (`acao: 'valor_cadastral_atualizado'`), não aqui — esta função só mantém o valor "atual". */
+export function atualizarValorCadastradoBeneficiario(beneficiarioId: string, novoValor: number) {
+  if (typeof window === "undefined") return;
+  const atuais = loadValoresCadastradosBeneficiarios();
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.valoresCadastradosBeneficiarios,
+    JSON.stringify({ ...atuais, [beneficiarioId]: novoValor }),
+  );
+}
+
+/** `beneficiariosPagamento` (seed) com os valores cadastrados atualizados sobrepostos — é isso
+ *  que todo consumidor do Módulo de Pagamento deve usar sempre que `valorCadastrado` importa
+ *  (badges de divergência, formulários de conferência, geração de campos mock), para que uma
+ *  correção cadastral feita pela GERDAB se reflita imediatamente em toda a aplicação. */
+export function getBeneficiariosPagamentoAtual(): BeneficiarioPagamento[] {
+  const overrides = loadValoresCadastradosBeneficiarios();
+  return beneficiariosPagamento.map((b) =>
+    overrides[b.id] !== undefined ? { ...b, valorCadastrado: overrides[b.id] } : b,
+  );
 }

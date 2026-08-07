@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento, type CampoExtraido, type DocumentoDetectado } from "@/lib/mock-data";
+import {
+  getDivergenciaBoletoComprovante,
+  getElegibilidade,
+  operadoraDivergeDoCadastro,
+  valorDivergeDoCadastro,
+} from "@/lib/comprovante-status";
+import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
   return campos.some((c) => c.valor.trim() === "");
@@ -14,14 +22,22 @@ function todaAltaConfianca(campos: CampoExtraido[]): boolean {
 export function ConferenciaBeneficiarios({
   arquivos,
   beneficiarios,
+  competencia,
   gruposExtraidos,
   onChangeGrupo,
   onVoltar,
   onContinuar,
   nomeTitular,
+  justificativasDivergencia,
+  onChangeJustificativaDivergencia,
+  operadoraDivergenteConfirmada,
+  onConfirmarOperadoraDivergente,
 }: {
   arquivos: { nome: string; documentos: DocumentoDetectado[] }[];
   beneficiarios: BeneficiarioPagamento[];
+  /** Usada para recalcular situação não reembolsável / divergência boleto x comprovante a
+   *  partir dos arquivos, do mesmo jeito que o Analista/Gerência veem depois do envio. */
+  competencia: string;
   gruposExtraidos: { beneficiarioId: string; campos: CampoExtraido[] }[];
   onChangeGrupo: (beneficiarioId: string, campos: CampoExtraido[]) => void;
   /** Volta ao passo de upload — permite remover/adicionar arquivos e reprocessar. */
@@ -29,13 +45,35 @@ export function ConferenciaBeneficiarios({
   onContinuar: () => void;
   /** O pagamento deve ter sido feito pelo titular — usado para destacar "Pagador" divergente. */
   nomeTitular?: string;
+  /** Justificativa (por beneficiário) da divergência entre o valor extraído e o valor cadastrado —
+   *  obrigatória (≥3 palavras) antes de confirmar um beneficiário com valor divergente. */
+  justificativasDivergencia: Record<string, string>;
+  onChangeJustificativaDivergencia: (beneficiarioId: string, texto: string) => void;
+  /** Beneficiários para os quais o Servidor já escolheu "Continuar mesmo assim" apesar da
+   *  operadora identificada divergir do cadastro. */
+  operadoraDivergenteConfirmada: Record<string, boolean>;
+  onConfirmarOperadoraDivergente: (beneficiarioId: string) => void;
 }) {
+  const pseudoComprovante = {
+    arquivos,
+    beneficiarioIds: beneficiarios.map((b) => b.id),
+    competencia,
+  };
   const [confirmados, setConfirmados] = useState<Set<string>>(new Set());
 
-  // Confirma automaticamente os beneficiários com todos os campos em alta confiança.
+  // Confirma automaticamente os beneficiários com todos os campos em alta confiança — exceto
+  // quando o valor ou a operadora divergem do cadastro, casos em que uma ação explícita do
+  // Servidor (justificativa ou "Continuar mesmo assim") impede o avanço automático.
   useEffect(() => {
     const altaConfianca = gruposExtraidos
-      .filter((g) => !naoIdentificado(g.campos) && todaAltaConfianca(g.campos))
+      .filter((g) => {
+        if (naoIdentificado(g.campos) || !todaAltaConfianca(g.campos)) return false;
+        const beneficiario = beneficiarios.find((b) => b.id === g.beneficiarioId);
+        if (!beneficiario) return true;
+        if (valorDivergeDoCadastro(g.campos, beneficiario.valorCadastrado).divergente) return false;
+        if (operadoraDivergeDoCadastro(g.campos, beneficiario.operadora).divergente) return false;
+        return true;
+      })
       .map((g) => g.beneficiarioId);
     if (altaConfianca.length > 0) {
       setConfirmados((prev) => new Set([...prev, ...altaConfianca]));
@@ -80,6 +118,19 @@ export function ConferenciaBeneficiarios({
           const beneficiario = beneficiarios.find((b) => b.id === grupo.beneficiarioId);
           const incompleto = naoIdentificado(grupo.campos);
           const confirmado = confirmados.has(grupo.beneficiarioId);
+          const { situacao } = getElegibilidade(pseudoComprovante, grupo.beneficiarioId);
+          const { divergente: boletoComprovanteDivergente } = beneficiario
+            ? getDivergenciaBoletoComprovante(pseudoComprovante, beneficiario)
+            : { divergente: false };
+          const valorDivergente = beneficiario
+            ? valorDivergeDoCadastro(grupo.campos, beneficiario.valorCadastrado).divergente
+            : false;
+          const justificativa = justificativasDivergencia[grupo.beneficiarioId] ?? "";
+          const justificativaValida = temPeloMenosNPalavras(justificativa);
+          const { divergente: operadoraDivergente, operadoraExtraida } = beneficiario
+            ? operadoraDivergeDoCadastro(grupo.campos, beneficiario.operadora)
+            : { divergente: false, operadoraExtraida: undefined };
+          const operadoraConfirmada = !!operadoraDivergenteConfirmada[grupo.beneficiarioId];
 
           return (
             <div key={grupo.beneficiarioId} className="space-y-2">
@@ -99,8 +150,60 @@ export function ConferenciaBeneficiarios({
                 campos={grupo.campos}
                 valorCadastrado={beneficiario?.valorCadastrado}
                 nomeTitular={nomeTitular}
+                situacaoNaoReembolsavel={situacao}
+                divergenciaBoletoComprovante={boletoComprovanteDivergente}
                 onChange={(campos) => onChangeGrupo(grupo.beneficiarioId, campos)}
               />
+
+              {operadoraDivergente && !confirmado && (
+                <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-2">
+                  <p className="font-medium text-warning flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> A operadora identificada ({operadoraExtraida}) é
+                    diferente do seu cadastro ({beneficiario?.operadora}).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      to="/servidor/requerimento/novo-plano"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium border border-warning/40 text-warning rounded-md px-3 py-1.5 hover:bg-warning/10"
+                    >
+                      Abrir requerimento de mudança de plano
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => onConfirmarOperadoraDivergente(grupo.beneficiarioId)}
+                      className={`text-xs font-medium rounded-md px-3 py-1.5 border ${
+                        operadoraConfirmada
+                          ? "border-success/40 bg-success/10 text-success"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      {operadoraConfirmada ? "Continuar mesmo assim ✓" : "Continuar mesmo assim"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {valorDivergente && !confirmado && (
+                <div className="px-1">
+                  <label className="block text-xs font-medium mb-1">
+                    Justificativa da divergência de valor <span className="text-destructive">*</span>
+                  </label>
+                  <textarea
+                    value={justificativa}
+                    onChange={(e) => onChangeJustificativaDivergencia(grupo.beneficiarioId, e.target.value)}
+                    rows={2}
+                    placeholder="Explique por que o valor pago é diferente do cadastrado (mínimo 3 palavras)..."
+                    className={`w-full rounded-md border bg-background px-3 py-2 text-sm ${
+                      justificativa.trim().length > 0 && !justificativaValida ? "border-destructive/50" : "border-input"
+                    }`}
+                  />
+                  {justificativa.trim().length > 0 && !justificativaValida && (
+                    <p className="text-xs text-destructive mt-1">Escreva pelo menos 3 palavras.</p>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2">
                 {!confirmado && (
@@ -110,7 +213,11 @@ export function ConferenciaBeneficiarios({
                         setConfirmados((prev) => new Set(prev).add(grupo.beneficiarioId));
                       }
                     }}
-                    disabled={incompleto}
+                    disabled={
+                      incompleto ||
+                      (valorDivergente && !justificativaValida) ||
+                      (operadoraDivergente && !operadoraConfirmada)
+                    }
                     className="text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-light"
                   >
                     Confirmar

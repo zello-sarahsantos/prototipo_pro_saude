@@ -4,7 +4,15 @@ import { Stepper, StepNav, Field, inputCls } from "@/components/Stepper";
 import { Switch } from "@/components/ui/switch";
 import { Upload, CheckCircle2, User, Info, FileText, UserPlus, X } from "lucide-react";
 import { OPERADORAS } from "@/lib/form-options";
-import { servidorAtual, dependentes, formatCurrency, calcularReembolso, statusLabels } from "@/lib/mock-data";
+import {
+  servidorAtual,
+  dependentes,
+  formatCurrency,
+  calcularReembolso,
+  statusLabels,
+  modalidadePlanoLabels,
+  type ModalidadePlano,
+} from "@/lib/mock-data";
 import { DOCUMENTOS_POR_TIPO_DEPENDENTE } from "@/lib/form-options";
 import { IncluirDependenteForm, type IncluirDependenteValue } from "@/components/IncluirDependenteForm";
 import { saveRequerimentoMudancaPlano } from "@/lib/prosaude-storage";
@@ -22,7 +30,10 @@ interface DependentData {
   valorIndividual?: string;
   operadora?: string;
   outraOperadora?: string;
-  modalidade?: string;
+  /** Modalidade do plano do dependente quando migra para um plano diferente do titular
+   *  ("migrar_outro") — nunca herdada do titular, já que os dois podem ter operadoras,
+   *  modalidades e vínculos de associação diferentes. Mesmo vocabulário do Módulo de Pagamento. */
+  modalidade?: ModalidadePlano;
   administradora?: string;
   vigencia?: string;
   motivoRemocao?: string;
@@ -458,13 +469,16 @@ function StepDependentes({
                     onChange={(e) => updateDependent(dep.id, { administradora: e.target.value })}
                   />
                 </Field>
-                <Field label={`Modalidade/tipo do plano *`} required>
-                  <input 
+                <Field label={`Modalidade do plano do dependente *`} required>
+                  <select
                     className={inputCls}
-                    placeholder="Ex: Coletivo Empresarial"
                     value={currentData.modalidade || ""}
-                    onChange={(e) => updateDependent(dep.id, { modalidade: e.target.value })}
-                  />
+                    onChange={(e) => updateDependent(dep.id, { modalidade: e.target.value as ModalidadePlano })}
+                  >
+                    <option value="">Selecione a modalidade</option>
+                    <option value="individual_familiar">{modalidadePlanoLabels.individual_familiar}</option>
+                    <option value="empresarial">{modalidadePlanoLabels.empresarial}</option>
+                  </select>
                 </Field>
                 <Field label={`Valor individual do plano do dependente *`} required>
                   <input 

@@ -15,9 +15,12 @@ import {
   dispensarBeneficiario,
   getConclusaoCompetencia,
   updateComprovantePagamento,
+  getBeneficiariosPagamentoAtual,
 } from "@/lib/prosaude-storage";
 import {
   getCamposDoBeneficiario,
+  getDivergenciaBoletoComprovante,
+  getElegibilidade,
   statusDoBeneficiarioNoDocumento,
   beneficiarioTemCampoVazio,
 } from "@/lib/comprovante-status";
@@ -53,6 +56,9 @@ export function ConsolidadoCompetencia({
     comprovante: Comprovante;
     beneficiarioId?: string;
   } | null>(null);
+
+  // Cadastro "atual" (seed + correções já aplicadas pela GERDAB) — ver mock-data.ts.
+  const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [refreshKey]);
 
   const dados = useMemo(() => {
     const todos = getComprovantesUnificados().filter((c) => c.competencia === competencia);
@@ -308,13 +314,19 @@ export function ConsolidadoCompetencia({
                       </div>
 
                       {edicaoAtual.map((grupo) => {
-                        const beneficiario = beneficiariosPagamento.find((b) => b.id === grupo.beneficiarioId);
+                        const beneficiario = beneficiariosAtuais.find((b) => b.id === grupo.beneficiarioId);
+                        const { situacao } = getElegibilidade(c, grupo.beneficiarioId);
+                        const { divergente: boletoComprovanteDivergente } = beneficiario
+                          ? getDivergenciaBoletoComprovante(c, beneficiario)
+                          : { divergente: false };
                         return (
                           <div key={grupo.beneficiarioId} className="space-y-1.5">
                             <p className="text-xs font-semibold">{beneficiario?.nome}</p>
                             <CamposExtraidosForm
                               campos={grupo.campos}
                               valorCadastrado={beneficiario?.valorCadastrado}
+                              situacaoNaoReembolsavel={situacao}
+                              divergenciaBoletoComprovante={boletoComprovanteDivergente}
                               readOnly={!editavel}
                               onChange={
                                 editavel

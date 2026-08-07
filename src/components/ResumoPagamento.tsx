@@ -1,31 +1,21 @@
 import { FileText } from "lucide-react";
 import {
-  tipoAssistenciaLabels,
   tipoDocumentoArquivoLabels,
   tiposDoArquivo,
   type BeneficiarioPagamento,
   type CampoExtraido,
   type DocumentoDetectado,
-  type TipoAssistencia,
 } from "@/lib/mock-data";
-
-function valorExibido(campo: CampoExtraido): string {
-  if (campo.chave === "tipoAssistencia" && campo.valor) {
-    return tipoAssistenciaLabels[campo.valor as TipoAssistencia];
-  }
-  return campo.valor;
-}
 
 const chaveLabels: Record<CampoExtraido["chave"], string> = {
   nome: "Nome",
   cpf: "CPF",
   operadora: "Operadora",
   competencia: "Competência",
+  vencimento: "Vencimento",
   valor: "Valor (R$)",
   dataPagamento: "Data do Pagamento",
-  banco: "Banco",
   pagador: "Pagador",
-  tipoAssistencia: "Tipo de Assistência",
 };
 
 export function ResumoPagamento({
@@ -76,7 +66,7 @@ export function ResumoPagamento({
               {grupo.campos.map((c) => (
                 <div key={c.chave} className="flex justify-between gap-3">
                   <dt className="text-muted-foreground">{chaveLabels[c.chave]}</dt>
-                  <dd className="font-medium text-right">{valorExibido(c)}</dd>
+                  <dd className="font-medium text-right">{c.valor}</dd>
                 </div>
               ))}
             </dl>
