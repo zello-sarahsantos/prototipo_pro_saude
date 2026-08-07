@@ -18,6 +18,8 @@ import {
 } from "@/lib/prosaude-storage";
 import {
   getCamposDoBeneficiario,
+  getDivergenciaBoletoComprovante,
+  getElegibilidade,
   statusDoBeneficiarioNoDocumento,
   beneficiarioTemCampoVazio,
 } from "@/lib/comprovante-status";
@@ -309,12 +311,18 @@ export function ConsolidadoCompetencia({
 
                       {edicaoAtual.map((grupo) => {
                         const beneficiario = beneficiariosPagamento.find((b) => b.id === grupo.beneficiarioId);
+                        const { situacao } = getElegibilidade(c, grupo.beneficiarioId);
+                        const { divergente: boletoComprovanteDivergente } = beneficiario
+                          ? getDivergenciaBoletoComprovante(c, beneficiario)
+                          : { divergente: false };
                         return (
                           <div key={grupo.beneficiarioId} className="space-y-1.5">
                             <p className="text-xs font-semibold">{beneficiario?.nome}</p>
                             <CamposExtraidosForm
                               campos={grupo.campos}
                               valorCadastrado={beneficiario?.valorCadastrado}
+                              situacaoNaoReembolsavel={situacao}
+                              divergenciaBoletoComprovante={boletoComprovanteDivergente}
                               readOnly={!editavel}
                               onChange={
                                 editavel

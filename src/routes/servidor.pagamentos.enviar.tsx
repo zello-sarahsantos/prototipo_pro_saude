@@ -329,6 +329,7 @@ function EnviarComprovante() {
         <ConferenciaBeneficiarios
           arquivos={arquivosSelecionados.map((a) => ({ nome: a.file.name, documentos: a.documentos }))}
           beneficiarios={beneficiariosEscolhidos}
+          competencia={competencia}
           gruposExtraidos={gruposExtraidos}
           onChangeGrupo={handleChangeGrupo}
           onVoltar={() => setStep("upload")}

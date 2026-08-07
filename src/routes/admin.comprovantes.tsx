@@ -29,6 +29,7 @@ import { getComprovantesUnificados, updateComprovantePagamento } from "@/lib/pro
 import {
   getCamposDoBeneficiario,
   getDivergencia,
+  getDivergenciaBoletoComprovante,
   getElegibilidade,
   recomputeStatusGeral,
   getListaStatusBeneficiario,
@@ -342,7 +343,10 @@ function Comprovantes() {
 
                 const acoesDisponiveis = statusComAcaoDisponivel.includes(statusBeneficiario);
                 const emSubForm = subForm?.beneficiarioId === beneficiarioId;
-                const { elegivel } = getElegibilidade(cur, beneficiarioId);
+                const { elegivel, situacao } = getElegibilidade(cur, beneficiarioId);
+                const { divergente: boletoComprovanteDivergente } = beneficiario
+                  ? getDivergenciaBoletoComprovante(cur, beneficiario)
+                  : { divergente: false };
 
                 return (
                   <div key={beneficiarioId} className="border border-border rounded-xl p-4 space-y-3">
@@ -355,18 +359,9 @@ function Comprovantes() {
                       campos={campos}
                       readOnly
                       valorCadastrado={beneficiario?.valorCadastrado}
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
-
-                    {!elegivel && (
-                      <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-xs flex items-start gap-2">
-                        <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
-                        <p className="text-destructive">
-                          <strong>Não elegível — Odontológico.</strong> O Pró-Saúde não cobre assistência
-                          odontológica como reembolsável. Aprovação automática ou com ressalva está bloqueada;
-                          use Solicitar correção ou Recusar.
-                        </p>
-                      </div>
-                    )}
 
                     {cur.solicitacaoComplementar && (
                       <p className="text-xs text-muted-foreground italic">

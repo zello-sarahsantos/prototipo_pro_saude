@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento, type CampoExtraido, type DocumentoDetectado } from "@/lib/mock-data";
+import { getDivergenciaBoletoComprovante, getElegibilidade } from "@/lib/comprovante-status";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
   return campos.some((c) => c.valor.trim() === "");
@@ -14,6 +15,7 @@ function todaAltaConfianca(campos: CampoExtraido[]): boolean {
 export function ConferenciaBeneficiarios({
   arquivos,
   beneficiarios,
+  competencia,
   gruposExtraidos,
   onChangeGrupo,
   onVoltar,
@@ -22,6 +24,9 @@ export function ConferenciaBeneficiarios({
 }: {
   arquivos: { nome: string; documentos: DocumentoDetectado[] }[];
   beneficiarios: BeneficiarioPagamento[];
+  /** Usada para recalcular situação não reembolsável / divergência boleto x comprovante a
+   *  partir dos arquivos, do mesmo jeito que o Analista/Gerência veem depois do envio. */
+  competencia: string;
   gruposExtraidos: { beneficiarioId: string; campos: CampoExtraido[] }[];
   onChangeGrupo: (beneficiarioId: string, campos: CampoExtraido[]) => void;
   /** Volta ao passo de upload — permite remover/adicionar arquivos e reprocessar. */
@@ -30,6 +35,11 @@ export function ConferenciaBeneficiarios({
   /** O pagamento deve ter sido feito pelo titular — usado para destacar "Pagador" divergente. */
   nomeTitular?: string;
 }) {
+  const pseudoComprovante = {
+    arquivos,
+    beneficiarioIds: beneficiarios.map((b) => b.id),
+    competencia,
+  };
   const [confirmados, setConfirmados] = useState<Set<string>>(new Set());
 
   // Confirma automaticamente os beneficiários com todos os campos em alta confiança.
@@ -80,6 +90,10 @@ export function ConferenciaBeneficiarios({
           const beneficiario = beneficiarios.find((b) => b.id === grupo.beneficiarioId);
           const incompleto = naoIdentificado(grupo.campos);
           const confirmado = confirmados.has(grupo.beneficiarioId);
+          const { situacao } = getElegibilidade(pseudoComprovante, grupo.beneficiarioId);
+          const { divergente: boletoComprovanteDivergente } = beneficiario
+            ? getDivergenciaBoletoComprovante(pseudoComprovante, beneficiario)
+            : { divergente: false };
 
           return (
             <div key={grupo.beneficiarioId} className="space-y-2">
@@ -99,6 +113,8 @@ export function ConferenciaBeneficiarios({
                 campos={grupo.campos}
                 valorCadastrado={beneficiario?.valorCadastrado}
                 nomeTitular={nomeTitular}
+                situacaoNaoReembolsavel={situacao}
+                divergenciaBoletoComprovante={boletoComprovanteDivergente}
                 onChange={(campos) => onChangeGrupo(grupo.beneficiarioId, campos)}
               />
 

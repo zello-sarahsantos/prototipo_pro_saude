@@ -3,10 +3,12 @@ import type {
   BeneficiarioPagamento,
   CampoExtraido,
   Comprovante,
+  SituacaoNaoReembolsavel,
   StatusBeneficiarioComprovante,
   StatusComprovante,
   TipoDocumentoArquivo,
 } from "./mock-data";
+import { detectarSituacaoNaoReembolsavel, gerarCamposExtraidos } from "./ocr-mock";
 
 /** Campos (do comprovante inteiro, ou de 1 beneficiário específico em fatura técnica). */
 export function getCamposDoBeneficiario(
@@ -33,18 +35,37 @@ export function getDivergencia(
   };
 }
 
-/** Verifica se o tipo de assistência do documento é reembolsável — odontológico não é
- *  amparado pelo Pró-Saúde, então nunca pode ser aprovado (automaticamente ou com ressalva). */
-export function getElegibilidade(
-  comprovante: Comprovante,
+/**
+ * Verifica se algum arquivo que cobre este beneficiário indica uma situação não reembolsável
+ * (assistência odontológica, multa, taxa administrativa ou juros/encargos) — calculado a partir
+ * do nome do arquivo (no protótipo; no sistema real seria pelo conteúdo do documento), nunca
+ * armazenado como campo de formulário editável.
+ */
+export function getSituacaoNaoReembolsavel(
+  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds">,
   beneficiarioId: string,
-): { elegivel: boolean; tipoAssistencia?: string } {
-  const campos = getCamposDoBeneficiario(comprovante, beneficiarioId);
-  const campo = campos.find((c) => c.chave === "tipoAssistencia");
-  return {
-    elegivel: campo?.valor !== "odontologico",
-    tipoAssistencia: campo?.valor,
-  };
+): SituacaoNaoReembolsavel | null {
+  const todosIds = comprovante.beneficiarioIds;
+  for (const arquivo of comprovante.arquivos) {
+    const cobreEsseBeneficiario = arquivo.documentos.some((d) =>
+      beneficiariosCobertosPeloDocumento(d, todosIds).includes(beneficiarioId),
+    );
+    if (!cobreEsseBeneficiario) continue;
+    const situacao = detectarSituacaoNaoReembolsavel(arquivo.nome);
+    if (situacao) return situacao;
+  }
+  return null;
+}
+
+/** Verifica se a situação do documento é reembolsável — odontológico, multa, taxa
+ *  administrativa e juros/encargos não são amparados pelo Pró-Saúde, então nunca podem ser
+ *  aprovados (automaticamente ou com ressalva). */
+export function getElegibilidade(
+  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds">,
+  beneficiarioId: string,
+): { elegivel: boolean; situacao?: SituacaoNaoReembolsavel } {
+  const situacao = getSituacaoNaoReembolsavel(comprovante, beneficiarioId);
+  return { elegivel: situacao === null, situacao: situacao ?? undefined };
 }
 
 /**
@@ -216,4 +237,41 @@ export function todosDocumentosComCoberturaDefinida(
  *  o avanço do passo de upload. */
 export function todosContemplados(cobertura: CoberturaBeneficiario[]): boolean {
   return cobertura.length > 0 && cobertura.every((c) => c.contemplado);
+}
+
+export interface DivergenciaBoletoComprovante {
+  divergente: boolean;
+  valorBoleto?: number;
+  valorComprovante?: number;
+}
+
+/**
+ * Compara o valor bruto extraído do Boleto com o do Comprovante de Pagamento (antes da
+ * consolidação) para 1 beneficiário. Recomputado sob demanda a partir dos arquivos persistidos
+ * (`gerarCamposExtraidos` é determinístico) em vez de guardado como campo novo — a consolidação
+ * (`mesclarCamposDeArquivos`) descarta o valor do arquivo que não "venceu", então não dá para
+ * comparar os 2 lados só a partir dos campos já mesclados.
+ */
+export function getDivergenciaBoletoComprovante(
+  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds" | "competencia">,
+  beneficiario: BeneficiarioPagamento,
+): DivergenciaBoletoComprovante {
+  const todosIds = comprovante.beneficiarioIds;
+
+  const valorPorTipo = (tipo: TipoDocumentoArquivo): number | undefined => {
+    for (const arquivo of comprovante.arquivos) {
+      const documento = arquivo.documentos.find((d) => d.tipo === tipo);
+      if (!documento) continue;
+      if (!beneficiariosCobertosPeloDocumento(documento, todosIds).includes(beneficiario.id)) continue;
+      const campos = gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.nome, [tipo]);
+      const campoValor = campos.find((c) => c.chave === "valor" && c.valor.trim() !== "");
+      if (campoValor) return parseFloat(campoValor.valor);
+    }
+    return undefined;
+  };
+
+  const valorBoleto = valorPorTipo("boleto");
+  const valorComprovante = valorPorTipo("comprovante_pagamento");
+  const divergente = valorBoleto !== undefined && valorComprovante !== undefined && valorBoleto !== valorComprovante;
+  return { divergente, valorBoleto, valorComprovante };
 }

@@ -12,7 +12,13 @@ import {
   type CampoExtraido,
   type StatusComprovante,
 } from "@/lib/mock-data";
-import { getCamposDoBeneficiario, getListaStatusBeneficiario } from "@/lib/comprovante-status";
+import {
+  getCamposDoBeneficiario,
+  getDivergenciaBoletoComprovante,
+  getElegibilidade,
+  getListaStatusBeneficiario,
+} from "@/lib/comprovante-status";
+import { detectarSituacaoNaoReembolsavel } from "@/lib/ocr-mock";
 import { processarNovoArquivo, confirmarReenvio } from "@/lib/reenvio-comprovante";
 
 const titular = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
@@ -132,6 +138,11 @@ export function ServidorComprovanteDetail({
 
           {ordenada.map(({ beneficiarioId, status }) => {
             const camposAtuais = getCamposDoBeneficiario(comprovante, beneficiarioId);
+            const beneficiario = beneficiariosPagamento.find((b) => b.id === beneficiarioId);
+            const { situacao } = getElegibilidade(comprovante, beneficiarioId);
+            const { divergente: boletoComprovanteDivergente } = beneficiario
+              ? getDivergenciaBoletoComprovante(comprovante, beneficiario)
+              : { divergente: false };
             const emAcao = acaoAtiva?.beneficiarioId === beneficiarioId;
             const historico = comprovante.aprovacoes.filter(
               (a) => !a.beneficiarioId || a.beneficiarioId === beneficiarioId,
@@ -215,7 +226,12 @@ export function ServidorComprovanteDetail({
                         </p>
                       </div>
                     )}
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={() => iniciarAcao(beneficiarioId)}
@@ -230,7 +246,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Em análise (somente leitura) ===== */}
                 {status === "em_analise" && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     <p className="text-xs text-muted-foreground italic">
                       Em análise pela GERDAB — não é possível editar ou substituir enquanto aguarda conferência.
                     </p>
@@ -240,7 +261,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Retroativo aguardando aprovação (Analista OU Gerência — somente leitura) ===== */}
                 {status === "retroativo_aguardando_aprovacao" && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     <p className="text-xs text-muted-foreground italic">
                       Aguardando aprovação da GERDAB (Analista ou Gerência) — somente leitura enquanto aguarda decisão.
                     </p>
@@ -250,7 +276,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Legado: retroativo aguardando analista/gerência (2ª alçada obsoleta, somente leitura) ===== */}
                 {(status === "retroativo_aguardando_analista" || status === "retroativo_aguardando_gerencia") && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     <p className="text-xs text-muted-foreground italic">
                       Etapa atual: {status === "retroativo_aguardando_analista" ? "1ª alçada (Analista)" : "2ª alçada (Gerência)"} —
                       somente leitura enquanto aguarda decisão.
@@ -262,7 +293,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Legado: retroativo devolvido pela Gerência (somente leitura para o servidor) ===== */}
                 {status === "retroativo_devolvido" && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     {devolucaoGerencia && (
                       <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-1">
                         <p className="font-medium text-warning">Devolvido pela Gerência — em ajuste pelo Analista</p>
@@ -283,7 +319,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Retroativo recusado (somente leitura, terminal) ===== */}
                 {status === "retroativo_recusado" && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     {decisaoAnalista && (
                       <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
                         <p className="font-medium text-muted-foreground">Aprovação anterior do Analista (1ª alçada):</p>
@@ -322,7 +363,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Aprovado / aprovado com ressalva (somente leitura) ===== */}
                 {(status === "aprovado" || status === "aprovado_com_ressalva" || status === "retroativo_aprovado") && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     {decisaoFinal && (
                       <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
                         <p>
@@ -347,7 +393,12 @@ export function ServidorComprovanteDetail({
                 {/* ===== Recusado (somente leitura, terminal) ===== */}
                 {status === "recusado" && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={camposAtuais} readOnly />
+                    <CamposExtraidosForm
+                      campos={camposAtuais}
+                      readOnly
+                      situacaoNaoReembolsavel={situacao}
+                      divergenciaBoletoComprovante={boletoComprovanteDivergente}
+                    />
                     {decisaoFinal && (
                       <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-xs space-y-1">
                         <p className="flex items-center gap-1.5 text-destructive font-medium">
@@ -409,7 +460,11 @@ export function ServidorComprovanteDetail({
 
                 {emAcao && acaoAtiva.step === "revisao" && (
                   <div className="space-y-2">
-                    <CamposExtraidosForm campos={campos} onChange={setCampos} />
+                    <CamposExtraidosForm
+                      campos={campos}
+                      onChange={setCampos}
+                      situacaoNaoReembolsavel={detectarSituacaoNaoReembolsavel(novoArquivoNome) ?? undefined}
+                    />
                     <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => setAcaoAtiva(null)}

@@ -265,11 +265,10 @@ export interface CampoExtraido {
     | 'cpf'
     | 'operadora'
     | 'competencia'
+    | 'vencimento'
     | 'valor'
     | 'dataPagamento'
-    | 'banco'
-    | 'pagador'
-    | 'tipoAssistencia';
+    | 'pagador';
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
@@ -278,14 +277,20 @@ export interface CampoExtraido {
   arquivoOrigem?: string;
 }
 
-/** Tipos de assistência amparados pelo Pró-Saúde. Odontológico não é reembolsável. */
-export type TipoAssistencia = 'medico_hospitalar' | 'ambulatorial' | 'hospitalar' | 'odontologico';
+/**
+ * Situações que a IA identifica automaticamente a partir do documento e que tornam o gasto
+ * não reembolsável pelo Pró-Saúde — não são mais um `CampoExtraido` editável (como era
+ * `tipoAssistencia`), e sim um alerta calculado, exibido como banner para Servidor, Analista
+ * e Gerência (ver `getElegibilidade`/`getSituacaoNaoReembolsavel`, `comprovante-status.ts`).
+ * No protótipo a detecção é por nome de arquivo; no sistema real seria pelo conteúdo do documento.
+ */
+export type SituacaoNaoReembolsavel = 'odontologico' | 'multa' | 'taxa_administrativa' | 'juros';
 
-export const tipoAssistenciaLabels: Record<TipoAssistencia, string> = {
-  medico_hospitalar: 'Médico-hospitalar',
-  ambulatorial: 'Ambulatorial',
-  hospitalar: 'Hospitalar',
-  odontologico: 'Odontológico',
+export const situacaoNaoReembolsavelLabels: Record<SituacaoNaoReembolsavel, string> = {
+  odontologico: 'Assistência odontológica',
+  multa: 'Multa',
+  taxa_administrativa: 'Taxa administrativa',
+  juros: 'Juros/encargos',
 };
 
 /** Tipos documentais que um arquivo anexado pode representar — um mesmo arquivo pode
@@ -524,8 +529,7 @@ export const comprovantes: Comprovante[] = [
       { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '420.00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'dataPagamento', valor: '31/07/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Banco do Brasil', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '10/07/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'aprovado',
     aprovacoes: [
@@ -543,11 +547,9 @@ export const comprovantes: Comprovante[] = [
     camposExtraidos: [
       { chave: 'nome', valor: 'Marina Ramos', origem: 'ocr', confianca: 'alta' },
       { chave: 'cpf', valor: '234.567.890-11', origem: 'ocr', confianca: 'alta' },
-      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '310.00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'dataPagamento', valor: '28/07/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Banco Bradesco', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '08/07/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'em_analise',
     aprovacoes: [],
@@ -576,11 +578,9 @@ export const comprovantes: Comprovante[] = [
     camposExtraidos: [
       { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
       { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-05', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '420.00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'dataPagamento', valor: '30/05/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Caixa Econômica', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '08/05/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'retroativo_aguardando_aprovacao',
     aprovacoes: [],
@@ -596,11 +596,9 @@ export const comprovantes: Comprovante[] = [
     camposExtraidos: [
       { chave: 'nome', valor: 'Carlos Eduardo Ramos', origem: 'ocr', confianca: 'alta' },
       { chave: 'cpf', valor: '123.456.789-00', origem: 'ocr', confianca: 'alta' },
-      { chave: 'operadora', valor: 'Assefaz', origem: 'ocr', confianca: 'alta' },
       { chave: 'competencia', valor: '2026-07', origem: 'ocr', confianca: 'alta' },
       { chave: 'valor', valor: '520.00', origem: 'ocr', confianca: 'alta' }, // Divergente do cadastrado (420)
-      { chave: 'dataPagamento', valor: '31/07/2026', origem: 'ocr', confianca: 'media' },
-      { chave: 'banco', valor: 'Banco do Brasil', origem: 'ocr', confianca: 'alta' },
+      { chave: 'vencimento', valor: '10/07/2026', origem: 'ocr', confianca: 'media' },
     ],
     status: 'em_analise',
     aprovacoes: [],

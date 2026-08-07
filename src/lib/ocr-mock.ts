@@ -2,6 +2,7 @@ import {
   beneficiariosPagamento,
   type BeneficiarioPagamento,
   type CampoExtraido,
+  type SituacaoNaoReembolsavel,
   type TipoDocumentoArquivo,
 } from "./mock-data";
 
@@ -26,10 +27,24 @@ function arquivoTemPagadorDivergente(nomeArquivo: string): boolean {
   return nome.includes("pagador_divergente") || nome.includes("pagador-divergente");
 }
 
-/** Simula um documento de assistência odontológica — não reembolsável pelo Pró-Saúde. */
-function arquivoEhOdontologico(nomeArquivo: string): boolean {
+/** Palavras-chave que, no nome do arquivo, simulam uma situação não reembolsável pelo
+ *  Pró-Saúde — no sistema real essa identificação viria do conteúdo do documento (OCR/IA),
+ *  não do nome do arquivo escolhido pelo servidor. */
+const palavrasChavePorSituacaoNaoReembolsavel: Record<SituacaoNaoReembolsavel, string[]> = {
+  odontologico: ["odontologico", "odonto"],
+  multa: ["multa"],
+  taxa_administrativa: ["taxa_administrativa", "taxa-administrativa"],
+  juros: ["juros"],
+};
+
+/** Detecta, a partir do nome do arquivo, se ele representa uma situação não reembolsável
+ *  (assistência odontológica, multa, taxa administrativa ou juros/encargos). */
+export function detectarSituacaoNaoReembolsavel(nomeArquivo: string): SituacaoNaoReembolsavel | null {
   const nome = nomeArquivo.toLowerCase();
-  return nome.includes("odontologico") || nome.includes("odonto");
+  const situacao = (Object.keys(palavrasChavePorSituacaoNaoReembolsavel) as SituacaoNaoReembolsavel[]).find((s) =>
+    palavrasChavePorSituacaoNaoReembolsavel[s].some((kw) => nome.includes(kw)),
+  );
+  return situacao ?? null;
 }
 
 /** Palavras-chave que, no nome do arquivo, indicam qual(is) tipo(s) documental(is) marcar
@@ -71,19 +86,22 @@ export function arquivoEhIncompleto(nomeArquivo: string, beneficiario: Beneficia
   return direcionado || generico;
 }
 
-const bancos = ["Banco do Brasil", "Caixa Econômica", "Bradesco", "Itaú"];
-
 /**
- * Quais campos cada tipo documental tipicamente traz — um arquivo só contribui com os campos
- * dos tipos marcados para ele; os demais campos ficam para outro arquivo do mesmo envio
- * completar (ver `mesclarCamposDeArquivos`).
+ * Quais campos cada tipo documental traz — taxonomia literal definida pelo stakeholder.
+ * Comprovante de Pagamento é a única fonte de `pagador` e `dataPagamento` (é o único documento
+ * que comprova quando e por quem o pagamento foi feito); Boleto/Recibo/Demonstrativo trazem
+ * `vencimento` no lugar disso (data de vencimento impressa no documento, não de pagamento).
+ * Recibo/Demonstrativo não trazem `operadora` (simplificação assumida — ver docs/MODULO_PAGAMENTO.md):
+ * um envio só-recibo/só-demonstrativo não terá operadora extraída, fica "não identificado".
+ * Um arquivo só contribui com os campos dos tipos marcados para ele; os demais campos ficam
+ * para outro arquivo do mesmo envio completar (ver `mesclarCamposDeArquivos`).
  */
 const camposPorTipoDocumento: Record<TipoDocumentoArquivo, CampoExtraido["chave"][]> = {
-  fatura_tecnica: ["nome", "operadora", "competencia", "tipoAssistencia"],
-  demonstrativo: ["nome", "operadora", "competencia", "valor", "tipoAssistencia"],
-  boleto: ["nome", "valor", "dataPagamento", "banco", "competencia"],
-  recibo: ["nome", "valor", "dataPagamento", "pagador"],
-  comprovante_pagamento: ["valor", "dataPagamento", "banco", "pagador"],
+  comprovante_pagamento: ["pagador", "valor", "dataPagamento", "vencimento", "operadora"],
+  boleto: ["nome", "operadora", "competencia", "vencimento", "valor"],
+  recibo: ["nome", "competencia", "vencimento", "valor"],
+  demonstrativo: ["nome", "competencia", "vencimento", "valor"],
+  fatura_tecnica: ["nome", "operadora", "competencia", "vencimento"],
 };
 
 /** Gera os campos que UM arquivo (com os tipos documentais marcados) contribui para 1 beneficiário. */
@@ -96,10 +114,10 @@ export function gerarCamposExtraidos(
   const divergente = arquivoEhDivergente(nomeArquivo);
   const incompleto = arquivoEhIncompleto(nomeArquivo, beneficiario);
   const pagadorDivergente = arquivoTemPagadorDivergente(nomeArquivo);
-  const odontologico = arquivoEhOdontologico(nomeArquivo);
   const valor = divergente ? beneficiario.valorCadastrado + 100 : beneficiario.valorCadastrado;
   const [ano, mes] = competencia.split("-");
   const dataPagamento = `28/${mes}/${ano}`;
+  const vencimento = `10/${mes}/${ano}`;
 
   // O pagamento deve ter sido feito pelo titular, independentemente de quem é o beneficiário do plano.
   const nomePagador = pagadorDivergente
@@ -126,25 +144,12 @@ export function gerarCamposExtraidos(
       arquivoOrigem: nomeArquivo,
     },
     { chave: "dataPagamento", valor: dataPagamento, origem: "ocr", confianca: "media", arquivoOrigem: nomeArquivo },
-    {
-      chave: "banco",
-      valor: bancos[nomeArquivo.length % bancos.length],
-      origem: "ocr",
-      confianca: "nenhuma",
-      arquivoOrigem: nomeArquivo,
-    },
+    { chave: "vencimento", valor: vencimento, origem: "ocr", confianca: "alta", arquivoOrigem: nomeArquivo },
     {
       chave: "pagador",
       valor: incompleto ? "" : nomePagador,
       origem: "ocr",
       confianca: incompleto ? "nenhuma" : pagadorDivergente ? "media" : "alta",
-      arquivoOrigem: nomeArquivo,
-    },
-    {
-      chave: "tipoAssistencia",
-      valor: odontologico ? "odontologico" : "medico_hospitalar",
-      origem: "ocr",
-      confianca: "alta",
       arquivoOrigem: nomeArquivo,
     },
   ];
@@ -157,11 +162,10 @@ const todasAsChaves: CampoExtraido["chave"][] = [
   "nome",
   "operadora",
   "competencia",
+  "vencimento",
   "valor",
   "dataPagamento",
-  "banco",
   "pagador",
-  "tipoAssistencia",
 ];
 
 /**

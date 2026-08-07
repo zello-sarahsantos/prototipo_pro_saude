@@ -1,16 +1,15 @@
 import { AlertTriangle, CheckCircle2, HelpCircle, PenLine } from "lucide-react";
-import { tipoAssistenciaLabels, type CampoExtraido, type TipoAssistencia } from "@/lib/mock-data";
+import { situacaoNaoReembolsavelLabels, type CampoExtraido, type SituacaoNaoReembolsavel } from "@/lib/mock-data";
 
 const chaveLabels: Record<CampoExtraido["chave"], string> = {
   nome: "Nome",
   cpf: "CPF",
   operadora: "Operadora",
   competencia: "Competência",
+  vencimento: "Vencimento",
   valor: "Valor",
   dataPagamento: "Data do Pagamento",
-  banco: "Banco",
   pagador: "Pagador",
-  tipoAssistencia: "Tipo de Assistência",
 };
 
 function ConfiancaIcon({ confianca }: { confianca: CampoExtraido["confianca"] }) {
@@ -25,6 +24,8 @@ export function CamposExtraidosForm({
   onChange,
   valorCadastrado,
   nomeTitular,
+  situacaoNaoReembolsavel,
+  divergenciaBoletoComprovante,
   readOnly = false,
 }: {
   titulo?: string;
@@ -35,6 +36,13 @@ export function CamposExtraidosForm({
   /** Quando informado, exibe alerta "Divergente" se o campo `pagador` não for o titular — o
    *  pagamento deve ter sido feito obrigatoriamente por ele, mesmo quando o beneficiário é outro. */
   nomeTitular?: string;
+  /** Situação não reembolsável detectada num dos arquivos que cobrem este beneficiário (ver
+   *  `getElegibilidade`, `comprovante-status.ts`) — não é mais um campo do formulário, é um
+   *  alerta calculado, exibido para Servidor, Analista e Gerência igualmente. */
+  situacaoNaoReembolsavel?: SituacaoNaoReembolsavel;
+  /** Quando `true`, o valor bruto do Boleto diverge do valor bruto do Comprovante de Pagamento
+   *  anexados no mesmo envio (antes da consolidação) — ver `getDivergenciaBoletoComprovante`. */
+  divergenciaBoletoComprovante?: boolean;
   /** Modo de visualização (ex: Analista conferindo) — campos não editáveis. */
   readOnly?: boolean;
 }) {
@@ -48,9 +56,17 @@ export function CamposExtraidosForm({
   return (
     <div className="bg-card rounded-xl border border-border p-4 space-y-3">
       {titulo && <p className="text-sm font-semibold">{titulo}</p>}
+      {situacaoNaoReembolsavel && (
+        <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-xs flex items-start gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+          <p className="text-destructive">
+            <strong>Não elegível — {situacaoNaoReembolsavelLabels[situacaoNaoReembolsavel]}.</strong> Situação não
+            reembolsável pelo Pró-Saúde; aprovação automática ou com ressalva fica bloqueada até revisão da GERDAB.
+          </p>
+        </div>
+      )}
       {campos.map((campo) => {
         const naoIdentificado = campo.valor.trim() === "";
-        const naoElegivel = campo.chave === "tipoAssistencia" && campo.valor === "odontologico";
         const divergente =
           (campo.chave === "valor" &&
             valorCadastrado !== undefined &&
@@ -75,20 +91,20 @@ export function CamposExtraidosForm({
                   <AlertTriangle className="h-3 w-3" /> Não identificado
                 </span>
               )}
-              {naoElegivel && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                  style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
-                >
-                  <AlertTriangle className="h-3 w-3" /> Não elegível — Odontológico
-                </span>
-              )}
               {divergente && (
                 <span
                   className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                   style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
                 >
                   <AlertTriangle className="h-3 w-3" /> Divergente
+                </span>
+              )}
+              {campo.chave === "valor" && divergenciaBoletoComprovante && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
+                >
+                  <AlertTriangle className="h-3 w-3" /> Valor diverge do boleto anexado
                 </span>
               )}
               {campo.origem === "manual" ? (
@@ -108,33 +124,15 @@ export function CamposExtraidosForm({
               )}
             </div>
           </div>
-          {campo.chave === "tipoAssistencia" ? (
-            <select
-              value={campo.valor}
-              onChange={(e) => editarCampo(campo.chave, e.target.value)}
-              disabled={readOnly}
-              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background ${
-                naoElegivel ? "border-destructive/50" : "border-input"
-              } ${readOnly ? "opacity-70 cursor-default" : ""}`}
-            >
-              <option value="">Não identificado</option>
-              {(Object.keys(tipoAssistenciaLabels) as TipoAssistencia[]).map((t) => (
-                <option key={t} value={t}>
-                  {tipoAssistenciaLabels[t]}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              value={campo.valor}
-              onChange={(e) => editarCampo(campo.chave, e.target.value)}
-              readOnly={readOnly}
-              placeholder={naoIdentificado ? "Não identificado — preencha manualmente" : undefined}
-              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background ${
-                naoIdentificado ? "border-destructive/50" : "border-input"
-              } ${readOnly ? "opacity-70 cursor-default" : ""}`}
-            />
-          )}
+          <input
+            value={campo.valor}
+            onChange={(e) => editarCampo(campo.chave, e.target.value)}
+            readOnly={readOnly}
+            placeholder={naoIdentificado ? "Não identificado — preencha manualmente" : undefined}
+            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background ${
+              naoIdentificado ? "border-destructive/50" : "border-input"
+            } ${readOnly ? "opacity-70 cursor-default" : ""}`}
+          />
           {campo.arquivoOrigem && (
             <p className="text-[10px] text-muted-foreground pl-0.5">Origem: {campo.arquivoOrigem}</p>
           )}
