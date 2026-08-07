@@ -269,6 +269,11 @@ function Comprovantes() {
                   {c.beneficiarioIds.map(nomeBeneficiario).join(", ")} • {formatCompetencia(c.competencia)}
                   {c.isRetroativo && " • Retroativo"}
                 </p>
+                {c.operadoraDivergenteCadastro && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-warning mt-1">
+                    <AlertTriangle className="h-3 w-3" /> Operadora divergente do cadastro
+                  </span>
+                )}
               </div>
               <ComprovanteStatusBadge status={c.status} />
             </header>
@@ -310,6 +315,12 @@ function Comprovantes() {
                   {formatCompetencia(cur.competencia)}
                   {cur.isRetroativo && " • Retroativo"}
                 </p>
+                {cur.operadoraDivergenteCadastro && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-warning mt-1">
+                    <AlertTriangle className="h-3 w-3" /> Operadora divergente do cadastro — considere solicitar
+                    requerimento de mudança de plano
+                  </span>
+                )}
               </div>
               <button onClick={fecharModal} className="p-1 hover:bg-muted rounded-md">
                 <X className="h-4 w-4" />

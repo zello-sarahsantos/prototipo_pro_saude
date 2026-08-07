@@ -77,6 +77,7 @@ function EnviarComprovante() {
   const [competencia, setCompetencia] = useState(competenciaViaAlerta ?? competenciaAtual);
   const [justificativaAtraso, setJustificativaAtraso] = useState("");
   const [justificativasDivergencia, setJustificativasDivergencia] = useState<Record<string, string>>({});
+  const [operadoraDivergenteConfirmada, setOperadoraDivergenteConfirmada] = useState<Record<string, boolean>>({});
   const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>(
     beneficiarioViaAlerta ? [beneficiarioViaAlerta] : [],
   );
@@ -182,6 +183,7 @@ function EnviarComprovante() {
       status: isRetroativo ? "retroativo_aguardando_aprovacao" : "em_analise",
       justificativasDivergencia:
         justificativasDivergenciaArray.length > 0 ? justificativasDivergenciaArray : undefined,
+      operadoraDivergenteCadastro: Object.values(operadoraDivergenteConfirmada).some(Boolean) || undefined,
       aprovacoes: [],
       dataEnvio: new Date().toISOString(),
     };
@@ -195,6 +197,7 @@ function EnviarComprovante() {
   function handleAnexarDependente(beneficiarioId: string) {
     setJustificativaAtraso("");
     setJustificativasDivergencia({});
+    setOperadoraDivergenteConfirmada({});
     setArquivosSelecionados([]);
     setGruposExtraidos([]);
     setBeneficiariosSelecionados([beneficiarioId]);
@@ -354,6 +357,10 @@ function EnviarComprovante() {
           justificativasDivergencia={justificativasDivergencia}
           onChangeJustificativaDivergencia={(beneficiarioId, texto) =>
             setJustificativasDivergencia((prev) => ({ ...prev, [beneficiarioId]: texto }))
+          }
+          operadoraDivergenteConfirmada={operadoraDivergenteConfirmada}
+          onConfirmarOperadoraDivergente={(beneficiarioId) =>
+            setOperadoraDivergenteConfirmada((prev) => ({ ...prev, [beneficiarioId]: true }))
           }
         />
       )}

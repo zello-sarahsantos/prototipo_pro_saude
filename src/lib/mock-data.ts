@@ -400,6 +400,10 @@ export interface Comprovante {
   /** Justificativas do Servidor quando o valor extraído diverge do valor cadastrado — 1 por
    *  beneficiário divergente, obrigatória (≥3 palavras) antes de confirmar aquele beneficiário. */
   justificativasDivergencia?: { beneficiarioId: string; texto: string }[];
+  /** `true` quando o Servidor optou por "Continuar mesmo assim" após ver que a operadora
+   *  identificada no documento diverge do cadastro de algum beneficiário — sinaliza para o
+   *  Analista/Gerência que pode valer a pena solicitar um requerimento de mudança de plano. */
+  operadoraDivergenteCadastro?: boolean;
   /** Status geral do comprovante (fila, badges). Em comprovantes multi-beneficiário, é derivado de `statusPorBeneficiario`. */
   status: StatusComprovante;
   /** Usado quando `beneficiarioIds.length > 1` — permite aprovar/corrigir cada beneficiário individualmente. */

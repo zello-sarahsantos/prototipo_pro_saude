@@ -45,6 +45,19 @@ export function getDivergencia(
   return valorDivergeDoCadastro(campos, beneficiario.valorCadastrado);
 }
 
+/** Verifica se a `operadora` extraída em `campos` diverge da operadora cadastrada — só considera
+ *  divergência quando o campo foi de fato identificado (Recibo/Demonstrativo não extraem
+ *  `operadora`, então nunca acionam esse alerta, ver taxonomia da Etapa 4). */
+export function operadoraDivergeDoCadastro(
+  campos: CampoExtraido[],
+  operadoraCadastrada: string,
+): { divergente: boolean; operadoraExtraida?: string } {
+  const campoOperadora = campos.find((c) => c.chave === "operadora");
+  const operadoraExtraida = campoOperadora?.valor.trim();
+  if (!operadoraExtraida) return { divergente: false };
+  return { divergente: operadoraExtraida !== operadoraCadastrada, operadoraExtraida };
+}
+
 /**
  * Verifica se algum arquivo que cobre este beneficiário indica uma situação não reembolsável
  * (assistência odontológica, multa, taxa administrativa ou juros/encargos) — calculado a partir

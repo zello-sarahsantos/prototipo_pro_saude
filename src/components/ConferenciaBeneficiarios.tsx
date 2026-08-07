@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento, type CampoExtraido, type DocumentoDetectado } from "@/lib/mock-data";
-import { getDivergenciaBoletoComprovante, getElegibilidade, valorDivergeDoCadastro } from "@/lib/comprovante-status";
+import {
+  getDivergenciaBoletoComprovante,
+  getElegibilidade,
+  operadoraDivergeDoCadastro,
+  valorDivergeDoCadastro,
+} from "@/lib/comprovante-status";
 import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
@@ -24,6 +30,8 @@ export function ConferenciaBeneficiarios({
   nomeTitular,
   justificativasDivergencia,
   onChangeJustificativaDivergencia,
+  operadoraDivergenteConfirmada,
+  onConfirmarOperadoraDivergente,
 }: {
   arquivos: { nome: string; documentos: DocumentoDetectado[] }[];
   beneficiarios: BeneficiarioPagamento[];
@@ -41,6 +49,10 @@ export function ConferenciaBeneficiarios({
    *  obrigatória (≥3 palavras) antes de confirmar um beneficiário com valor divergente. */
   justificativasDivergencia: Record<string, string>;
   onChangeJustificativaDivergencia: (beneficiarioId: string, texto: string) => void;
+  /** Beneficiários para os quais o Servidor já escolheu "Continuar mesmo assim" apesar da
+   *  operadora identificada divergir do cadastro. */
+  operadoraDivergenteConfirmada: Record<string, boolean>;
+  onConfirmarOperadoraDivergente: (beneficiarioId: string) => void;
 }) {
   const pseudoComprovante = {
     arquivos,
@@ -50,15 +62,17 @@ export function ConferenciaBeneficiarios({
   const [confirmados, setConfirmados] = useState<Set<string>>(new Set());
 
   // Confirma automaticamente os beneficiários com todos os campos em alta confiança — exceto
-  // quando o valor diverge do cadastro, caso em que a justificativa obrigatória impede o
-  // avanço automático (o Servidor precisa explicar antes de confirmar).
+  // quando o valor ou a operadora divergem do cadastro, casos em que uma ação explícita do
+  // Servidor (justificativa ou "Continuar mesmo assim") impede o avanço automático.
   useEffect(() => {
     const altaConfianca = gruposExtraidos
       .filter((g) => {
         if (naoIdentificado(g.campos) || !todaAltaConfianca(g.campos)) return false;
         const beneficiario = beneficiarios.find((b) => b.id === g.beneficiarioId);
         if (!beneficiario) return true;
-        return !valorDivergeDoCadastro(g.campos, beneficiario.valorCadastrado).divergente;
+        if (valorDivergeDoCadastro(g.campos, beneficiario.valorCadastrado).divergente) return false;
+        if (operadoraDivergeDoCadastro(g.campos, beneficiario.operadora).divergente) return false;
+        return true;
       })
       .map((g) => g.beneficiarioId);
     if (altaConfianca.length > 0) {
@@ -113,6 +127,10 @@ export function ConferenciaBeneficiarios({
             : false;
           const justificativa = justificativasDivergencia[grupo.beneficiarioId] ?? "";
           const justificativaValida = temPeloMenosNPalavras(justificativa);
+          const { divergente: operadoraDivergente, operadoraExtraida } = beneficiario
+            ? operadoraDivergeDoCadastro(grupo.campos, beneficiario.operadora)
+            : { divergente: false, operadoraExtraida: undefined };
+          const operadoraConfirmada = !!operadoraDivergenteConfirmada[grupo.beneficiarioId];
 
           return (
             <div key={grupo.beneficiarioId} className="space-y-2">
@@ -136,6 +154,36 @@ export function ConferenciaBeneficiarios({
                 divergenciaBoletoComprovante={boletoComprovanteDivergente}
                 onChange={(campos) => onChangeGrupo(grupo.beneficiarioId, campos)}
               />
+
+              {operadoraDivergente && !confirmado && (
+                <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-2">
+                  <p className="font-medium text-warning flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> A operadora identificada ({operadoraExtraida}) é
+                    diferente do seu cadastro ({beneficiario?.operadora}).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      to="/servidor/requerimento/novo-plano"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium border border-warning/40 text-warning rounded-md px-3 py-1.5 hover:bg-warning/10"
+                    >
+                      Abrir requerimento de mudança de plano
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => onConfirmarOperadoraDivergente(grupo.beneficiarioId)}
+                      className={`text-xs font-medium rounded-md px-3 py-1.5 border ${
+                        operadoraConfirmada
+                          ? "border-success/40 bg-success/10 text-success"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      {operadoraConfirmada ? "Continuar mesmo assim ✓" : "Continuar mesmo assim"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {valorDivergente && !confirmado && (
                 <div className="px-1">
@@ -165,7 +213,11 @@ export function ConferenciaBeneficiarios({
                         setConfirmados((prev) => new Set(prev).add(grupo.beneficiarioId));
                       }
                     }}
-                    disabled={incompleto || (valorDivergente && !justificativaValida)}
+                    disabled={
+                      incompleto ||
+                      (valorDivergente && !justificativaValida) ||
+                      (operadoraDivergente && !operadoraConfirmada)
+                    }
                     className="text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-light"
                   >
                     Confirmar
