@@ -305,10 +305,26 @@ export const tipoDocumentoArquivoLabels: Record<TipoDocumentoArquivo, string> = 
   demonstrativo: 'Demonstrativo de Pagamento',
 };
 
-/** Um arquivo anexado a um envio, com os tipos documentais que o Servidor indicou que ele contém. */
+/** Um tipo documental detectado dentro de um arquivo, com os beneficiários que ele cobre.
+ *  `beneficiarioIds` ausente = cobre todos os beneficiários selecionados no envio. Nenhum tipo
+ *  documental é obrigatoriamente individual — Recibo e Demonstrativo também podem listar mais
+ *  de 1 beneficiário, dependendo do que o documento real traz (ver `getCoberturaDocumental`). */
+export interface DocumentoDetectado {
+  tipo: TipoDocumentoArquivo;
+  beneficiarioIds?: string[];
+}
+
+/** Um arquivo anexado a um envio — pode conter mais de um documento/tipo (ex: um único PDF
+ *  que é ao mesmo tempo Fatura Técnica e Comprovante de Pagamento), cada um com sua própria
+ *  cobertura de beneficiários. */
 export interface ArquivoAnexado {
   nome: string;
-  tipos: TipoDocumentoArquivo[];
+  documentos: DocumentoDetectado[];
+}
+
+/** Lista simples dos tipos marcados num arquivo — para exibição, sem cobertura por beneficiário. */
+export function tiposDoArquivo(arquivo: { documentos: DocumentoDetectado[] }): TipoDocumentoArquivo[] {
+  return arquivo.documentos.map((d) => d.tipo);
 }
 
 /**
@@ -498,7 +514,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 1: individual aprovado
   {
     id: "comp001",
-    arquivos: [{ nome: "boleto_julho_carlos.pdf", tipos: ["boleto"] }],
+    arquivos: [{ nome: "boleto_julho_carlos.pdf", documentos: [{ tipo: "boleto" }] }],
     beneficiarioIds: ["ben-titular"],
     competencia: competenciaAtual,
     isRetroativo: false,
@@ -520,7 +536,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 2: em análise
   {
     id: "comp002",
-    arquivos: [{ nome: "recibo_julho_marina.pdf", tipos: ["recibo"] }],
+    arquivos: [{ nome: "recibo_julho_marina.pdf", documentos: [{ tipo: "recibo" }] }],
     beneficiarioIds: ["ben-conjuge"],
     competencia: competenciaAtual,
     isRetroativo: false,
@@ -540,7 +556,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 3: ilegível com opção de reenvio
   {
     id: "comp003",
-    arquivos: [{ nome: "boleto_julho_pedro_ilegivel.pdf", tipos: ["boleto"] }],
+    arquivos: [{ nome: "boleto_julho_pedro_ilegivel.pdf", documentos: [{ tipo: "boleto" }] }],
     beneficiarioIds: ["ben-filho"],
     competencia: competenciaAtual,
     isRetroativo: false,
@@ -552,7 +568,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 4: retroativo aguardando analista
   {
     id: "comp004",
-    arquivos: [{ nome: "recibo_maio_carlos_retroativo.pdf", tipos: ["recibo"] }],
+    arquivos: [{ nome: "recibo_maio_carlos_retroativo.pdf", documentos: [{ tipo: "recibo" }] }],
     beneficiarioIds: ["ben-titular"],
     competencia: competenciaRetroativa,
     isRetroativo: true,
@@ -573,7 +589,7 @@ export const comprovantes: Comprovante[] = [
   // Exemplo 5: retroativo com divergência de valor
   {
     id: "comp005",
-    arquivos: [{ nome: "demonstrativo_julho_carlos_divergente.pdf", tipos: ["demonstrativo"] }],
+    arquivos: [{ nome: "demonstrativo_julho_carlos_divergente.pdf", documentos: [{ tipo: "demonstrativo" }] }],
     beneficiarioIds: ["ben-titular"],
     competencia: competenciaAtual,
     isRetroativo: false,

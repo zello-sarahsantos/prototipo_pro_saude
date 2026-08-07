@@ -11,7 +11,7 @@ export function processarNovoArquivo(
   arquivo: File,
 ): { ilegivel: boolean; campos: CampoExtraido[] } {
   const ilegivel = arquivoEhIlegivel(arquivo.name);
-  const tipos = [...new Set(comprovante.arquivos.flatMap((a) => a.tipos))];
+  const tipos = [...new Set(comprovante.arquivos.flatMap((a) => a.documentos.map((d) => d.tipo)))];
   const campos = ilegivel ? [] : gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.name, tipos);
   return { ilegivel, campos };
 }
@@ -39,7 +39,8 @@ export function confirmarReenvio(params: {
     dataEnvio: comprovante.dataEnvio,
     status: comprovante.status,
   };
-  const tiposHerdados = [...new Set(comprovante.arquivos.flatMap((a) => a.tipos))];
+  const tiposHerdados = [...new Set(comprovante.arquivos.flatMap((a) => a.documentos.map((d) => d.tipo)))];
+  const documentosHerdados = tiposHerdados.map((tipo) => ({ tipo }));
 
   const acaoLog = {
     etapa: "servidor" as const,
@@ -60,7 +61,7 @@ export function confirmarReenvio(params: {
       g.beneficiarioId === beneficiarioId ? { ...g, campos } : g,
     );
     updateComprovantePagamento(comprovante.id, {
-      arquivos: [{ nome: novoArquivo, tipos: tiposHerdados }],
+      arquivos: [{ nome: novoArquivo, documentos: documentosHerdados }],
       statusPorBeneficiario: novaLista,
       status: recomputeStatusGeral(novaLista),
       gruposExtraidos: gruposAtualizados,
@@ -70,7 +71,7 @@ export function confirmarReenvio(params: {
     });
   } else {
     updateComprovantePagamento(comprovante.id, {
-      arquivos: [{ nome: novoArquivo, tipos: tiposHerdados }],
+      arquivos: [{ nome: novoArquivo, documentos: documentosHerdados }],
       status: novoStatus,
       camposExtraidos: campos,
       versoesAnteriores: [...(comprovante.versoesAnteriores ?? []), versaoAnterior],

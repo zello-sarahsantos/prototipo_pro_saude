@@ -1,9 +1,11 @@
 import type {
+  ArquivoAnexado,
   BeneficiarioPagamento,
   CampoExtraido,
   Comprovante,
   StatusBeneficiarioComprovante,
   StatusComprovante,
+  TipoDocumentoArquivo,
 } from "./mock-data";
 
 /** Campos (do comprovante inteiro, ou de 1 beneficiário específico em fatura técnica). */
@@ -117,4 +119,101 @@ export function agruparBeneficiariosElegiveis(beneficiarios: BeneficiarioPagamen
   }
 
   return { grupos: [...porChave.values()], vinculadosAssociacao };
+}
+
+/** Beneficiários que um documento (tipo dentro de um arquivo) cobre. `beneficiarioIds` ausente
+ *  significa "cobre todos os selecionados no envio" — vale para todos os tipos documentais,
+ *  incluindo Recibo e Demonstrativo: nenhum tipo é obrigatoriamente individual, um recibo ou
+ *  demonstrativo pode listar 1 ou vários beneficiários dependendo do que o documento real traz. */
+export function beneficiariosCobertosPeloDocumento(
+  documento: { tipo: TipoDocumentoArquivo; beneficiarioIds?: string[] },
+  todosIds: string[],
+): string[] {
+  return documento.beneficiarioIds ?? todosIds;
+}
+
+/** Resultado da checklist de cobertura documental de 1 beneficiário do grupo selecionado. */
+export interface CoberturaBeneficiario {
+  beneficiarioId: string;
+  contemplado: boolean;
+  tiposEncontrados: TipoDocumentoArquivo[];
+  /** Texto amigável do que falta — só presente quando `contemplado` é `false`. */
+  faltando?: string;
+}
+
+/**
+ * Calcula, para cada beneficiário do grupo selecionado, se a combinação de documentos já
+ * anexados (por tipo, considerando quem cada um cobre) satisfaz a regra de obrigatoriedade
+ * da modalidade do grupo:
+ * - Empresarial: Fatura Técnica **e** Comprovante de Pagamento.
+ * - Individual/familiar: (Boleto **e** Comprovante) **ou** Recibo **ou** Demonstrativo.
+ */
+export function getCoberturaDocumental(
+  beneficiarios: BeneficiarioPagamento[],
+  arquivos: Pick<ArquivoAnexado, "documentos">[],
+  modalidadePlano: BeneficiarioPagamento["modalidadePlano"],
+): CoberturaBeneficiario[] {
+  const todosIds = beneficiarios.map((b) => b.id);
+
+  return beneficiarios.map((b) => {
+    const tiposEncontrados = new Set<TipoDocumentoArquivo>();
+    for (const arquivo of arquivos) {
+      for (const documento of arquivo.documentos) {
+        if (beneficiariosCobertosPeloDocumento(documento, todosIds).includes(b.id)) {
+          tiposEncontrados.add(documento.tipo);
+        }
+      }
+    }
+    const tipos = [...tiposEncontrados];
+
+    if (modalidadePlano === "empresarial") {
+      const temFatura = tipos.includes("fatura_tecnica");
+      const temComprovante = tipos.includes("comprovante_pagamento");
+      if (temFatura && temComprovante) {
+        return { beneficiarioId: b.id, contemplado: true, tiposEncontrados: tipos };
+      }
+      const faltam = [!temFatura && "Fatura Técnica", !temComprovante && "Comprovante de Pagamento"].filter(
+        (v): v is string => !!v,
+      );
+      const faltando = faltam.length === 1 ? `Falta ${faltam[0]}` : `Faltam ${faltam.join(" e ")}`;
+      return { beneficiarioId: b.id, contemplado: false, tiposEncontrados: tipos, faltando };
+    }
+
+    const temRecibo = tipos.includes("recibo");
+    const temDemonstrativo = tipos.includes("demonstrativo");
+    const temBoleto = tipos.includes("boleto");
+    const temComprovante = tipos.includes("comprovante_pagamento");
+    if (temRecibo || temDemonstrativo || (temBoleto && temComprovante)) {
+      return { beneficiarioId: b.id, contemplado: true, tiposEncontrados: tipos };
+    }
+    // Se há progresso parcial (só Boleto ou só Comprovante), aponta exatamente o que falta.
+    // Sem nenhum indício, seria enganoso apontar 1 caminho específico entre os 3 válidos.
+    const faltando =
+      temBoleto && !temComprovante
+        ? "Falta Comprovante de Pagamento"
+        : temComprovante && !temBoleto
+          ? "Falta Boleto"
+          : "Falta uma combinação válida de documentos";
+    return { beneficiarioId: b.id, contemplado: false, tiposEncontrados: tipos, faltando };
+  });
+}
+
+/**
+ * `true` quando, com mais de 1 beneficiário no grupo, todo documento (tipo dentro de um
+ * arquivo) já tem cobertura declarada explicitamente (`beneficiarioIds` não vazio) — impede
+ * avançar com um tipo anexado cuja cobertura ainda não foi definida, mesmo que a checklist já
+ * esteja satisfeita por outros documentos.
+ */
+export function todosDocumentosComCoberturaDefinida(
+  arquivos: Pick<ArquivoAnexado, "documentos">[],
+  totalBeneficiarios: number,
+): boolean {
+  if (totalBeneficiarios <= 1) return true;
+  return arquivos.every((a) => a.documentos.every((d) => (d.beneficiarioIds?.length ?? 0) > 0));
+}
+
+/** `true` quando todo o grupo selecionado (não vazio) já está contemplado — usado para liberar
+ *  o avanço do passo de upload. */
+export function todosContemplados(cobertura: CoberturaBeneficiario[]): boolean {
+  return cobertura.length > 0 && cobertura.every((c) => c.contemplado);
 }

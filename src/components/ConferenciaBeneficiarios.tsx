@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
-import { tipoDocumentoArquivoLabels, type BeneficiarioPagamento, type CampoExtraido, type TipoDocumentoArquivo } from "@/lib/mock-data";
+import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento, type CampoExtraido, type DocumentoDetectado } from "@/lib/mock-data";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
   return campos.some((c) => c.valor.trim() === "");
@@ -20,7 +20,7 @@ export function ConferenciaBeneficiarios({
   onContinuar,
   nomeTitular,
 }: {
-  arquivos: { nome: string; tipos: TipoDocumentoArquivo[] }[];
+  arquivos: { nome: string; documentos: DocumentoDetectado[] }[];
   beneficiarios: BeneficiarioPagamento[];
   gruposExtraidos: { beneficiarioId: string; campos: CampoExtraido[] }[];
   onChangeGrupo: (beneficiarioId: string, campos: CampoExtraido[]) => void;
@@ -62,7 +62,7 @@ export function ConferenciaBeneficiarios({
             <div>
               <p className="font-medium">{a.nome}</p>
               <p className="text-xs text-muted-foreground">
-                {a.tipos.map((t) => tipoDocumentoArquivoLabels[t]).join(", ") || "Nenhum tipo marcado"}
+                {tiposDoArquivo(a).map((t) => tipoDocumentoArquivoLabels[t]).join(", ") || "Nenhum tipo marcado"}
               </p>
             </div>
           </div>
