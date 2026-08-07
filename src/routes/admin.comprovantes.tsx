@@ -347,6 +347,9 @@ function Comprovantes() {
                 const { divergente: boletoComprovanteDivergente } = beneficiario
                   ? getDivergenciaBoletoComprovante(cur, beneficiario)
                   : { divergente: false };
+                const justificativaDivergenciaServidor = cur.justificativasDivergencia?.find(
+                  (j) => j.beneficiarioId === beneficiarioId,
+                )?.texto;
 
                 return (
                   <div key={beneficiarioId} className="border border-border rounded-xl p-4 space-y-3">
@@ -362,6 +365,15 @@ function Comprovantes() {
                       situacaoNaoReembolsavel={situacao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
+
+                    {justificativaDivergenciaServidor && (
+                      <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-medium text-warning flex items-center gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5" /> Justificativa da divergência (servidor):
+                        </p>
+                        <p>{justificativaDivergenciaServidor}</p>
+                      </div>
+                    )}
 
                     {cur.solicitacaoComplementar && (
                       <p className="text-xs text-muted-foreground italic">

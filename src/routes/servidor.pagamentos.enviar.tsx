@@ -26,6 +26,7 @@ import {
   todosContemplados,
   todosDocumentosComCoberturaDefinida,
 } from "@/lib/comprovante-status";
+import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
 import {
   addComprovantePagamento,
   getComprovantesUnificados,
@@ -75,6 +76,7 @@ function EnviarComprovante() {
   const [travarCompetencia, setTravarCompetencia] = useState(!!competenciaViaAlerta);
   const [competencia, setCompetencia] = useState(competenciaViaAlerta ?? competenciaAtual);
   const [justificativaAtraso, setJustificativaAtraso] = useState("");
+  const [justificativasDivergencia, setJustificativasDivergencia] = useState<Record<string, string>>({});
   const [beneficiariosSelecionados, setBeneficiariosSelecionados] = useState<string[]>(
     beneficiarioViaAlerta ? [beneficiarioViaAlerta] : [],
   );
@@ -99,7 +101,7 @@ function EnviarComprovante() {
   const tiposPermitidos = tiposDocumentoPorPlano[modalidadeDoGrupo];
 
   const podeAvancarSelecao =
-    beneficiariosSelecionados.length > 0 && (!isRetroativo || justificativaAtraso.trim().length > 0);
+    beneficiariosSelecionados.length > 0 && (!isRetroativo || temPeloMenosNPalavras(justificativaAtraso));
   const coberturaDocumental = getCoberturaDocumental(beneficiariosEscolhidos, arquivosSelecionados, modalidadeDoGrupo);
   const podeAvancarUpload =
     arquivosSelecionados.length > 0 &&
@@ -165,6 +167,9 @@ function EnviarComprovante() {
       documentos: a.documentos,
     }));
     const primeiro = gruposExtraidos[0];
+    const justificativasDivergenciaArray = Object.entries(justificativasDivergencia)
+      .filter(([, texto]) => texto.trim() !== "")
+      .map(([beneficiarioId, texto]) => ({ beneficiarioId, texto }));
     const novoComprovante: Comprovante = {
       id: `comp-${Date.now()}`,
       arquivos: arquivosDoEnvio,
@@ -175,6 +180,8 @@ function EnviarComprovante() {
       camposExtraidos: primeiro?.campos ?? [],
       gruposExtraidos: gruposExtraidos.length > 1 ? gruposExtraidos : undefined,
       status: isRetroativo ? "retroativo_aguardando_aprovacao" : "em_analise",
+      justificativasDivergencia:
+        justificativasDivergenciaArray.length > 0 ? justificativasDivergenciaArray : undefined,
       aprovacoes: [],
       dataEnvio: new Date().toISOString(),
     };
@@ -187,6 +194,7 @@ function EnviarComprovante() {
    *  preserva tudo já salvo e reabre o wizard só com o beneficiário faltante pré-selecionado. */
   function handleAnexarDependente(beneficiarioId: string) {
     setJustificativaAtraso("");
+    setJustificativasDivergencia({});
     setArquivosSelecionados([]);
     setGruposExtraidos([]);
     setBeneficiariosSelecionados([beneficiarioId]);
@@ -244,12 +252,20 @@ function EnviarComprovante() {
                 value={justificativaAtraso}
                 onChange={(e) => setJustificativaAtraso(e.target.value)}
                 rows={3}
-                placeholder="Explique o motivo do envio retroativo..."
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Explique o motivo do envio retroativo (mínimo 3 palavras)..."
+                className={`w-full rounded-md border bg-background px-3 py-2 text-sm ${
+                  justificativaAtraso.trim().length > 0 && !temPeloMenosNPalavras(justificativaAtraso)
+                    ? "border-destructive/50"
+                    : "border-input"
+                }`}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Envios retroativos são aprovados pela GERDAB (Analista ou Gerência) antes de valer para fins de reembolso.
-              </p>
+              {justificativaAtraso.trim().length > 0 && !temPeloMenosNPalavras(justificativaAtraso) ? (
+                <p className="text-xs text-destructive mt-1">Escreva pelo menos 3 palavras.</p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Envios retroativos são aprovados pela GERDAB (Analista ou Gerência) antes de valer para fins de reembolso.
+                </p>
+              )}
             </div>
           )}
 
@@ -335,6 +351,10 @@ function EnviarComprovante() {
           onVoltar={() => setStep("upload")}
           onContinuar={() => setStep("confirmar_documento")}
           nomeTitular={titularPagamento?.nome}
+          justificativasDivergencia={justificativasDivergencia}
+          onChangeJustificativaDivergencia={(beneficiarioId, texto) =>
+            setJustificativasDivergencia((prev) => ({ ...prev, [beneficiarioId]: texto }))
+          }
         />
       )}
 

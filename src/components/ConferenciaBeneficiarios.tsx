@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento, type CampoExtraido, type DocumentoDetectado } from "@/lib/mock-data";
-import { getDivergenciaBoletoComprovante, getElegibilidade } from "@/lib/comprovante-status";
+import { getDivergenciaBoletoComprovante, getElegibilidade, valorDivergeDoCadastro } from "@/lib/comprovante-status";
+import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
   return campos.some((c) => c.valor.trim() === "");
@@ -21,6 +22,8 @@ export function ConferenciaBeneficiarios({
   onVoltar,
   onContinuar,
   nomeTitular,
+  justificativasDivergencia,
+  onChangeJustificativaDivergencia,
 }: {
   arquivos: { nome: string; documentos: DocumentoDetectado[] }[];
   beneficiarios: BeneficiarioPagamento[];
@@ -34,6 +37,10 @@ export function ConferenciaBeneficiarios({
   onContinuar: () => void;
   /** O pagamento deve ter sido feito pelo titular — usado para destacar "Pagador" divergente. */
   nomeTitular?: string;
+  /** Justificativa (por beneficiário) da divergência entre o valor extraído e o valor cadastrado —
+   *  obrigatória (≥3 palavras) antes de confirmar um beneficiário com valor divergente. */
+  justificativasDivergencia: Record<string, string>;
+  onChangeJustificativaDivergencia: (beneficiarioId: string, texto: string) => void;
 }) {
   const pseudoComprovante = {
     arquivos,
@@ -42,10 +49,17 @@ export function ConferenciaBeneficiarios({
   };
   const [confirmados, setConfirmados] = useState<Set<string>>(new Set());
 
-  // Confirma automaticamente os beneficiários com todos os campos em alta confiança.
+  // Confirma automaticamente os beneficiários com todos os campos em alta confiança — exceto
+  // quando o valor diverge do cadastro, caso em que a justificativa obrigatória impede o
+  // avanço automático (o Servidor precisa explicar antes de confirmar).
   useEffect(() => {
     const altaConfianca = gruposExtraidos
-      .filter((g) => !naoIdentificado(g.campos) && todaAltaConfianca(g.campos))
+      .filter((g) => {
+        if (naoIdentificado(g.campos) || !todaAltaConfianca(g.campos)) return false;
+        const beneficiario = beneficiarios.find((b) => b.id === g.beneficiarioId);
+        if (!beneficiario) return true;
+        return !valorDivergeDoCadastro(g.campos, beneficiario.valorCadastrado).divergente;
+      })
       .map((g) => g.beneficiarioId);
     if (altaConfianca.length > 0) {
       setConfirmados((prev) => new Set([...prev, ...altaConfianca]));
@@ -94,6 +108,11 @@ export function ConferenciaBeneficiarios({
           const { divergente: boletoComprovanteDivergente } = beneficiario
             ? getDivergenciaBoletoComprovante(pseudoComprovante, beneficiario)
             : { divergente: false };
+          const valorDivergente = beneficiario
+            ? valorDivergeDoCadastro(grupo.campos, beneficiario.valorCadastrado).divergente
+            : false;
+          const justificativa = justificativasDivergencia[grupo.beneficiarioId] ?? "";
+          const justificativaValida = temPeloMenosNPalavras(justificativa);
 
           return (
             <div key={grupo.beneficiarioId} className="space-y-2">
@@ -118,6 +137,26 @@ export function ConferenciaBeneficiarios({
                 onChange={(campos) => onChangeGrupo(grupo.beneficiarioId, campos)}
               />
 
+              {valorDivergente && !confirmado && (
+                <div className="px-1">
+                  <label className="block text-xs font-medium mb-1">
+                    Justificativa da divergência de valor <span className="text-destructive">*</span>
+                  </label>
+                  <textarea
+                    value={justificativa}
+                    onChange={(e) => onChangeJustificativaDivergencia(grupo.beneficiarioId, e.target.value)}
+                    rows={2}
+                    placeholder="Explique por que o valor pago é diferente do cadastrado (mínimo 3 palavras)..."
+                    className={`w-full rounded-md border bg-background px-3 py-2 text-sm ${
+                      justificativa.trim().length > 0 && !justificativaValida ? "border-destructive/50" : "border-input"
+                    }`}
+                  />
+                  {justificativa.trim().length > 0 && !justificativaValida && (
+                    <p className="text-xs text-destructive mt-1">Escreva pelo menos 3 palavras.</p>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 {!confirmado && (
                   <button
@@ -126,7 +165,7 @@ export function ConferenciaBeneficiarios({
                         setConfirmados((prev) => new Set(prev).add(grupo.beneficiarioId));
                       }
                     }}
-                    disabled={incompleto}
+                    disabled={incompleto || (valorDivergente && !justificativaValida)}
                     className="text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-light"
                   >
                     Confirmar

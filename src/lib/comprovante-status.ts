@@ -21,18 +21,28 @@ export function getCamposDoBeneficiario(
   return comprovante.camposExtraidos;
 }
 
+/** Verifica se o `valor` extraído em `campos` diverge de `valorCadastrado` — pura, usada tanto
+ *  por `getDivergencia` (comprovante já persistido) quanto por telas que ainda operam sobre
+ *  campos do wizard antes de o comprovante existir (ex: `ConferenciaBeneficiarios`). */
+export function valorDivergeDoCadastro(
+  campos: CampoExtraido[],
+  valorCadastrado: number,
+): { divergente: boolean; valorExtraido: number } {
+  const campoValor = campos.find((c) => c.chave === "valor");
+  const valorExtraido = campoValor ? parseFloat(campoValor.valor) : valorCadastrado;
+  return {
+    divergente: !Number.isNaN(valorExtraido) && valorExtraido !== valorCadastrado,
+    valorExtraido,
+  };
+}
+
 /** Verifica se o valor extraído diverge do valor cadastrado do beneficiário — alerta auxiliar, não um status. */
 export function getDivergencia(
   comprovante: Comprovante,
   beneficiario: BeneficiarioPagamento,
 ): { divergente: boolean; valorExtraido: number } {
   const campos = getCamposDoBeneficiario(comprovante, beneficiario.id);
-  const campoValor = campos.find((c) => c.chave === "valor");
-  const valorExtraido = campoValor ? parseFloat(campoValor.valor) : beneficiario.valorCadastrado;
-  return {
-    divergente: !Number.isNaN(valorExtraido) && valorExtraido !== beneficiario.valorCadastrado,
-    valorExtraido,
-  };
+  return valorDivergeDoCadastro(campos, beneficiario.valorCadastrado);
 }
 
 /**

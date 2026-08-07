@@ -397,8 +397,9 @@ export interface Comprovante {
   camposExtraidos: CampoExtraido[];
   /** Usado quando `beneficiarioIds.length > 1` (ex: fatura técnica) — 1 conjunto de campos por beneficiário. */
   gruposExtraidos?: { beneficiarioId: string; campos: CampoExtraido[] }[];
-  /** Preenchida quando o valor extraído diverge do valor cadastrado do beneficiário. */
-  justificativaDivergencia?: string;
+  /** Justificativas do Servidor quando o valor extraído diverge do valor cadastrado — 1 por
+   *  beneficiário divergente, obrigatória (≥3 palavras) antes de confirmar aquele beneficiário. */
+  justificativasDivergencia?: { beneficiarioId: string; texto: string }[];
   /** Status geral do comprovante (fila, badges). Em comprovantes multi-beneficiário, é derivado de `statusPorBeneficiario`. */
   status: StatusComprovante;
   /** Usado quando `beneficiarioIds.length > 1` — permite aprovar/corrigir cada beneficiário individualmente. */
