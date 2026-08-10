@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 
 import { Stepper, StepNav, Field, inputCls } from "@/components/Stepper";
+import { Switch } from "@/components/ui/switch";
 import { UploadBox } from "@/routes/servidor.requerimento.novo-plano";
 import { maskCPF, maskCurrency } from "@/lib/utils";
 import {
@@ -22,7 +23,6 @@ import {
   DocumentosDependenteUploads,
   OrientacaoTipoDependente,
 } from "@/components/DocumentosDependente";
-import { modalidadePlanoLabels, type ModalidadePlano } from "@/lib/mock-data";
 
 const steps = ["Dependente", "Plano", "Documentos", "Revisão"];
 
@@ -31,9 +31,12 @@ export type IncluirDependentePlano = {
   outraOperadora: string;
   /** Modalidade do plano do **dependente** — nunca herdada automaticamente do titular quando o
    *  plano é diferente (`mesmoPlano === "nao"`): dependente e titular podem ter operadoras,
-   *  modalidades e vínculos de associação diferentes. Vocabulário compartilhado com o Módulo de
-   *  Pagamento (`ModalidadePlano`, `mock-data.ts`), para uso futuro sem tradução de valores. */
-  modalidade: ModalidadePlano | "";
+   *  modalidades e vínculos de associação diferentes. Campo aberto para texto, mesmo padrão do
+   *  Titular no Primeiro Acesso (ver `primeiro-acesso.tsx`). */
+  modalidade: string;
+  /** Alerta o Servidor de que o plano do dependente é empresarial — mesmo padrão do Titular no
+   *  Primeiro Acesso: exibe aviso sobre a exigência de fatura técnica no envio de comprovantes. */
+  empresarial: boolean;
   vigencia: string;
 };
 
@@ -66,6 +69,7 @@ export function IncluirDependenteForm({
     operadora: "",
     outraOperadora: "",
     modalidade: "",
+    empresarial: false,
     vigencia: "",
   });
   const [tipoLaudo, setTipoLaudo] = useState("");
@@ -74,7 +78,7 @@ export function IncluirDependenteForm({
   const selecionarMesmoPlano = (v: "sim" | "nao") => {
     setMesmoPlano(v);
     if (v === "sim") {
-      setPlanoDependente({ operadora: "", outraOperadora: "", modalidade: "", vigencia: "" });
+      setPlanoDependente({ operadora: "", outraOperadora: "", modalidade: "", empresarial: false, vigencia: "" });
     }
   };
 
@@ -307,18 +311,33 @@ export function IncluirDependenteForm({
                 </Field>
               )}
               <Field label="Modalidade do plano do dependente" required>
-                <select
+                <input
                   className={inputCls}
+                  placeholder="Ex: Coletivo Empresarial"
                   value={planoDependente.modalidade}
-                  onChange={(e) =>
-                    setPlanoDependente({ ...planoDependente, modalidade: e.target.value as ModalidadePlano })
-                  }
-                >
-                  <option value="">Selecione a modalidade</option>
-                  <option value="individual_familiar">{modalidadePlanoLabels.individual_familiar}</option>
-                  <option value="empresarial">{modalidadePlanoLabels.empresarial}</option>
-                </select>
+                  onChange={(e) => setPlanoDependente({ ...planoDependente, modalidade: e.target.value })}
+                />
               </Field>
+              <Field label="Empresarial">
+                <div className={`${inputCls} flex items-center justify-between`}>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={planoDependente.empresarial}
+                      onCheckedChange={(checked) => setPlanoDependente({ ...planoDependente, empresarial: checked })}
+                    />
+                    <span className="text-sm">{planoDependente.empresarial ? "Sim" : "Não"}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">O plano do dependente é empresarial?</span>
+                </div>
+              </Field>
+              {planoDependente.empresarial && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 flex gap-2">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <p>
+                    Planos empresariais exigem o envio da fatura técnica no momento do envio de comprovantes de pagamento, pois o boleto empresarial isolado não permite identificar os valores individuais dos beneficiários.
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Valor individual do plano do dependente" required>
                   <input
@@ -364,10 +383,10 @@ export function IncluirDependenteForm({
             <Row k="Tipo de dependente" v={parentesco} />
             <Row k="Plano" v={mesmoPlano === "sim" ? "Mesmo do titular" : "Plano diferente do titular"} />
             {mesmoPlano === "nao" && (
-              <Row
-                k="Modalidade do plano do dependente"
-                v={planoDependente.modalidade ? modalidadePlanoLabels[planoDependente.modalidade] : "—"}
-              />
+              <>
+                <Row k="Modalidade do plano do dependente" v={planoDependente.modalidade || "—"} />
+                <Row k="Empresarial" v={planoDependente.empresarial ? "Sim" : "Não"} />
+              </>
             )}
             <Row k="Documentos" v={`${DOCUMENTOS_POR_TIPO_DEPENDENTE[parentesco].length} anexos`} />
           </div>
