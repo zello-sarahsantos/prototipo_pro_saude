@@ -159,7 +159,9 @@ function Comprovantes() {
   function aprovar(comprovante: Comprovante, beneficiarioId: string) {
     const beneficiario = beneficiariosAtuais.find((b) => b.id === beneficiarioId);
     if (!beneficiario) return;
-    const { divergente, valorExtraido } = getDivergencia(comprovante, beneficiario);
+    // "valorExtraido" aqui é o valor ELEGÍVEL (não o bruto/total) — é o que a divergência
+    // cadastral compara com o cadastro, ver `getDivergencia`/`valorDivergeDoCadastro`.
+    const { divergente, valorElegivel: valorExtraido } = getDivergencia(comprovante, beneficiario);
 
     if (divergente) {
       setDivergencia({
@@ -430,7 +432,9 @@ function Comprovantes() {
 
                 const acoesDisponiveis = statusComAcaoDisponivel.includes(statusBeneficiario);
                 const emSubForm = subForm?.beneficiarioId === beneficiarioId;
-                const { elegivel, situacao } = getElegibilidade(cur, beneficiarioId);
+                const { elegivel, decomposicao } = beneficiario
+                  ? getElegibilidade(cur, beneficiario)
+                  : { elegivel: true, decomposicao: { itens: [], valorTotal: 0, valorElegivel: 0, valorNaoReembolsavel: 0 } };
                 const { divergente: boletoComprovanteDivergente } = beneficiario
                   ? getDivergenciaBoletoComprovante(cur, beneficiario)
                   : { divergente: false };
@@ -452,7 +456,7 @@ function Comprovantes() {
                       campos={campos}
                       readOnly
                       valorCadastrado={beneficiario?.valorCadastrado}
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
 

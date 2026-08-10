@@ -293,6 +293,29 @@ export const situacaoNaoReembolsavelLabels: Record<SituacaoNaoReembolsavel, stri
   juros: 'Juros/encargos',
 };
 
+/**
+ * Um item financeiro (linha) identificado dentro de um documento — a elegibilidade ao Pró-Saúde
+ * é avaliada por item, não pelo documento inteiro: um mesmo boleto pode ter uma linha de
+ * mensalidade (reembolsável) e uma linha de odontológico (não reembolsável) ao mesmo tempo.
+ * Ver `getElegibilidade`/`getDecomposicaoValor`, `comprovante-status.ts`.
+ */
+export interface ItemFinanceiro {
+  descricao: string;
+  valor: number;
+  reembolsavel: boolean;
+  /** Presente só quando `reembolsavel` é `false`. */
+  situacaoNaoReembolsavel?: SituacaoNaoReembolsavel;
+}
+
+/** Valores fixos ilustrativos para os itens não reembolsáveis do mock — não é um cálculo real
+ *  (ex: não é percentual do valor cadastrado), é só um valor determinístico para o protótipo. */
+export const valorMockItemNaoReembolsavel: Record<SituacaoNaoReembolsavel, number> = {
+  odontologico: 46.33,
+  taxa_administrativa: 15.90,
+  multa: 20.00,
+  juros: 10.00,
+};
+
 /** Tipos documentais que um arquivo anexado pode representar — um mesmo arquivo pode
  *  conter mais de um (ex: fatura técnica que já inclui o comprovante de pagamento). */
 export type TipoDocumentoArquivo =
