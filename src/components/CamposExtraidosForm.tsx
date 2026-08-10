@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, HelpCircle, PenLine } from "lucide-react";
-import { situacaoNaoReembolsavelLabels, type CampoExtraido, type SituacaoNaoReembolsavel } from "@/lib/mock-data";
+import { formatCurrency, situacaoNaoReembolsavelLabels, type CampoExtraido } from "@/lib/mock-data";
+import type { DecomposicaoValor } from "@/lib/comprovante-status";
 
 const chaveLabels: Record<CampoExtraido["chave"], string> = {
   nome: "Nome",
@@ -24,24 +25,29 @@ export function CamposExtraidosForm({
   onChange,
   valorCadastrado,
   nomeTitular,
-  situacaoNaoReembolsavel,
+  decomposicaoValor,
   divergenciaBoletoComprovante,
   readOnly = false,
 }: {
   titulo?: string;
   campos: CampoExtraido[];
   onChange?: (campos: CampoExtraido[]) => void;
-  /** Quando informado, exibe alerta "Valor difere do cadastro" se o campo `valor` não bater com
-   *  o valor cadastrado do beneficiário — divergência **cadastral**, distinta da divergência
-   *  **documental** Boleto × Comprovante (`divergenciaBoletoComprovante`, abaixo). */
+  /** Quando informado, exibe alerta "Valor difere do cadastro" se o **valor elegível** (não o
+   *  campo `valor` bruto/total) não bater com o valor cadastrado do beneficiário — divergência
+   *  **cadastral**, distinta da divergência **documental** Boleto × Comprovante
+   *  (`divergenciaBoletoComprovante`, abaixo). */
   valorCadastrado?: number;
   /** Quando informado, exibe alerta "Divergente" se o campo `pagador` não for o titular — o
    *  pagamento deve ter sido feito obrigatoriamente por ele, mesmo quando o beneficiário é outro. */
   nomeTitular?: string;
-  /** Situação não reembolsável detectada num dos arquivos que cobrem este beneficiário (ver
-   *  `getElegibilidade`, `comprovante-status.ts`) — não é mais um campo do formulário, é um
-   *  alerta calculado, exibido para Servidor, Analista e Gerência igualmente. */
-  situacaoNaoReembolsavel?: SituacaoNaoReembolsavel;
+  /** Decomposição do valor do documento em itens reembolsáveis/não reembolsáveis (ver
+   *  `getElegibilidade`/`getDecomposicaoValor`, `comprovante-status.ts`) — a elegibilidade é
+   *  avaliada por item, não pelo documento inteiro: um mesmo documento pode ter um item
+   *  reembolsável (mensalidade) e um não reembolsável (ex: odontológico) ao mesmo tempo. O campo
+   *  `valor` (`CampoExtraido`, acima) continua sendo o valor bruto/total do documento, consultável
+   *  separadamente — só o badge de divergência cadastral usa `valorElegivel` daqui, não o bruto.
+   *  Exibido para Servidor, Analista e Gerência igualmente. */
+  decomposicaoValor?: DecomposicaoValor;
   /** Quando `true`, o valor bruto do Boleto diverge do valor bruto do Comprovante de Pagamento
    *  anexados no mesmo envio (antes da consolidação) — ver `getDivergenciaBoletoComprovante`. */
   divergenciaBoletoComprovante?: boolean;
@@ -55,27 +61,64 @@ export function CamposExtraidosForm({
     );
   };
 
+  const itensNaoReembolsaveis = decomposicaoValor?.itens.filter((item) => !item.reembolsavel) ?? [];
+  const temItemNaoReembolsavel = itensNaoReembolsaveis.length > 0;
+  const totalmenteNaoElegivel = temItemNaoReembolsavel && (decomposicaoValor?.valorElegivel ?? 0) <= 0;
+
   return (
     <div className="bg-card rounded-xl border border-border p-4 space-y-3">
       {titulo && <p className="text-sm font-semibold">{titulo}</p>}
-      {situacaoNaoReembolsavel && (
-        <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-xs flex items-start gap-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
-          <p className="text-destructive">
-            <strong>Não elegível — {situacaoNaoReembolsavelLabels[situacaoNaoReembolsavel]}.</strong> Situação não
-            reembolsável pelo Pró-Saúde; aprovação automática ou com ressalva fica bloqueada até revisão da GERDAB.
+      {temItemNaoReembolsavel && decomposicaoValor && (
+        <div
+          className={`rounded-lg p-3 text-xs space-y-1.5 border ${
+            totalmenteNaoElegivel ? "bg-destructive/5 border-destructive/20" : "bg-warning/10 border-warning/30"
+          }`}
+        >
+          <div className={`flex items-start gap-2 ${totalmenteNaoElegivel ? "text-destructive" : "text-warning"}`}>
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            {totalmenteNaoElegivel ? (
+              <p>
+                <strong>
+                  Não elegível —{" "}
+                  {itensNaoReembolsaveis
+                    .map((item) => situacaoNaoReembolsavelLabels[item.situacaoNaoReembolsavel!])
+                    .join(", ")}
+                  .
+                </strong>{" "}
+                Situação não reembolsável pelo Pró-Saúde; aprovação automática ou com ressalva fica bloqueada até
+                revisão da GERDAB.
+              </p>
+            ) : (
+              <p className="font-medium">
+                Itens não reembolsáveis identificados neste documento — desconsiderados do valor elegível.
+              </p>
+            )}
+          </div>
+          <ul className="pl-5 list-disc space-y-0.5">
+            {itensNaoReembolsaveis.map((item, i) => (
+              <li key={i}>
+                {item.descricao} — {formatCurrency(item.valor)} ({situacaoNaoReembolsavelLabels[item.situacaoNaoReembolsavel!]})
+              </li>
+            ))}
+          </ul>
+          <p className="text-muted-foreground">
+            Valor total: {formatCurrency(decomposicaoValor.valorTotal)} · Valor elegível:{" "}
+            {formatCurrency(decomposicaoValor.valorElegivel)} · Valor não reembolsável:{" "}
+            {formatCurrency(decomposicaoValor.valorNaoReembolsavel)}
           </p>
         </div>
       )}
       {campos.map((campo) => {
         const naoIdentificado = campo.valor.trim() === "";
-        // Divergência cadastral (valor extraído/informado × valor cadastrado do beneficiário) —
-        // rótulo próprio para não ser confundida com a divergência documental Boleto × Comprovante.
+        // Divergência cadastral (valor ELEGÍVEL × valor cadastrado do beneficiário) — usa a
+        // decomposição por item, não o campo `valor` bruto/total. Rótulo próprio para não ser
+        // confundida com a divergência documental Boleto × Comprovante.
         const valorDivergeDoCadastro =
           campo.chave === "valor" &&
           valorCadastrado !== undefined &&
           !naoIdentificado &&
-          parseFloat(campo.valor) !== valorCadastrado;
+          decomposicaoValor !== undefined &&
+          decomposicaoValor.valorElegivel !== valorCadastrado;
         const pagadorDivergente =
           campo.chave === "pagador" &&
           nomeTitular !== undefined &&

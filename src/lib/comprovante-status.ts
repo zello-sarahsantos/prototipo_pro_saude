@@ -3,12 +3,12 @@ import type {
   BeneficiarioPagamento,
   CampoExtraido,
   Comprovante,
-  SituacaoNaoReembolsavel,
+  ItemFinanceiro,
   StatusBeneficiarioComprovante,
   StatusComprovante,
   TipoDocumentoArquivo,
 } from "./mock-data";
-import { detectarSituacaoNaoReembolsavel, gerarCamposExtraidos } from "./ocr-mock";
+import { gerarCamposExtraidos, gerarItensFinanceiros } from "./ocr-mock";
 
 /** Campos (do comprovante inteiro, ou de 1 beneficiário específico em fatura técnica). */
 export function getCamposDoBeneficiario(
@@ -21,28 +21,68 @@ export function getCamposDoBeneficiario(
   return comprovante.camposExtraidos;
 }
 
-/** Verifica se o `valor` extraído em `campos` diverge de `valorCadastrado` — pura, usada tanto
- *  por `getDivergencia` (comprovante já persistido) quanto por telas que ainda operam sobre
- *  campos do wizard antes de o comprovante existir (ex: `ConferenciaBeneficiarios`). */
-export function valorDivergeDoCadastro(
-  campos: CampoExtraido[],
-  valorCadastrado: number,
-): { divergente: boolean; valorExtraido: number } {
-  const campoValor = campos.find((c) => c.chave === "valor");
-  const valorExtraido = campoValor ? parseFloat(campoValor.valor) : valorCadastrado;
-  return {
-    divergente: !Number.isNaN(valorExtraido) && valorExtraido !== valorCadastrado,
-    valorExtraido,
-  };
+/**
+ * Itens financeiros (linhas do documento) de 1 beneficiário — recomputados sob demanda a partir
+ * dos `arquivos` persistidos (`gerarItensFinanceiros` é determinístico), nunca guardados como
+ * campo novo no `Comprovante` (mesmo padrão já usado por `getDivergenciaBoletoComprovante`).
+ * Usa a mesma regra de "primeiro arquivo, na ordem de upload, que produzir o campo `valor`"
+ * já usada em `mesclarCamposDeArquivos` — o arquivo que "vence" o campo `valor` consolidado é
+ * o mesmo que fornece os itens financeiros.
+ */
+export function getItensFinanceiros(
+  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds" | "competencia">,
+  beneficiario: BeneficiarioPagamento,
+): ItemFinanceiro[] {
+  const todosIds = comprovante.beneficiarioIds;
+  for (const arquivo of comprovante.arquivos) {
+    const tiposQueCobrem = arquivo.documentos
+      .filter((d) => beneficiariosCobertosPeloDocumento(d, todosIds).includes(beneficiario.id))
+      .map((d) => d.tipo);
+    if (tiposQueCobrem.length === 0) continue;
+    const campos = gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.nome, tiposQueCobrem);
+    const campoValor = campos.find((c) => c.chave === "valor" && c.valor.trim() !== "");
+    if (!campoValor) continue;
+    return gerarItensFinanceiros(beneficiario, arquivo.nome);
+  }
+  return [];
 }
 
-/** Verifica se o valor extraído diverge do valor cadastrado do beneficiário — alerta auxiliar, não um status. */
+/** Decomposição do valor de um documento em total, elegível (soma dos itens reembolsáveis) e
+ *  não reembolsável (total - elegível) — ver `ItemFinanceiro`, `mock-data.ts`. */
+export interface DecomposicaoValor {
+  itens: ItemFinanceiro[];
+  valorTotal: number;
+  valorElegivel: number;
+  valorNaoReembolsavel: number;
+}
+
+export function getDecomposicaoValor(itens: ItemFinanceiro[]): DecomposicaoValor {
+  const valorTotal = itens.reduce((soma, item) => soma + item.valor, 0);
+  const valorElegivel = itens.filter((item) => item.reembolsavel).reduce((soma, item) => soma + item.valor, 0);
+  return { itens, valorTotal, valorElegivel, valorNaoReembolsavel: valorTotal - valorElegivel };
+}
+
+/** Verifica se o `valor` **elegível** (soma dos itens reembolsáveis, não o valor bruto/total)
+ *  diverge de `valorCadastrado` — pura, usada tanto por `getDivergencia` (comprovante já
+ *  persistido) quanto por telas que ainda operam sobre itens do wizard antes de o comprovante
+ *  existir (ex: `ConferenciaBeneficiarios`). O campo `valor` bruto (`CampoExtraido`) continua
+ *  consultável separadamente — esta função nunca olha para ele. */
+export function valorDivergeDoCadastro(
+  itens: ItemFinanceiro[],
+  valorCadastrado: number,
+): { divergente: boolean; valorElegivel: number } {
+  if (itens.length === 0) return { divergente: false, valorElegivel: valorCadastrado };
+  const valorElegivel = itens.filter((item) => item.reembolsavel).reduce((soma, item) => soma + item.valor, 0);
+  return { divergente: valorElegivel !== valorCadastrado, valorElegivel };
+}
+
+/** Verifica se o valor elegível diverge do valor cadastrado do beneficiário — alerta auxiliar, não um status. */
 export function getDivergencia(
   comprovante: Comprovante,
   beneficiario: BeneficiarioPagamento,
-): { divergente: boolean; valorExtraido: number } {
-  const campos = getCamposDoBeneficiario(comprovante, beneficiario.id);
-  return valorDivergeDoCadastro(campos, beneficiario.valorCadastrado);
+): { divergente: boolean; valorElegivel: number } {
+  const itens = getItensFinanceiros(comprovante, beneficiario);
+  return valorDivergeDoCadastro(itens, beneficiario.valorCadastrado);
 }
 
 /** Verifica se a `operadora` extraída em `campos` diverge da operadora cadastrada — só considera
@@ -59,36 +99,21 @@ export function operadoraDivergeDoCadastro(
 }
 
 /**
- * Verifica se algum arquivo que cobre este beneficiário indica uma situação não reembolsável
- * (assistência odontológica, multa, taxa administrativa ou juros/encargos) — calculado a partir
- * do nome do arquivo (no protótipo; no sistema real seria pelo conteúdo do documento), nunca
- * armazenado como campo de formulário editável.
+ * Verifica a elegibilidade ao Pró-Saúde **por item financeiro**, não pelo documento inteiro:
+ * um mesmo documento pode ter itens reembolsáveis (ex: mensalidade) e não reembolsáveis (ex:
+ * odontológico) ao mesmo tempo — nesse caso o documento continua elegível, só os itens não
+ * reembolsáveis são desconsiderados do valor elegível. Só fica **não elegível** (bloqueia
+ * Aprovar/Aprovar com ressalva) quando não sobra nenhum valor elegível no documento.
  */
-export function getSituacaoNaoReembolsavel(
-  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds">,
-  beneficiarioId: string,
-): SituacaoNaoReembolsavel | null {
-  const todosIds = comprovante.beneficiarioIds;
-  for (const arquivo of comprovante.arquivos) {
-    const cobreEsseBeneficiario = arquivo.documentos.some((d) =>
-      beneficiariosCobertosPeloDocumento(d, todosIds).includes(beneficiarioId),
-    );
-    if (!cobreEsseBeneficiario) continue;
-    const situacao = detectarSituacaoNaoReembolsavel(arquivo.nome);
-    if (situacao) return situacao;
-  }
-  return null;
-}
-
-/** Verifica se a situação do documento é reembolsável — odontológico, multa, taxa
- *  administrativa e juros/encargos não são amparados pelo Pró-Saúde, então nunca podem ser
- *  aprovados (automaticamente ou com ressalva). */
 export function getElegibilidade(
-  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds">,
-  beneficiarioId: string,
-): { elegivel: boolean; situacao?: SituacaoNaoReembolsavel } {
-  const situacao = getSituacaoNaoReembolsavel(comprovante, beneficiarioId);
-  return { elegivel: situacao === null, situacao: situacao ?? undefined };
+  comprovante: Pick<Comprovante, "arquivos" | "beneficiarioIds" | "competencia">,
+  beneficiario: BeneficiarioPagamento,
+): { elegivel: boolean; decomposicao: DecomposicaoValor } {
+  const itens = getItensFinanceiros(comprovante, beneficiario);
+  const decomposicao = getDecomposicaoValor(itens);
+  const temItemNaoReembolsavel = itens.some((item) => !item.reembolsavel);
+  const elegivel = !temItemNaoReembolsavel || decomposicao.valorElegivel > 0;
+  return { elegivel, decomposicao };
 }
 
 /**

@@ -19,8 +19,10 @@ import {
 } from "@/lib/prosaude-storage";
 import {
   getCamposDoBeneficiario,
+  getDecomposicaoValor,
   getDivergenciaBoletoComprovante,
   getElegibilidade,
+  getItensFinanceiros,
   statusDoBeneficiarioNoDocumento,
   beneficiarioTemCampoVazio,
 } from "@/lib/comprovante-status";
@@ -66,7 +68,7 @@ export function ConsolidadoCompetencia({
 
     // Vinculados a associação têm comprovação coletiva — não entram no checklist de pendência
     // individual do Resumo (mesma regra da seleção de beneficiários, ver BeneficiarioSelector).
-    const linhas = beneficiariosPagamento.filter((b) => !b.associacao).map((b) => {
+    const linhas = beneficiariosAtuais.filter((b) => !b.associacao).map((b) => {
       const docs = todos.filter((c) => c.beneficiarioIds.includes(b.id));
       const dispensado = dispensadosIds.has(b.id);
 
@@ -74,6 +76,8 @@ export function ConsolidadoCompetencia({
         return {
           beneficiario: b,
           total: 0,
+          totalBruto: 0,
+          totalNaoReembolsavel: 0,
           semComprovante: true,
           dispensado,
           pendente: !dispensado,
@@ -81,10 +85,12 @@ export function ConsolidadoCompetencia({
         };
       }
 
-      const total = docs.reduce((soma, doc) => {
-        const campoValor = getCamposDoBeneficiario(doc, b.id).find((c) => c.chave === "valor");
-        return soma + (campoValor ? parseFloat(campoValor.valor) || 0 : 0);
-      }, 0);
+      // "total" é o valor ELEGÍVEL — o que efetivamente entra no reembolso da competência.
+      // "totalBruto"/"totalNaoReembolsavel" ficam acessíveis à parte, para quem quiser conferir
+      // a decomposição (ver `getDecomposicaoValor`, `comprovante-status.ts`).
+      const decomposicoes = docs.map((doc) => getDecomposicaoValor(getItensFinanceiros(doc, b)));
+      const total = decomposicoes.reduce((soma, d) => soma + d.valorElegivel, 0);
+      const totalBruto = decomposicoes.reduce((soma, d) => soma + d.valorTotal, 0);
 
       const docComPendencia = docs.find((doc) => {
         const status = statusDoBeneficiarioNoDocumento(doc, b.id);
@@ -94,6 +100,8 @@ export function ConsolidadoCompetencia({
       return {
         beneficiario: b,
         total,
+        totalBruto,
+        totalNaoReembolsavel: totalBruto - total,
         semComprovante: false,
         dispensado: false,
         pendente: !!docComPendencia,
@@ -106,7 +114,7 @@ export function ConsolidadoCompetencia({
     const totalGrupo = linhas.reduce((soma, l) => soma + l.total, 0);
 
     return { linhas, documentos, pendencias, totalGrupo, todos };
-  }, [competencia, refreshKey]);
+  }, [competencia, refreshKey, beneficiariosAtuais]);
 
   const pendenciaAtiva = dados.linhas.some((l) => l.semComprovante && !l.dispensado);
 
@@ -261,7 +269,14 @@ export function ConsolidadoCompetencia({
                 Anexar comprovante
               </button>
             ) : l.semComprovante ? null : (
-              <p className="text-sm font-semibold shrink-0">{formatCurrency(l.total)}</p>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-semibold">{formatCurrency(l.total)}</p>
+                {l.totalNaoReembolsavel > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Bruto {formatCurrency(l.totalBruto)} · Não reembolsável {formatCurrency(l.totalNaoReembolsavel)}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -315,7 +330,9 @@ export function ConsolidadoCompetencia({
 
                       {edicaoAtual.map((grupo) => {
                         const beneficiario = beneficiariosAtuais.find((b) => b.id === grupo.beneficiarioId);
-                        const { situacao } = getElegibilidade(c, grupo.beneficiarioId);
+                        const { decomposicao } = beneficiario
+                          ? getElegibilidade(c, beneficiario)
+                          : { decomposicao: { itens: [], valorTotal: 0, valorElegivel: 0, valorNaoReembolsavel: 0 } };
                         const { divergente: boletoComprovanteDivergente } = beneficiario
                           ? getDivergenciaBoletoComprovante(c, beneficiario)
                           : { divergente: false };
@@ -325,7 +342,7 @@ export function ConsolidadoCompetencia({
                             <CamposExtraidosForm
                               campos={grupo.campos}
                               valorCadastrado={beneficiario?.valorCadastrado}
-                              situacaoNaoReembolsavel={situacao}
+                              decomposicaoValor={decomposicao}
                               divergenciaBoletoComprovante={boletoComprovanteDivergente}
                               readOnly={!editavel}
                               onChange={

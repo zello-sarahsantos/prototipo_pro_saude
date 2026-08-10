@@ -15,16 +15,20 @@ import {
 } from "@/lib/mock-data";
 import {
   getCamposDoBeneficiario,
+  getDecomposicaoValor,
   getDivergenciaBoletoComprovante,
   getElegibilidade,
   getListaStatusBeneficiario,
+  type DecomposicaoValor,
 } from "@/lib/comprovante-status";
-import { detectarSituacaoNaoReembolsavel } from "@/lib/ocr-mock";
+import { gerarItensFinanceiros } from "@/lib/ocr-mock";
 import { processarNovoArquivo, confirmarReenvio } from "@/lib/reenvio-comprovante";
 import { getBeneficiariosPagamentoAtual } from "@/lib/prosaude-storage";
 
 const titular = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
 const autorServidor = titular?.nome ?? "Servidor";
+
+const EMPTY_DECOMPOSICAO: DecomposicaoValor = { itens: [], valorTotal: 0, valorElegivel: 0, valorNaoReembolsavel: 0 };
 
 type AcaoStep = "upload" | "processando" | "ilegivel" | "revisao";
 
@@ -168,7 +172,9 @@ export function ServidorComprovanteDetail({
           {ordenada.map(({ beneficiarioId, status }) => {
             const camposAtuais = getCamposDoBeneficiario(comprovante, beneficiarioId);
             const beneficiario = beneficiariosAtuais.find((b) => b.id === beneficiarioId);
-            const { situacao } = getElegibilidade(comprovante, beneficiarioId);
+            const { decomposicao } = beneficiario
+              ? getElegibilidade(comprovante, beneficiario)
+              : { decomposicao: EMPTY_DECOMPOSICAO };
             const { divergente: boletoComprovanteDivergente } = beneficiario
               ? getDivergenciaBoletoComprovante(comprovante, beneficiario)
               : { divergente: false };
@@ -258,7 +264,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     <div className="flex gap-2 pt-1">
@@ -278,7 +284,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     <p className="text-xs text-muted-foreground italic">
@@ -293,7 +299,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     <p className="text-xs text-muted-foreground italic">
@@ -308,7 +314,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     <p className="text-xs text-muted-foreground italic">
@@ -325,7 +331,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     {devolucaoGerencia && (
@@ -351,7 +357,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     {decisaoAnalista && (
@@ -395,7 +401,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     {decisaoFinal && (
@@ -425,7 +431,7 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={camposAtuais}
                       readOnly
-                      situacaoNaoReembolsavel={situacao}
+                      decomposicaoValor={decomposicao}
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     {decisaoFinal && (
@@ -492,7 +498,9 @@ export function ServidorComprovanteDetail({
                     <CamposExtraidosForm
                       campos={campos}
                       onChange={setCampos}
-                      situacaoNaoReembolsavel={detectarSituacaoNaoReembolsavel(novoArquivoNome) ?? undefined}
+                      decomposicaoValor={
+                        beneficiario ? getDecomposicaoValor(gerarItensFinanceiros(beneficiario, novoArquivoNome)) : undefined
+                      }
                     />
                     <div className="flex gap-2 justify-end">
                       <button

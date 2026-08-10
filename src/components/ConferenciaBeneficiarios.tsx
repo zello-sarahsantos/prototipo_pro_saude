@@ -6,6 +6,7 @@ import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento,
 import {
   getDivergenciaBoletoComprovante,
   getElegibilidade,
+  getItensFinanceiros,
   operadoraDivergeDoCadastro,
   valorDivergeDoCadastro,
 } from "@/lib/comprovante-status";
@@ -70,7 +71,8 @@ export function ConferenciaBeneficiarios({
         if (naoIdentificado(g.campos) || !todaAltaConfianca(g.campos)) return false;
         const beneficiario = beneficiarios.find((b) => b.id === g.beneficiarioId);
         if (!beneficiario) return true;
-        if (valorDivergeDoCadastro(g.campos, beneficiario.valorCadastrado).divergente) return false;
+        const itens = getItensFinanceiros(pseudoComprovante, beneficiario);
+        if (valorDivergeDoCadastro(itens, beneficiario.valorCadastrado).divergente) return false;
         if (operadoraDivergeDoCadastro(g.campos, beneficiario.operadora).divergente) return false;
         return true;
       })
@@ -118,12 +120,15 @@ export function ConferenciaBeneficiarios({
           const beneficiario = beneficiarios.find((b) => b.id === grupo.beneficiarioId);
           const incompleto = naoIdentificado(grupo.campos);
           const confirmado = confirmados.has(grupo.beneficiarioId);
-          const { situacao } = getElegibilidade(pseudoComprovante, grupo.beneficiarioId);
+          const { decomposicao } = beneficiario
+            ? getElegibilidade(pseudoComprovante, beneficiario)
+            : { decomposicao: { itens: [], valorTotal: 0, valorElegivel: 0, valorNaoReembolsavel: 0 } };
           const { divergente: boletoComprovanteDivergente } = beneficiario
             ? getDivergenciaBoletoComprovante(pseudoComprovante, beneficiario)
             : { divergente: false };
           const valorDivergente = beneficiario
-            ? valorDivergeDoCadastro(grupo.campos, beneficiario.valorCadastrado).divergente
+            ? valorDivergeDoCadastro(getItensFinanceiros(pseudoComprovante, beneficiario), beneficiario.valorCadastrado)
+                .divergente
             : false;
           const justificativa = justificativasDivergencia[grupo.beneficiarioId] ?? "";
           const justificativaValida = temPeloMenosNPalavras(justificativa);
@@ -150,7 +155,7 @@ export function ConferenciaBeneficiarios({
                 campos={grupo.campos}
                 valorCadastrado={beneficiario?.valorCadastrado}
                 nomeTitular={nomeTitular}
-                situacaoNaoReembolsavel={situacao}
+                decomposicaoValor={decomposicao}
                 divergenciaBoletoComprovante={boletoComprovanteDivergente}
                 onChange={(campos) => onChangeGrupo(grupo.beneficiarioId, campos)}
               />

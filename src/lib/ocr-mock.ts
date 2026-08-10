@@ -1,7 +1,10 @@
 import {
   beneficiariosPagamento,
+  situacaoNaoReembolsavelLabels,
+  valorMockItemNaoReembolsavel,
   type BeneficiarioPagamento,
   type CampoExtraido,
+  type ItemFinanceiro,
   type SituacaoNaoReembolsavel,
   type TipoDocumentoArquivo,
 } from "./mock-data";
@@ -37,14 +40,53 @@ const palavrasChavePorSituacaoNaoReembolsavel: Record<SituacaoNaoReembolsavel, s
   juros: ["juros"],
 };
 
-/** Detecta, a partir do nome do arquivo, se ele representa uma situação não reembolsável
- *  (assistência odontológica, multa, taxa administrativa ou juros/encargos). */
-export function detectarSituacaoNaoReembolsavel(nomeArquivo: string): SituacaoNaoReembolsavel | null {
+/** Detecta, a partir do nome do arquivo, **todas** as situações não reembolsáveis presentes —
+ *  um mesmo documento pode ter mais de uma (ex: "boleto_odontologico_juros_misto.jpg"). */
+export function detectarSituacoesNaoReembolsaveis(nomeArquivo: string): SituacaoNaoReembolsavel[] {
   const nome = nomeArquivo.toLowerCase();
-  const situacao = (Object.keys(palavrasChavePorSituacaoNaoReembolsavel) as SituacaoNaoReembolsavel[]).find((s) =>
+  return (Object.keys(palavrasChavePorSituacaoNaoReembolsavel) as SituacaoNaoReembolsavel[]).filter((s) =>
     palavrasChavePorSituacaoNaoReembolsavel[s].some((kw) => nome.includes(kw)),
   );
-  return situacao ?? null;
+}
+
+/**
+ * Gera os itens financeiros (linhas) que um arquivo contribui para 1 beneficiário — a
+ * elegibilidade ao Pró-Saúde é avaliada por item, não pelo documento inteiro. Convenção de nome
+ * de arquivo (mock, sem OCR real):
+ * - nenhuma palavra-chave de situação não reembolsável → 1 item, 100% reembolsável (mensalidade).
+ * - palavra-chave presente (ex: "odontologico") **sem** "misto" → documento 100% não
+ *   reembolsável: só o(s) item(ns) não reembolsável(is), sem item de mensalidade — mesmo
+ *   comportamento já usado nos testes anteriores a esta convenção (preserva os cenários antigos).
+ * - palavra-chave presente **com** "misto" (ex: "odontologico_misto") → mensalidade reembolsável
+ *   + o(s) item(ns) não reembolsável(is) juntos, como um boleto real que discrimina "Mensalidade
+ *   Plano de Saúde" e "Valor de Odontologia" em linhas separadas.
+ */
+export function gerarItensFinanceiros(
+  beneficiario: BeneficiarioPagamento,
+  nomeArquivo: string,
+): ItemFinanceiro[] {
+  const divergente = arquivoEhDivergente(nomeArquivo);
+  const valorMensalidade = divergente ? beneficiario.valorCadastrado + 100 : beneficiario.valorCadastrado;
+  const situacoes = detectarSituacoesNaoReembolsaveis(nomeArquivo);
+
+  if (situacoes.length === 0) {
+    return [{ descricao: "Mensalidade Plano de Saúde", valor: valorMensalidade, reembolsavel: true }];
+  }
+
+  const itensNaoReembolsaveis: ItemFinanceiro[] = situacoes.map((situacao) => ({
+    descricao: situacaoNaoReembolsavelLabels[situacao],
+    valor: valorMockItemNaoReembolsavel[situacao],
+    reembolsavel: false,
+    situacaoNaoReembolsavel: situacao,
+  }));
+
+  const misto = nomeArquivo.toLowerCase().includes("misto");
+  if (!misto) return itensNaoReembolsaveis;
+
+  return [
+    { descricao: "Mensalidade Plano de Saúde", valor: valorMensalidade, reembolsavel: true },
+    ...itensNaoReembolsaveis,
+  ];
 }
 
 /** Palavras-chave que, no nome do arquivo, indicam qual(is) tipo(s) documental(is) marcar
@@ -114,7 +156,11 @@ export function gerarCamposExtraidos(
   const divergente = arquivoEhDivergente(nomeArquivo);
   const incompleto = arquivoEhIncompleto(nomeArquivo, beneficiario);
   const pagadorDivergente = arquivoTemPagadorDivergente(nomeArquivo);
-  const valor = divergente ? beneficiario.valorCadastrado + 100 : beneficiario.valorCadastrado;
+  // "Valor" bruto/total do documento — soma de todos os itens financeiros (reembolsáveis e não),
+  // ver `gerarItensFinanceiros`. Continua sendo "o valor identificado no documento", só que agora
+  // reconciliado com a decomposição por item em vez de sempre repetir o valor cadastrado.
+  const itensFinanceiros = incompleto ? [] : gerarItensFinanceiros(beneficiario, nomeArquivo);
+  const valor = itensFinanceiros.reduce((soma, item) => soma + item.valor, 0);
   const [ano, mes] = competencia.split("-");
   const dataPagamento = `28/${mes}/${ano}`;
   const vencimento = `10/${mes}/${ano}`;
