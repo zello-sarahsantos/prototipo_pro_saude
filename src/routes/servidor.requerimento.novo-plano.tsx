@@ -10,8 +10,6 @@ import {
   formatCurrency,
   calcularReembolso,
   statusLabels,
-  modalidadePlanoLabels,
-  type ModalidadePlano,
 } from "@/lib/mock-data";
 import { DOCUMENTOS_POR_TIPO_DEPENDENTE } from "@/lib/form-options";
 import { IncluirDependenteForm, type IncluirDependenteValue } from "@/components/IncluirDependenteForm";
@@ -32,8 +30,12 @@ interface DependentData {
   outraOperadora?: string;
   /** Modalidade do plano do dependente quando migra para um plano diferente do titular
    *  ("migrar_outro") — nunca herdada do titular, já que os dois podem ter operadoras,
-   *  modalidades e vínculos de associação diferentes. Mesmo vocabulário do Módulo de Pagamento. */
-  modalidade?: ModalidadePlano;
+   *  modalidades e vínculos de associação diferentes. Campo aberto para texto, mesmo padrão do
+   *  Titular no Primeiro Acesso (ver `primeiro-acesso.tsx`). */
+  modalidade?: string;
+  /** Alerta o Servidor de que o plano do dependente é empresarial — mesmo padrão do Titular no
+   *  Primeiro Acesso: exibe aviso sobre a exigência de fatura técnica no envio de comprovantes. */
+  empresarial?: boolean;
   administradora?: string;
   vigencia?: string;
   motivoRemocao?: string;
@@ -470,16 +472,33 @@ function StepDependentes({
                   />
                 </Field>
                 <Field label={`Modalidade do plano do dependente *`} required>
-                  <select
+                  <input
                     className={inputCls}
+                    placeholder="Ex: Coletivo Empresarial"
                     value={currentData.modalidade || ""}
-                    onChange={(e) => updateDependent(dep.id, { modalidade: e.target.value as ModalidadePlano })}
-                  >
-                    <option value="">Selecione a modalidade</option>
-                    <option value="individual_familiar">{modalidadePlanoLabels.individual_familiar}</option>
-                    <option value="empresarial">{modalidadePlanoLabels.empresarial}</option>
-                  </select>
+                    onChange={(e) => updateDependent(dep.id, { modalidade: e.target.value })}
+                  />
                 </Field>
+                <Field label="Empresarial">
+                  <div className={`${inputCls} flex items-center justify-between`}>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={!!currentData.empresarial}
+                        onCheckedChange={(checked) => updateDependent(dep.id, { empresarial: checked })}
+                      />
+                      <span className="text-sm">{currentData.empresarial ? "Sim" : "Não"}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">O plano do dependente é empresarial?</span>
+                  </div>
+                </Field>
+                {currentData.empresarial && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 flex gap-2">
+                    <Info className="h-4 w-4 shrink-0" />
+                    <p>
+                      Planos empresariais exigem o envio da fatura técnica no momento do envio de comprovantes de pagamento, pois o boleto empresarial isolado não permite identificar os valores individuais dos beneficiários.
+                    </p>
+                  </div>
+                )}
                 <Field label={`Valor individual do plano do dependente *`} required>
                   <input 
                     className={inputCls} 
@@ -817,7 +836,11 @@ function StepRevisao({
                       </div>
                       <div>
                         <span className="text-muted-foreground">Modalidade:</span>
-                        <p className="font-medium">{data.modalidade}</p>
+                        <p className="font-medium">{data.modalidade || "—"}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Empresarial:</span>
+                        <p className="font-medium">{data.empresarial ? "Sim" : "Não"}</p>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Vigência:</span>
