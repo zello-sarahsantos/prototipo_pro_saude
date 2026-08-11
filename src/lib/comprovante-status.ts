@@ -35,7 +35,10 @@ export function getItensFinanceiros(
 ): ItemFinanceiro[] {
   const todosIds = comprovante.beneficiarioIds;
   for (const arquivo of comprovante.arquivos) {
-    const tiposQueCobrem = arquivo.documentos
+    // `?? []` protege contra comprovantes persistidos antes da renomeação de `tipos` para
+    // `documentos` (Etapa 3, ver `tiposDoArquivo`) — sem isso, um comprovante antigo no
+    // localStorage derruba a tela inteira em vez de simplesmente não render itens para ele.
+    const tiposQueCobrem = (arquivo.documentos ?? [])
       .filter((d) => beneficiariosCobertosPeloDocumento(d, todosIds).includes(beneficiario.id))
       .map((d) => d.tipo);
     if (tiposQueCobrem.length === 0) continue;
@@ -227,7 +230,7 @@ export function getCoberturaDocumental(
   return beneficiarios.map((b) => {
     const tiposEncontrados = new Set<TipoDocumentoArquivo>();
     for (const arquivo of arquivos) {
-      for (const documento of arquivo.documentos) {
+      for (const documento of arquivo.documentos ?? []) {
         if (beneficiariosCobertosPeloDocumento(documento, todosIds).includes(b.id)) {
           tiposEncontrados.add(documento.tipo);
         }
@@ -278,7 +281,7 @@ export function todosDocumentosComCoberturaDefinida(
   totalBeneficiarios: number,
 ): boolean {
   if (totalBeneficiarios <= 1) return true;
-  return arquivos.every((a) => a.documentos.every((d) => (d.beneficiarioIds?.length ?? 0) > 0));
+  return arquivos.every((a) => (a.documentos ?? []).every((d) => (d.beneficiarioIds?.length ?? 0) > 0));
 }
 
 /** `true` quando todo o grupo selecionado (não vazio) já está contemplado — usado para liberar
@@ -308,7 +311,7 @@ export function getDivergenciaBoletoComprovante(
 
   const valorPorTipo = (tipo: TipoDocumentoArquivo): number | undefined => {
     for (const arquivo of comprovante.arquivos) {
-      const documento = arquivo.documentos.find((d) => d.tipo === tipo);
+      const documento = (arquivo.documentos ?? []).find((d) => d.tipo === tipo);
       if (!documento) continue;
       if (!beneficiariosCobertosPeloDocumento(documento, todosIds).includes(beneficiario.id)) continue;
       const campos = gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.nome, [tipo]);

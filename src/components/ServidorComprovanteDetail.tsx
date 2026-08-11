@@ -308,7 +308,8 @@ export function ServidorComprovanteDetail({
                   </div>
                 )}
 
-                {/* ===== Legado: retroativo aguardando analista/gerência (2ª alçada obsoleta, somente leitura) ===== */}
+                {/* ===== Legado: nome de status de antes da Etapa 1 — mesma pendência de "aguardando
+                     aprovação", só o nome é antigo; acionável por Analista ou Gerência, sem 2ª alçada. */}
                 {(status === "retroativo_aguardando_analista" || status === "retroativo_aguardando_gerencia") && (
                   <div className="space-y-2">
                     <CamposExtraidosForm
@@ -318,8 +319,7 @@ export function ServidorComprovanteDetail({
                       divergenciaBoletoComprovante={boletoComprovanteDivergente}
                     />
                     <p className="text-xs text-muted-foreground italic">
-                      Etapa atual: {status === "retroativo_aguardando_analista" ? "1ª alçada (Analista)" : "2ª alçada (Gerência)"} —
-                      somente leitura enquanto aguarda decisão.
+                      Aguardando aprovação da GERDAB (Analista ou Gerência) — somente leitura enquanto aguarda decisão.
                     </p>
                     <HistoricoAlcadas />
                   </div>
