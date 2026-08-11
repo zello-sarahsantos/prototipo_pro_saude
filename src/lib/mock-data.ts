@@ -350,9 +350,12 @@ export interface ArquivoAnexado {
   documentos: DocumentoDetectado[];
 }
 
-/** Lista simples dos tipos marcados num arquivo — para exibição, sem cobertura por beneficiário. */
-export function tiposDoArquivo(arquivo: { documentos: DocumentoDetectado[] }): TipoDocumentoArquivo[] {
-  return arquivo.documentos.map((d) => d.tipo);
+/** Lista simples dos tipos marcados num arquivo — para exibição, sem cobertura por beneficiário.
+ *  `?? []` protege contra `Comprovante`s persistidos em `localStorage` antes da renomeação de
+ *  `ArquivoAnexado.tipos` para `documentos` (Etapa 3) — sem esse fallback, um comprovante salvo
+ *  no formato antigo (`documentos` ausente) quebra a tela inteira em vez de só não exibir tipos. */
+export function tiposDoArquivo(arquivo: { documentos?: DocumentoDetectado[] }): TipoDocumentoArquivo[] {
+  return (arquivo.documentos ?? []).map((d) => d.tipo);
 }
 
 /**
@@ -488,8 +491,11 @@ export const statusComprovanteLabels: Record<StatusComprovante, string> = {
   'aprovado_com_ressalva': 'Aprovado com Ressalva',
   'recusado': 'Recusado',
   'retroativo_aguardando_aprovacao': 'Retroativo — Aguardando Aprovação',
-  'retroativo_aguardando_analista': 'Retroativo — Aguardando Analista (legado)',
-  'retroativo_aguardando_gerencia': 'Retroativo — Aguardando Gerência (legado)',
+  // Sem "(legado)" — são a mesma pendência que "Aguardando Aprovação", acionável por qualquer um
+  // dos dois papéis (ver `statusComAcaoDisponivel`, admin.comprovantes.tsx); só o nome do status
+  // é antigo (anterior à Etapa 1), não o comportamento.
+  'retroativo_aguardando_analista': 'Retroativo — Aguardando Aprovação',
+  'retroativo_aguardando_gerencia': 'Retroativo — Aguardando Aprovação',
   'retroativo_devolvido': 'Retroativo — Devolvido (legado)',
   'retroativo_aprovado': 'Retroativo Aprovado',
   'retroativo_recusado': 'Retroativo Recusado',

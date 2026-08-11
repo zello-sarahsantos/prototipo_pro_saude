@@ -54,7 +54,10 @@ type Tab = "comprovantes" | "retroativos" | "historico";
 
 const statusPorTab: Record<Tab, StatusComprovante[]> = {
   comprovantes: ["em_analise"],
-  // Os 3 últimos são legado (registros antigos já persistidos); nenhum envio novo chega neles.
+  // Os 3 últimos são legado (nomes de status de antes da Etapa 1; nenhum envio novo os produz
+  // mais). "aguardando_analista"/"aguardando_gerencia" continuam pendentes de decisão — mesma
+  // coisa que "aguardando_aprovacao", só com o nome antigo — e por isso são acionáveis
+  // (ver `statusComAcaoDisponivel`). Só "devolvido" fica só para consulta.
   retroativos: [
     "retroativo_aguardando_aprovacao",
     "retroativo_aguardando_analista",
@@ -72,8 +75,18 @@ const statusPorTab: Record<Tab, StatusComprovante[]> = {
 };
 
 // Status em que há ação disponível — Analista e Gerência têm exatamente as mesmas ações
-// (retroativo não exige mais 2ª alçada obrigatória).
-const statusComAcaoDisponivel: StatusComprovante[] = ["em_analise", "retroativo_aguardando_aprovacao"];
+// (retroativo não exige mais 2ª alçada obrigatória). `retroativo_aguardando_analista` e
+// `retroativo_aguardando_gerencia` são a mesma coisa que `retroativo_aguardando_aprovacao`,
+// só com o nome antigo — registros presos neles (de antes da renomeação) continuam pendentes
+// de decisão, então também ficam acionáveis por qualquer um dos dois papéis. Só
+// `retroativo_devolvido` continua exclusivamente histórico (representa uma devolução já
+// decidida sob a antiga 2ª alçada, não uma pendência equivalente à aprovação única).
+const statusComAcaoDisponivel: StatusComprovante[] = [
+  "em_analise",
+  "retroativo_aguardando_aprovacao",
+  "retroativo_aguardando_analista",
+  "retroativo_aguardando_gerencia",
+];
 
 type SubFormTipo = "ressalva" | "correcao" | "recusar" | "complementar" | "requerimento";
 
@@ -150,9 +163,17 @@ function Comprovantes() {
     setComentario("");
   }
 
-  /** Próximo status ao aprovar — retroativo tem aprovação única, por qualquer um dos dois papéis. */
+  /** Próximo status ao aprovar — retroativo tem aprovação única, por qualquer um dos dois papéis.
+   *  Os 2 status legados "aguardando analista/gerência" resolvem para o mesmo lugar que o status
+   *  atual (`retroativo_aguardando_aprovacao`) — são a mesma pendência, só com o nome antigo. */
   function proximoStatusAprovacao(statusAtual: StatusComprovante): StatusComprovante {
-    if (statusAtual === "retroativo_aguardando_aprovacao") return "retroativo_aprovado";
+    if (
+      statusAtual === "retroativo_aguardando_aprovacao" ||
+      statusAtual === "retroativo_aguardando_analista" ||
+      statusAtual === "retroativo_aguardando_gerencia"
+    ) {
+      return "retroativo_aprovado";
+    }
     return "aprovado";
   }
 
@@ -238,9 +259,15 @@ function Comprovantes() {
       });
     } else if (subForm.tipo === "recusar") {
       // Recusa em retroativo usa um status próprio, para distinguir de uma recusa comum
-      // e permitir exibir a competência original e a justificativa do atraso.
+      // e permitir exibir a competência original e a justificativa do atraso — vale também
+      // para os 2 status legados "aguardando analista/gerência" (mesma pendência de antes
+      // da renomeação, ver `proximoStatusAprovacao`).
       const statusRecusa: StatusComprovante =
-        comprovante.status === "retroativo_aguardando_aprovacao" ? "retroativo_recusado" : "recusado";
+        comprovante.status === "retroativo_aguardando_aprovacao" ||
+        comprovante.status === "retroativo_aguardando_analista" ||
+        comprovante.status === "retroativo_aguardando_gerencia"
+          ? "retroativo_recusado"
+          : "recusado";
       registrarAcao(comprovante, subForm.beneficiarioId, statusRecusa, {
         etapa: etapaAtual,
         acao: "recusado",
@@ -346,11 +373,6 @@ function Comprovantes() {
               <ComprovanteStatusBadge status={c.status} />
             </header>
 
-            {c.status === "retroativo_aguardando_gerencia" && !isGerencia && (
-              <p className="text-xs text-muted-foreground italic mb-2">
-                Registro legado (2ª alçada) — somente consulta.
-              </p>
-            )}
             {c.status === "retroativo_devolvido" && (
               <p className="text-xs text-muted-foreground italic mb-2 flex items-center gap-1.5">
                 <Undo2 className="h-3.5 w-3.5" /> Registro legado — devolução da antiga 2ª alçada.

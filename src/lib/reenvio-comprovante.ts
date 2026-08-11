@@ -11,7 +11,9 @@ export function processarNovoArquivo(
   arquivo: File,
 ): { ilegivel: boolean; campos: CampoExtraido[] } {
   const ilegivel = arquivoEhIlegivel(arquivo.name);
-  const tipos = [...new Set(comprovante.arquivos.flatMap((a) => a.documentos.map((d) => d.tipo)))];
+  // `?? []` protege contra comprovantes persistidos antes da renomeação de `tipos` para
+  // `documentos` (Etapa 3) — ver mesmo padrão em `tiposDoArquivo`, `mock-data.ts`.
+  const tipos = [...new Set(comprovante.arquivos.flatMap((a) => (a.documentos ?? []).map((d) => d.tipo)))];
   const campos = ilegivel ? [] : gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.name, tipos);
   return { ilegivel, campos };
 }
@@ -39,7 +41,7 @@ export function confirmarReenvio(params: {
     dataEnvio: comprovante.dataEnvio,
     status: comprovante.status,
   };
-  const tiposHerdados = [...new Set(comprovante.arquivos.flatMap((a) => a.documentos.map((d) => d.tipo)))];
+  const tiposHerdados = [...new Set(comprovante.arquivos.flatMap((a) => (a.documentos ?? []).map((d) => d.tipo)))];
   const documentosHerdados = tiposHerdados.map((tipo) => ({ tipo }));
 
   const acaoLog = {
