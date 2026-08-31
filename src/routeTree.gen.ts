@@ -20,13 +20,13 @@ import { Route as ServidorInicioRouteImport } from './routes/servidor.inicio'
 import { Route as ServidorDependentesRouteImport } from './routes/servidor.dependentes'
 import { Route as AssociacaoUploadRouteImport } from './routes/associacao.upload'
 import { Route as AssociacaoNovaInclusaoRouteImport } from './routes/associacao.nova-inclusao'
-import { Route as AssociacaoGerenciamentoRouteImport } from './routes/associacao.gerenciamento'
 import { Route as AdminRequerimentosRouteImport } from './routes/admin.requerimentos'
 import { Route as AdminParametrosRouteImport } from './routes/admin.parametros'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as AdminComprovantesRouteImport } from './routes/admin.comprovantes'
 import { Route as AdminCargaInicialRouteImport } from './routes/admin.carga-inicial'
 import { Route as ServidorPagamentosIndexRouteImport } from './routes/servidor.pagamentos.index'
+import { Route as AssociacaoGerenciamentoIndexRouteImport } from './routes/associacao.gerenciamento.index'
 import { Route as AdminServidoresIndexRouteImport } from './routes/admin.servidores.index'
 import { Route as ServidorRequerimentoNovoPlanoRouteImport } from './routes/servidor.requerimento.novo-plano'
 import { Route as ServidorRequerimentoNovoRouteImport } from './routes/servidor.requerimento.novo'
@@ -91,11 +91,6 @@ const AssociacaoNovaInclusaoRoute = AssociacaoNovaInclusaoRouteImport.update({
   path: '/nova-inclusao',
   getParentRoute: () => AssociacaoRoute,
 } as any)
-const AssociacaoGerenciamentoRoute = AssociacaoGerenciamentoRouteImport.update({
-  id: '/gerenciamento',
-  path: '/gerenciamento',
-  getParentRoute: () => AssociacaoRoute,
-} as any)
 const AdminRequerimentosRoute = AdminRequerimentosRouteImport.update({
   id: '/requerimentos',
   path: '/requerimentos',
@@ -126,6 +121,12 @@ const ServidorPagamentosIndexRoute = ServidorPagamentosIndexRouteImport.update({
   path: '/pagamentos/',
   getParentRoute: () => ServidorRoute,
 } as any)
+const AssociacaoGerenciamentoIndexRoute =
+  AssociacaoGerenciamentoIndexRouteImport.update({
+    id: '/gerenciamento/',
+    path: '/gerenciamento/',
+    getParentRoute: () => AssociacaoRoute,
+  } as any)
 const AdminServidoresIndexRoute = AdminServidoresIndexRouteImport.update({
   id: '/servidores/',
   path: '/servidores/',
@@ -163,9 +164,9 @@ const ServidorPagamentosEnviarRoute =
   } as any)
 const AssociacaoGerenciamentoIdRoute =
   AssociacaoGerenciamentoIdRouteImport.update({
-    id: '/$id',
-    path: '/$id',
-    getParentRoute: () => AssociacaoGerenciamentoRoute,
+    id: '/gerenciamento/$id',
+    path: '/gerenciamento/$id',
+    getParentRoute: () => AssociacaoRoute,
   } as any)
 const AdminServidoresIdRoute = AdminServidoresIdRouteImport.update({
   id: '/servidores/$id',
@@ -185,7 +186,6 @@ export interface FileRoutesByFullPath {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
-  '/associacao/gerenciamento': typeof AssociacaoGerenciamentoRouteWithChildren
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
   '/associacao/upload': typeof AssociacaoUploadRoute
   '/servidor/dependentes': typeof ServidorDependentesRoute
@@ -199,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
   '/admin/servidores/': typeof AdminServidoresIndexRoute
+  '/associacao/gerenciamento/': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
 }
 export interface FileRoutesByTo {
@@ -213,7 +214,6 @@ export interface FileRoutesByTo {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
-  '/associacao/gerenciamento': typeof AssociacaoGerenciamentoRouteWithChildren
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
   '/associacao/upload': typeof AssociacaoUploadRoute
   '/servidor/dependentes': typeof ServidorDependentesRoute
@@ -227,6 +227,7 @@ export interface FileRoutesByTo {
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
   '/admin/servidores': typeof AdminServidoresIndexRoute
+  '/associacao/gerenciamento': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos': typeof ServidorPagamentosIndexRoute
 }
 export interface FileRoutesById {
@@ -242,7 +243,6 @@ export interface FileRoutesById {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
-  '/associacao/gerenciamento': typeof AssociacaoGerenciamentoRouteWithChildren
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
   '/associacao/upload': typeof AssociacaoUploadRoute
   '/servidor/dependentes': typeof ServidorDependentesRoute
@@ -256,6 +256,7 @@ export interface FileRoutesById {
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
   '/admin/servidores/': typeof AdminServidoresIndexRoute
+  '/associacao/gerenciamento/': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
 }
 export interface FileRouteTypes {
@@ -272,7 +273,6 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
-    | '/associacao/gerenciamento'
     | '/associacao/nova-inclusao'
     | '/associacao/upload'
     | '/servidor/dependentes'
@@ -286,6 +286,7 @@ export interface FileRouteTypes {
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
     | '/admin/servidores/'
+    | '/associacao/gerenciamento/'
     | '/servidor/pagamentos/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -300,7 +301,6 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
-    | '/associacao/gerenciamento'
     | '/associacao/nova-inclusao'
     | '/associacao/upload'
     | '/servidor/dependentes'
@@ -314,6 +314,7 @@ export interface FileRouteTypes {
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
     | '/admin/servidores'
+    | '/associacao/gerenciamento'
     | '/servidor/pagamentos'
   id:
     | '__root__'
@@ -328,7 +329,6 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/parametros'
     | '/admin/requerimentos'
-    | '/associacao/gerenciamento'
     | '/associacao/nova-inclusao'
     | '/associacao/upload'
     | '/servidor/dependentes'
@@ -342,6 +342,7 @@ export interface FileRouteTypes {
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
     | '/admin/servidores/'
+    | '/associacao/gerenciamento/'
     | '/servidor/pagamentos/'
   fileRoutesById: FileRoutesById
 }
@@ -433,13 +434,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssociacaoNovaInclusaoRouteImport
       parentRoute: typeof AssociacaoRoute
     }
-    '/associacao/gerenciamento': {
-      id: '/associacao/gerenciamento'
-      path: '/gerenciamento'
-      fullPath: '/associacao/gerenciamento'
-      preLoaderRoute: typeof AssociacaoGerenciamentoRouteImport
-      parentRoute: typeof AssociacaoRoute
-    }
     '/admin/requerimentos': {
       id: '/admin/requerimentos'
       path: '/requerimentos'
@@ -481,6 +475,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/servidor/pagamentos/'
       preLoaderRoute: typeof ServidorPagamentosIndexRouteImport
       parentRoute: typeof ServidorRoute
+    }
+    '/associacao/gerenciamento/': {
+      id: '/associacao/gerenciamento/'
+      path: '/gerenciamento'
+      fullPath: '/associacao/gerenciamento/'
+      preLoaderRoute: typeof AssociacaoGerenciamentoIndexRouteImport
+      parentRoute: typeof AssociacaoRoute
     }
     '/admin/servidores/': {
       id: '/admin/servidores/'
@@ -526,10 +527,10 @@ declare module '@tanstack/react-router' {
     }
     '/associacao/gerenciamento/$id': {
       id: '/associacao/gerenciamento/$id'
-      path: '/$id'
+      path: '/gerenciamento/$id'
       fullPath: '/associacao/gerenciamento/$id'
       preLoaderRoute: typeof AssociacaoGerenciamentoIdRouteImport
-      parentRoute: typeof AssociacaoGerenciamentoRoute
+      parentRoute: typeof AssociacaoRoute
     }
     '/admin/servidores/$id': {
       id: '/admin/servidores/$id'
@@ -563,30 +564,18 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
-interface AssociacaoGerenciamentoRouteChildren {
-  AssociacaoGerenciamentoIdRoute: typeof AssociacaoGerenciamentoIdRoute
-}
-
-const AssociacaoGerenciamentoRouteChildren: AssociacaoGerenciamentoRouteChildren =
-  {
-    AssociacaoGerenciamentoIdRoute: AssociacaoGerenciamentoIdRoute,
-  }
-
-const AssociacaoGerenciamentoRouteWithChildren =
-  AssociacaoGerenciamentoRoute._addFileChildren(
-    AssociacaoGerenciamentoRouteChildren,
-  )
-
 interface AssociacaoRouteChildren {
-  AssociacaoGerenciamentoRoute: typeof AssociacaoGerenciamentoRouteWithChildren
   AssociacaoNovaInclusaoRoute: typeof AssociacaoNovaInclusaoRoute
   AssociacaoUploadRoute: typeof AssociacaoUploadRoute
+  AssociacaoGerenciamentoIdRoute: typeof AssociacaoGerenciamentoIdRoute
+  AssociacaoGerenciamentoIndexRoute: typeof AssociacaoGerenciamentoIndexRoute
 }
 
 const AssociacaoRouteChildren: AssociacaoRouteChildren = {
-  AssociacaoGerenciamentoRoute: AssociacaoGerenciamentoRouteWithChildren,
   AssociacaoNovaInclusaoRoute: AssociacaoNovaInclusaoRoute,
   AssociacaoUploadRoute: AssociacaoUploadRoute,
+  AssociacaoGerenciamentoIdRoute: AssociacaoGerenciamentoIdRoute,
+  AssociacaoGerenciamentoIndexRoute: AssociacaoGerenciamentoIndexRoute,
 }
 
 const AssociacaoRouteWithChildren = AssociacaoRoute._addFileChildren(
