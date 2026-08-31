@@ -197,12 +197,12 @@ export const requerimentos: Requerimento[] = [
 ];
 
 export const servidoresList = [
-  { matricula: "12345", nome: "João da Silva", cargo: "Analista de Trânsito", plano: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo" as StatusKey },
-  { matricula: "23456", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", plano: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo" as StatusKey },
-  { matricula: "34567", nome: "Carlos Pereira", cargo: "Agente de Trânsito", plano: "Amil", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente" as StatusKey },
-  { matricula: "45678", nome: "Fernanda Lima", cargo: "Analista de Trânsito", plano: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta" as StatusKey },
-  { matricula: "56789", nome: "Roberto Santos", cargo: "Pensionista Temporário", plano: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo" as StatusKey },
-  { matricula: "67890", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", plano: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo" as StatusKey },
+  { matricula: "12345", cpf: "123.456.789-00", processoSEI: "00050.001111/2024-10", nome: "João da Silva", cargo: "Analista de Trânsito", plano: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo" as StatusKey },
+  { matricula: "23456", cpf: "345.678.901-22", processoSEI: "00050.002222/2024-10", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", plano: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo" as StatusKey },
+  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", plano: "Amil", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente" as StatusKey },
+  { matricula: "45678", cpf: "456.123.789-55", processoSEI: "00050.004444/2024-10", nome: "Fernanda Lima", cargo: "Analista de Trânsito", plano: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta" as StatusKey },
+  { matricula: "56789", cpf: "678.901.234-55", processoSEI: "00050.005555/2024-10", nome: "Roberto Santos", cargo: "Pensionista Temporário", plano: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo" as StatusKey },
+  { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", plano: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo" as StatusKey },
 ];
 
 export const formatCurrency = (v: number) => {

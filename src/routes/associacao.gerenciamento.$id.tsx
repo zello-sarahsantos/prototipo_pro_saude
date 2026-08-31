@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { servidorAtual, dependentes, formatCurrency } from "@/lib/mock-data";
+import { servidorAtual, dependentes, formatCurrency, type StatusKey } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ArrowLeft, UserPlus, X } from "lucide-react";
+import { UploadBox } from "@/routes/servidor.requerimento.novo-plano";
+import { ArrowLeft, FilePlus, FileUp, UserMinus, UserPlus, X } from "lucide-react";
 
 export const Route = createFileRoute("/associacao/gerenciamento/$id")({
   component: DetalheBeneficiarioAssetran,
@@ -10,9 +11,56 @@ export const Route = createFileRoute("/associacao/gerenciamento/$id")({
 
 const tabs = ["Dados", "Dependentes", "Requerimentos"] as const;
 
+/** Ajuste pontual: os 3 requerimentos recorrentes ficam visíveis lado a lado, sem precisar de
+ *  um clique extra para revelar as opções (modal removido — dificultava a visualização). */
+const requerimentosRecorrentes = [
+  { to: "/servidor/requerimento/novo-plano" as const, icon: FilePlus, label: "Requerimento de Mudança de Plano" },
+  { to: "/servidor/requerimento/incluir-dependente" as const, icon: UserPlus, label: "Requerimento de Inclusão de Dependente" },
+  { to: "/servidor/requerimento/exclusao" as const, icon: UserMinus, label: "Requerimento de Exclusão de Dependente / Plano" },
+];
+
+/** Requerimentos deste beneficiário perante a GERDAB — ilustrativo (mock fixo, não filtrado
+ *  pelo `$id` da rota, mesma simplificação já assumida por `servidorAtual`/`dependentes`
+ *  nesta tela). Elevado para o escopo do módulo para alimentar tanto a aba "Requerimentos"
+ *  quanto o indicativo de pendência nas abas "Dados"/"Requerimentos". */
+interface RequerimentoBeneficiario {
+  id: string;
+  numero: string;
+  tipo: string;
+  detalhe: string;
+  abertoEm: string;
+  status: StatusKey;
+}
+
+const requerimentosDoBeneficiario: RequerimentoBeneficiario[] = [
+  { id: "r1", numero: "REQ-2026-0047", tipo: "Inclusão de Dependente", detalhe: "Enteado(a), 23 anos — exige IRPF", abertoEm: "02/05/2026", status: "pendente" },
+  { id: "r3", numero: "REQ-2026-0045", tipo: "Exclusão", detalhe: "Exclusão de dependente", abertoEm: "01/05/2026", status: "aprovado" },
+];
+
+function TabBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-semibold">
+      {count}
+    </span>
+  );
+}
+
 function DetalheBeneficiarioAssetran() {
   const { id } = Route.useParams();
   const [tab, setTab] = useState<typeof tabs[number]>("Dados");
+
+  // Indicativos de pendência por aba — mesma regra usada no badge do sino de notificações:
+  // requerimentos ainda não decididos pela GERDAB e dependentes com alerta documental.
+  const requerimentosPendentes = requerimentosDoBeneficiario.filter(
+    (r) => r.status === "pendente" || r.status === "analise",
+  ).length;
+  const dependentesComAlerta = dependentes.filter((d) => d.alerta).length;
+  const badgePorAba: Record<(typeof tabs)[number], number> = {
+    Dados: requerimentosPendentes > 0 ? 1 : 0,
+    Dependentes: dependentesComAlerta,
+    Requerimentos: requerimentosPendentes,
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-6">
@@ -31,18 +79,16 @@ function DetalheBeneficiarioAssetran() {
       </header>
 
       <div className="flex flex-wrap gap-2">
-        <Link
-          to="/servidor/requerimento/incluir-dependente"
-          className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary-light flex items-center gap-2"
-        >
-          <UserPlus className="h-4 w-4" /> Incluir Dependente
-        </Link>
-        <Link
-          to="/servidor/requerimento/exclusao"
-          className="border border-border rounded-md px-4 py-2 text-sm font-medium hover:bg-muted"
-        >
-          Solicitar Exclusão
-        </Link>
+        {requerimentosRecorrentes.map((r) => (
+          <Link
+            key={r.to}
+            to={r.to}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-card hover:bg-primary-light transition"
+          >
+            <r.icon className="h-4 w-4 shrink-0" />
+            {r.label}
+          </Link>
+        ))}
       </div>
 
       <div className="border-b border-border flex gap-1 overflow-x-auto">
@@ -50,26 +96,28 @@ function DetalheBeneficiarioAssetran() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition flex items-center gap-1.5 ${
               tab === t
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {t}
+            <TabBadge count={badgePorAba[t]} />
           </button>
         ))}
       </div>
 
-      {tab === "Dados" && <TabDados />}
+      {tab === "Dados" && <TabDados temPendenciaDocumento={requerimentosPendentes > 0} />}
       {tab === "Dependentes" && <TabDependentes />}
       {tab === "Requerimentos" && <TabRequerimentos />}
     </div>
   );
 }
 
-function TabDados() {
+function TabDados({ temPendenciaDocumento }: { temPendenciaDocumento: boolean }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [incluirDocOpen, setIncluirDocOpen] = useState(false);
   const fields: [string, string, string][] = [
     ["Nome completo", "nome", servidorAtual.nome],
     ["Matrícula", "matricula", servidorAtual.matricula],
@@ -89,6 +137,43 @@ function TabDados() {
 
   return (
     <div className="space-y-4">
+      {temPendenciaDocumento && (
+        <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-warning">GERDAB solicitou documentação complementar</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Enteado(a) com 23 anos exige envio do IRPF para continuar a análise do requerimento.
+            </p>
+          </div>
+          {incluirDocOpen ? (
+            <div className="space-y-2">
+              <UploadBox />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIncluirDocOpen(false)}
+                  className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => setIncluirDocOpen(false)}
+                  className="text-xs bg-primary text-primary-foreground rounded-md px-3 py-1.5 font-medium"
+                >
+                  Enviar documento
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIncluirDocOpen(true)}
+              className="text-xs font-medium border border-warning/40 text-warning rounded-md px-3 py-1.5 hover:bg-warning/10 flex items-center gap-1.5"
+            >
+              <FileUp className="h-3.5 w-3.5" /> Incluir documento
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex justify-end">
         <button
           onClick={() => setEditOpen(true)}
@@ -199,10 +284,7 @@ function TabDependentes() {
 function TabRequerimentos() {
   return (
     <ul className="divide-y divide-border bg-card rounded-xl border border-border">
-      {[
-        { id: "r1", numero: "REQ-2026-0047", tipo: "Inclusão de Dependente", detalhe: "Enteado(a), 23 anos — exige IRPF", abertoEm: "02/05/2026", status: "pendente" },
-        { id: "r3", numero: "REQ-2026-0045", tipo: "Exclusão", detalhe: "Exclusão de dependente", abertoEm: "01/05/2026", status: "aprovado" },
-      ].map((r) => (
+      {requerimentosDoBeneficiario.map((r) => (
         <li key={r.id} className="px-5 py-3 flex items-center gap-4">
           <div className="flex-1">
             <p className="text-sm font-medium">{r.numero} • {r.tipo}</p>
@@ -214,5 +296,3 @@ function TabRequerimentos() {
     </ul>
   );
 }
-
-

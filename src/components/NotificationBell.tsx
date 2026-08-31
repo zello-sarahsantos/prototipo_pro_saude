@@ -2,14 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { getNotificacoesPagamento, type NotificacaoPagamento } from "@/lib/notificacoes-pagamento";
 
-export function NotificationBell() {
+/** Sino de notificações reaproveitável fora do Portal do Servidor: por padrão (sem `notificacoes`
+ *  informado) mantém o comportamento original, lendo `getNotificacoesPagamento()`. Passe
+ *  `notificacoes` já calculado (ex: `getNotificacoesAssociacao(...)`) para usar em outro
+ *  contexto, como a Área da Associação — mesmo componente visual, fonte de dados diferente. */
+export function NotificationBell({ notificacoes: notificacoesProp }: { notificacoes?: NotificacaoPagamento[] } = {}) {
   const [open, setOpen] = useState(false);
-  const [notificacoes, setNotificacoes] = useState<NotificacaoPagamento[]>([]);
+  const [notificacoesPagamento, setNotificacoesPagamento] = useState<NotificacaoPagamento[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const notificacoes = notificacoesProp ?? notificacoesPagamento;
 
   useEffect(() => {
-    setNotificacoes(getNotificacoesPagamento());
-  }, []);
+    if (!notificacoesProp) setNotificacoesPagamento(getNotificacoesPagamento());
+  }, [notificacoesProp]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {

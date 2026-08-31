@@ -235,14 +235,28 @@ function FlowAtivacao({ onCancel, onDone }: { onCancel: () => void; onDone: () =
 }
 
 // --- FLUXO DE INCLUSÃO ---
-export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () => void; onDone: () => void; isAssociacao?: boolean }) {
+export function FlowInclusao({
+  onCancel,
+  onDone,
+  isAssociacao,
+  associacaoFixa,
+}: {
+  onCancel: () => void;
+  onDone: () => void;
+  isAssociacao?: boolean;
+  /** Quando informado (ex: "Assetran"), o passo "Plano" deixa de pedir Operadora/Administradora
+   *  em dropdown — a associação já É a operadora/vínculo do beneficiário, então o campo vira
+   *  um valor fixo, só exibido. Também dispensa o envio de comprovantes pessoais no passo
+   *  "Docs" (a associação é quem envia a comprovação, coletivamente, depois). */
+  associacaoFixa?: string;
+}) {
   const [step, setStep] = useState(0);
   const [deps, setDeps] = useState<Dependente[]>([]);
   const [showDepForm, setShowDepForm] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [valorTitular, setValorTitular] = useState("");
   const [error, setError] = useState("");
-  
+
   // Dados do Titular (Step 0)
   const [titular, setTitular] = useState({
     nome: "",
@@ -262,9 +276,10 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
     endereco: "",
   });
 
-  // Dados do Plano (Step 1)
+  // Dados do Plano (Step 1) — quando associacaoFixa é informada, a operadora já nasce
+  // preenchida com o nome da associação (ver campo somente-leitura no passo "Plano" abaixo).
   const [plano, setPlano] = useState({
-    operadora: "",
+    operadora: associacaoFixa ?? "",
     outraOperadora: "",
     administradora: "",
     proposta: "",
@@ -322,17 +337,23 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
       }
     }
     if (currentStepName === "Plano") {
-      if (!plano.operadora || !plano.modalidade || !plano.vigencia || !valorTitular) {
+      if (!plano.modalidade || !plano.vigencia || !valorTitular) {
         setError(validationMessages.obrigatorios);
         return;
       }
-      if (plano.operadora === "Outra" && !plano.outraOperadora) {
-        setError(validationMessages.obrigatorios);
-        return;
-      }
-      if (plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO" && !plano.administradora) {
-        setError(validationMessages.obrigatorios);
-        return;
+      if (!associacaoFixa) {
+        if (!plano.operadora) {
+          setError(validationMessages.obrigatorios);
+          return;
+        }
+        if (plano.operadora === "Outra" && !plano.outraOperadora) {
+          setError(validationMessages.obrigatorios);
+          return;
+        }
+        if (plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO" && !plano.administradora) {
+          setError(validationMessages.obrigatorios);
+          return;
+        }
       }
       const errValor = getCurrencyError(valorTitular);
       if (errValor) {
@@ -422,21 +443,27 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
   const valorTotalGrupo = valorTitularNum + totalDepsValue;
 
   const handleSubmit = () => {
-    saveTitularCadastro({
-      titular,
-      plano: {
-        operadora: plano.operadora,
-        outraOperadora: plano.outraOperadora,
-        administradora: plano.administradora,
-        proposta: plano.proposta,
-        modalidade: plano.modalidade,
-        vigencia: plano.vigencia,
-        valorTitular: valorTitularNum,
-        empresarial: plano.empresarial,
-      },
-      dependentes: deps,
-      updatedAt: new Date().toISOString(),
-    });
+    // Quando é a própria pessoa se cadastrando (fluxo de Primeiro Acesso), persiste como o
+    // cadastro do titular logado. Quando é a associação preenchendo em nome de outra pessoa
+    // (isAssociacao), não deve gravar em "prosaude_titular_cadastro" — esse cadastro é do
+    // usuário atualmente logado na área da Associação, não do beneficiário do requerimento.
+    if (!isAssociacao) {
+      saveTitularCadastro({
+        titular,
+        plano: {
+          operadora: plano.operadora,
+          outraOperadora: plano.outraOperadora,
+          administradora: plano.administradora,
+          proposta: plano.proposta,
+          modalidade: plano.modalidade,
+          vigencia: plano.vigencia,
+          valorTitular: valorTitularNum,
+          empresarial: plano.empresarial,
+        },
+        dependentes: deps,
+        updatedAt: new Date().toISOString(),
+      });
+    }
     onDone();
   };
 
@@ -635,47 +662,57 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
 
         {currentStepName === "Plano" && (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Operadora" required>
-                <select
-                  className={inputCls}
-                  value={plano.operadora}
-                  onChange={e => setPlano({ ...plano, operadora: e.target.value })}
-                >
-                  <option value="">Selecione a operadora</option>
-                  {OPERADORAS.map((op) => (
-                    <option key={op} value={op}>{op}</option>
-                  ))}
-                  <option value="Outra">Outra</option>
-                </select>
+            {associacaoFixa ? (
+              <Field label="Associação">
+                <div className={`${inputCls} bg-muted/50 text-foreground font-medium`}>
+                  {associacaoFixa}
+                </div>
               </Field>
-              {plano.operadora === "Outra" && (
-                <Field label="Digite o nome da operadora" required>
-                  <input 
-                    className={inputCls} 
-                    value={plano.outraOperadora} 
-                    onChange={e => setPlano({...plano, outraOperadora: e.target.value})} 
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Operadora" required>
+                  <select
+                    className={inputCls}
+                    value={plano.operadora}
+                    onChange={e => setPlano({ ...plano, operadora: e.target.value })}
+                  >
+                    <option value="">Selecione a operadora</option>
+                    {OPERADORAS.map((op) => (
+                      <option key={op} value={op}>{op}</option>
+                    ))}
+                    <option value="Outra">Outra</option>
+                  </select>
+                </Field>
+                {plano.operadora === "Outra" && (
+                  <Field label="Digite o nome da operadora" required>
+                    <input
+                      className={inputCls}
+                      value={plano.outraOperadora}
+                      onChange={e => setPlano({...plano, outraOperadora: e.target.value})}
+                    />
+                  </Field>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Modalidade do Plano" required>
+                <input
+                  className={inputCls}
+                  placeholder="Ex: Coletivo Empresarial"
+                  value={plano.modalidade}
+                  onChange={e => setPlano({...plano, modalidade: e.target.value})}
+                />
+              </Field>
+              {!associacaoFixa && (
+                <Field label="Administradora" required={plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO"}>
+                  <input
+                    className={inputCls}
+                    placeholder="Nome da administradora"
+                    value={plano.administradora}
+                    onChange={e => setPlano({...plano, administradora: e.target.value})}
                   />
                 </Field>
               )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Modalidade do Plano" required>
-                <input 
-                  className={inputCls} 
-                  placeholder="Ex: Coletivo Empresarial" 
-                  value={plano.modalidade} 
-                  onChange={e => setPlano({...plano, modalidade: e.target.value})} 
-                />
-              </Field>
-              <Field label="Administradora" required={plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO"}>
-                <input 
-                  className={inputCls} 
-                  placeholder="Nome da administradora" 
-                  value={plano.administradora} 
-                  onChange={e => setPlano({...plano, administradora: e.target.value})} 
-                />
-              </Field>
             </div>
             <div className="grid grid-cols-1 gap-3">
               <Field label="Empresarial">
@@ -954,15 +991,15 @@ export function FlowInclusao({ onCancel, onDone, isAssociacao }: { onCancel: () 
               {isAssociacao && (
                 <>
                   <p className="text-xs font-bold text-muted-foreground uppercase">Documentos da Associação</p>
-                  <Field label="Requerimento de Inclusão no Pró-Saúde já assinado pelo beneficiário" required>
+                  <Field label="Requerimento de Inclusão Assinado (Titular)" required>
                     <UploadBox />
                   </Field>
                 </>
               )}
 
-              {plano.operadora === "ASSEFAZ / OUTRO CONVÊNIO" ? (
+              {associacaoFixa || plano.operadora === "ASSEFAZ / OUTRO CONVÊNIO" ? (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-[11px] text-blue-800">
-                  <p className="font-semibold mb-1">Inclusão pela associação (ASSEFAZ / OUTROS):</p>
+                  <p className="font-semibold mb-1">Inclusão pela associação{associacaoFixa ? ` (${associacaoFixa.toUpperCase()})` : " (ASSEFAZ / OUTROS)"}:</p>
                   <p>Não é necessário o envio de comprovantes neste momento. A associação será a responsável pelo envio das documentações junto à GERDAB.</p>
                 </div>
               ) : (
