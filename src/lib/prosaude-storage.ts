@@ -14,6 +14,7 @@ export const PROSAUDE_STORAGE_KEYS = {
   competenciasConcluidas: "prosaude_competencias_concluidas",
   beneficiariosDispensados: "prosaude_beneficiarios_dispensados",
   valoresCadastradosBeneficiarios: "prosaude_valores_cadastrados_beneficiarios",
+  observacoesGerdab: "prosaude_observacoes_gerdab",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -262,5 +263,63 @@ export function getBeneficiariosPagamentoAtual(): BeneficiarioPagamento[] {
   const overrides = loadValoresCadastradosBeneficiarios();
   return beneficiariosPagamento.map((b) =>
     overrides[b.id] !== undefined ? { ...b, valorCadastrado: overrides[b.id] } : b,
+  );
+}
+
+/**
+ * Observações do Analista/Gerência GERDAB sobre um servidor — anotação livre, direcionada ao
+ * próprio servidor ou à associação a que ele é vinculado. Diferente do log de "Histórico" (que
+ * é gerado automaticamente pelas próprias ações do sistema e não pode ser editado/apagado),
+ * Observação é um registro manual: pode ser criado e excluído pelo analista/gerência a
+ * qualquer momento — mesmo espírito de "aprovações"/`AcaoComprovante` já usado no Módulo de
+ * Pagamento (anotação com autor, cargo e data/hora), aplicado aqui ao lado GERDAB de Cadastro.
+ */
+export type ObservacaoDestino = "servidor" | "associacao";
+
+/** "observacao" é a anotação livre original; "solicitacao_documento" é um pedido estruturado de
+ *  documento complementar — mesma aba, mas com um campo a mais (`documento`, o nome/tipo do que
+ *  está sendo pedido) e um destaque visual diferente na listagem, já que é um pedido em aberto,
+ *  não só uma nota informativa. */
+export type ObservacaoTipo = "observacao" | "solicitacao_documento";
+
+export type ObservacaoGerdab = {
+  id: string;
+  servidorMatricula: string;
+  destino: ObservacaoDestino;
+  associacao?: string;
+  tipo: ObservacaoTipo;
+  documento?: string;
+  autor: string;
+  cargo: string;
+  texto: string;
+  criadoEm: string;
+};
+
+export function loadObservacoesGerdab(): ObservacaoGerdab[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.observacoesGerdab);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as ObservacaoGerdab[];
+  } catch {
+    return [];
+  }
+}
+
+export function addObservacaoGerdab(observacao: ObservacaoGerdab) {
+  if (typeof window === "undefined") return;
+  const atuais = loadObservacoesGerdab();
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.observacoesGerdab,
+    JSON.stringify([...atuais, observacao]),
+  );
+}
+
+export function removeObservacaoGerdab(id: string) {
+  if (typeof window === "undefined") return;
+  const atuais = loadObservacoesGerdab();
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.observacoesGerdab,
+    JSON.stringify(atuais.filter((o) => o.id !== id)),
   );
 }
