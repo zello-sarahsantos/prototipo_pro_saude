@@ -293,6 +293,10 @@ export type ObservacaoGerdab = {
   cargo: string;
   texto: string;
   criadoEm: string;
+  /** Preenchido quando quem recebeu a solicitação (servidor ou associação) envia o documento
+   *  pedido — a partir daí a solicitação some dos banners de pendência (Portal do Servidor /
+   *  Área da Associação), mas continua existindo no histórico de Observações, agora "atendida". */
+  atendidaEm?: string;
 };
 
 export function loadObservacoesGerdab(): ObservacaoGerdab[] {
@@ -312,6 +316,34 @@ export function addObservacaoGerdab(observacao: ObservacaoGerdab) {
   localStorage.setItem(
     PROSAUDE_STORAGE_KEYS.observacoesGerdab,
     JSON.stringify([...atuais, observacao]),
+  );
+}
+
+/** Solicitações de documento em aberto (não atendidas ainda) para um servidor, filtradas pelo
+ *  destino — "servidor" alimenta o banner do Portal do Servidor, "associacao" alimenta o banner
+ *  da ficha do beneficiário na Área da Associação. Usada por ambos os lados para não duplicar a
+ *  lógica de filtro. */
+export function getSolicitacoesDocumentoPendentes(
+  servidorMatricula: string,
+  destino: ObservacaoDestino,
+): ObservacaoGerdab[] {
+  return loadObservacoesGerdab().filter(
+    (o) =>
+      o.tipo === "solicitacao_documento" &&
+      o.servidorMatricula === servidorMatricula &&
+      o.destino === destino &&
+      !o.atendidaEm,
+  );
+}
+
+export function marcarObservacaoAtendida(id: string) {
+  if (typeof window === "undefined") return;
+  const atuais = loadObservacoesGerdab();
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.observacoesGerdab,
+    JSON.stringify(
+      atuais.map((o) => (o.id === id ? { ...o, atendidaEm: new Date().toISOString() } : o)),
+    ),
   );
 }
 

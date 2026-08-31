@@ -87,6 +87,10 @@ export type Dependente = {
   valor: number;
   status: StatusKey;
   alerta?: string;
+  /** Quando presente, identifica a pendência documental do dependente segundo uma regra
+   *  conhecida do sistema (prazo e consequência calculados por `pendencias-documentais.ts`) —
+   *  em vez de deixar `alerta` como único texto livre sem prazo/consequência estruturados. */
+  pendenciaTipo?: import("./pendencias-documentais").TipoPendenciaDocumento;
 };
 
 export const dependentes: Dependente[] = [
@@ -124,6 +128,7 @@ export const dependentes: Dependente[] = [
     status: "alerta",
     alerta:
       "Pendência documental: Aguardando envio de comprovante de matrícula do semestre atual.",
+    pendenciaTipo: "comprovante_matricula",
   },
   {
     id: "d4",
@@ -136,6 +141,7 @@ export const dependentes: Dependente[] = [
     valor: 450,
     status: "alerta",
     alerta: "Pendência documental anual: Exige envio da declaração de Imposto de Renda para comprovação da dependência.",
+    pendenciaTipo: "declaracao_irpf_enteado",
   },
 ];
 

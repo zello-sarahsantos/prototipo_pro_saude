@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { servidorAtual, dependentes, formatCurrency, type StatusKey } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { UploadBox } from "@/routes/servidor.requerimento.novo-plano";
-import { ArrowLeft, FilePlus, FileUp, UserMinus, UserPlus, X } from "lucide-react";
+import { SolicitacaoDocumentoBanner } from "@/components/SolicitacaoDocumentoBanner";
+import { getPendenciasDocumentaisDoServidor, type PendenciaDocumental } from "@/lib/pendencias-documentais";
+import { ArrowLeft, FilePlus, UserMinus, UserPlus, X } from "lucide-react";
 
 export const Route = createFileRoute("/associacao/gerenciamento/$id")({
   component: DetalheBeneficiarioAssetran,
@@ -49,6 +50,7 @@ function TabBadge({ count }: { count: number }) {
 function DetalheBeneficiarioAssetran() {
   const { id } = Route.useParams();
   const [tab, setTab] = useState<typeof tabs[number]>("Dados");
+  const [solicitacoesVersion, setSolicitacoesVersion] = useState(0);
 
   // Indicativos de pendência por aba — mesma regra usada no badge do sino de notificações:
   // requerimentos ainda não decididos pela GERDAB e dependentes com alerta documental.
@@ -56,8 +58,18 @@ function DetalheBeneficiarioAssetran() {
     (r) => r.status === "pendente" || r.status === "analise",
   ).length;
   const dependentesComAlerta = dependentes.filter((d) => d.alerta).length;
+
+  // Pendências documentais direcionadas "para a associação" sobre este beneficiário —
+  // unifica pendências automáticas do sistema (dependentes com prazo/consequência mapeados) e
+  // solicitações manuais da GERDAB sem prazo definido.
+  const pendenciasDocumento = useMemo(
+    () => getPendenciasDocumentaisDoServidor(servidorAtual.matricula, "associacao"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [solicitacoesVersion],
+  );
+
   const badgePorAba: Record<(typeof tabs)[number], number> = {
-    Dados: requerimentosPendentes > 0 ? 1 : 0,
+    Dados: (requerimentosPendentes > 0 ? 1 : 0) + pendenciasDocumento.length,
     Dependentes: dependentesComAlerta,
     Requerimentos: requerimentosPendentes,
   };
@@ -108,16 +120,26 @@ function DetalheBeneficiarioAssetran() {
         ))}
       </div>
 
-      {tab === "Dados" && <TabDados temPendenciaDocumento={requerimentosPendentes > 0} />}
+      {tab === "Dados" && (
+        <TabDados
+          pendenciasDocumento={pendenciasDocumento}
+          onDocumentoEnviado={() => setSolicitacoesVersion((v) => v + 1)}
+        />
+      )}
       {tab === "Dependentes" && <TabDependentes />}
       {tab === "Requerimentos" && <TabRequerimentos />}
     </div>
   );
 }
 
-function TabDados({ temPendenciaDocumento }: { temPendenciaDocumento: boolean }) {
+function TabDados({
+  pendenciasDocumento,
+  onDocumentoEnviado,
+}: {
+  pendenciasDocumento: PendenciaDocumental[];
+  onDocumentoEnviado: () => void;
+}) {
   const [editOpen, setEditOpen] = useState(false);
-  const [incluirDocOpen, setIncluirDocOpen] = useState(false);
   const fields: [string, string, string][] = [
     ["Nome completo", "nome", servidorAtual.nome],
     ["Matrícula", "matricula", servidorAtual.matricula],
@@ -137,42 +159,9 @@ function TabDados({ temPendenciaDocumento }: { temPendenciaDocumento: boolean })
 
   return (
     <div className="space-y-4">
-      {temPendenciaDocumento && (
-        <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-warning">GERDAB solicitou documentação complementar</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Enteado(a) com 23 anos exige envio do IRPF para continuar a análise do requerimento.
-            </p>
-          </div>
-          {incluirDocOpen ? (
-            <div className="space-y-2">
-              <UploadBox />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIncluirDocOpen(false)}
-                  className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => setIncluirDocOpen(false)}
-                  className="text-xs bg-primary text-primary-foreground rounded-md px-3 py-1.5 font-medium"
-                >
-                  Enviar documento
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setIncluirDocOpen(true)}
-              className="text-xs font-medium border border-warning/40 text-warning rounded-md px-3 py-1.5 hover:bg-warning/10 flex items-center gap-1.5"
-            >
-              <FileUp className="h-3.5 w-3.5" /> Incluir documento
-            </button>
-          )}
-        </div>
-      )}
+      {pendenciasDocumento.map((p) => (
+        <SolicitacaoDocumentoBanner key={p.id} pendencia={p} onEnviado={onDocumentoEnviado} />
+      ))}
 
       <div className="flex justify-end">
         <button

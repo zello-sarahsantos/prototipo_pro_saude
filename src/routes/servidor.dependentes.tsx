@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { dependentes, formatCurrency, servidorAtual } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { PendencyBanner } from "@/components/PendencyBanner";
-import { Plus, User, Info } from "lucide-react";
+import { SolicitacaoDocumentoBanner } from "@/components/SolicitacaoDocumentoBanner";
+import { getPendenciasDocumentaisDoServidor } from "@/lib/pendencias-documentais";
+import { Plus, User } from "lucide-react";
 
 export const Route = createFileRoute("/servidor/dependentes")({
   component: Dependentes,
@@ -10,6 +12,17 @@ export const Route = createFileRoute("/servidor/dependentes")({
 
 function Dependentes() {
   const isPensionista = servidorAtual.cargo.startsWith("Pensionista");
+  const [pendenciasVersion, setPendenciasVersion] = useState(0);
+  const [abertoId, setAbertoId] = useState<string | null>(null);
+
+  // Pendências documentais de dependentes direcionadas ao próprio servidor — mesma fonte
+  // unificada usada no banner da tela inicial, aqui filtrada por dependente para o botão
+  // "Enviar Comprovante" (antes só um botão decorativo, sem ação nenhuma).
+  const pendencias = useMemo(
+    () => getPendenciasDocumentaisDoServidor(servidorAtual.matricula, "servidor"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendenciasVersion],
+  );
 
   if (isPensionista) {
     return (
@@ -40,6 +53,7 @@ function Dependentes() {
         {dependentes.map((d) => {
           const inactive = d.status === "inativo";
           const pending = d.status === "pendente";
+          const pendencia = pendencias.find((p) => p.dependenteId === d.id);
           return (
             <article
               key={d.id}
@@ -70,8 +84,11 @@ function Dependentes() {
                 >
                   Ver detalhes
                 </button>
-                {d.alerta && d.status === "alerta" ? (
-                  <button className="flex-1 text-sm text-center border border-warning/50 bg-warning/10 text-warning font-medium rounded-md py-2 hover:bg-warning/20">
+                {pendencia ? (
+                  <button
+                    onClick={() => setAbertoId(abertoId === d.id ? null : d.id)}
+                    className="flex-1 text-sm text-center border border-warning/50 bg-warning/10 text-warning font-medium rounded-md py-2 hover:bg-warning/20"
+                  >
                     Enviar Comprovante
                   </button>
                 ) : (
@@ -83,6 +100,18 @@ function Dependentes() {
                   </Link>
                 )}
               </div>
+
+              {pendencia && abertoId === d.id && (
+                <div className="mt-3">
+                  <SolicitacaoDocumentoBanner
+                    pendencia={pendencia}
+                    onEnviado={() => {
+                      setAbertoId(null);
+                      setPendenciasVersion((v) => v + 1);
+                    }}
+                  />
+                </div>
+              )}
             </article>
           );
         })}
