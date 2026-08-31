@@ -262,6 +262,109 @@ explícita adicionada) e `npm run build` limpos.
 
 ---
 
+### 2.5 Lado GERDAB — Histórico (linha do tempo) e Observações na ficha do servidor
+
+**Arquivos:** `src/routes/admin.servidores.$id.tsx`, `src/routes/admin.servidores.index.tsx`,
+`src/lib/prosaude-storage.ts`.
+
+- **Contexto:** o usuário pediu, antes de avançar para a Parte 2, uma forma do Analista/Gerência
+  GERDAB visualizar tudo o que mudou num servidor (o quê, quem, quando) e registrar anotações
+  próprias — direcionadas ao servidor ou à associação — diretamente da própria tela, além de uma
+  tela inicial mais visual, inspirada no padrão de conferência do SISPRO (print de referência
+  enviado pelo usuário). Antes de tocar em código, foi publicado um mockup em HTML (aprovado
+  pelo usuário) reproduzindo campo a campo os arquivos reais listados acima.
+- **Aba "Histórico" — de tabela estática para linha do tempo derivada:** `admin.servidores.$id.tsx`
+  já tinha uma aba "Histórico" (`TabHistorico`), mas era uma tabela com só 2 linhas fixas de
+  mock, sem nenhuma relação com o resto dos dados do servidor. Virou uma timeline visual
+  (pontos conectados, mais legível que tabela) que reúne, sem persistir nenhum campo novo:
+  as mesmas 2 transições de status de exemplo + os requerimentos do servidor (`requerimentos`,
+  filtrado por matrícula) + as pendências documentais dos dependentes (`dependentes[].alerta`) —
+  mesmo padrão de "recalcular na hora, nunca persistir como campo novo" já usado em
+  `getNotificacoesAssociacao` e nos badges de pendência da Área da Associação. Um aviso fixo no
+  rodapé deixa explícito que **Histórico é só leitura** — diferente de Observações, nenhum
+  evento pode ser editado ou apagado, porque é gerado automaticamente pelas próprias ações do
+  sistema.
+- **Aba "Observações" (nova):** anotação livre do analista/gerência, direcionada **ao servidor**
+  ou **à associação** (esta segunda opção só aparece quando o servidor tem associação vinculada
+  — `servidorAtual.associacao !== "—"`). Cada item mostra data, autor (nome + cargo, derivados
+  de `getAdminRole()` — "Rebeca — Analista GERDAB" ou "Erandir — Gerência GERDAB", mesmos nomes
+  já usados no rodapé do `AdminLayout`), o destino em uma tag colorida, e pode ser excluído a
+  qualquer momento (ação manual — por isso vive numa aba separada do Histórico, que é imutável).
+  Persistido em `localStorage` via 3 novas funções em `prosaude-storage.ts`
+  (`loadObservacoesGerdab`/`addObservacaoGerdab`/`removeObservacaoGerdab`, tipo
+  `ObservacaoGerdab`), seguindo exatamente o mesmo padrão já usado ali (chave registrada em
+  `PROSAUDE_STORAGE_KEYS`, `JSON.parse` protegido por try/catch).
+- **Contadores nas abas:** "Histórico" e "Observações" ganharam um badge numérico ao lado do
+  nome (`TabCount`) — Histórico mostra o total de eventos da timeline; Observações mostra a
+  quantidade de anotações daquele servidor (some quando é zero), mesmo espírito do indicativo de
+  pendência já pedido para a Área da Associação, adaptado ao estilo de aba sublinhada (não
+  chip/pílula) que este arquivo já usava.
+- **`/admin/servidores` — filtros em chip:** os mesmos 3 filtros funcionais de sempre (Status,
+  Associação, Plano) e a busca por nome/matrícula passaram de retângulo (`rounded-md`) para
+  pílula (`rounded-full`), inspirados no padrão de chip do SISPRO — nenhuma lógica de filtro
+  mudou. Foi adicionado 1 chip novo, "Só com pendência", que filtra direto para
+  status `pendente`/`alerta` combinado com os demais filtros já ativos. A tabela em si (9
+  colunas) não foi alterada — converter a lista inteira para cards expansíveis, como no mockup,
+  ficou de fora desta rodada por ser uma mudança maior, sem necessidade demonstrada ainda.
+
+**Testado manualmente no navegador:** em `/admin/servidores`, o chip "Só com pendência" filtra
+corretamente para os 2 servidores com status pendente/alerta ("Exibindo 2 de 2 cadastrados"). Em
+`/admin/servidores/12345678`: aba "Histórico" mostra "5" no badge e a timeline com as 5 entradas
+esperadas (2 transições + 1 requerimento + 2 pendências de dependente); aba "Observações" — ciclo
+completo testado: criar uma observação "Para o servidor" (badge passa a mostrar "1", autor
+"Rebeca (Analista GERDAB)" e data de hoje aparecem corretos, valor confirmado também via
+`localStorage.getItem('prosaude_observacoes_gerdab')`) e depois excluí-la (badge some, lista volta
+ao estado vazio, chave removida do localStorage ao final do teste). `tsc --noEmit` (2 erros
+pré-existentes, não relacionados, sem mudança) e `npm run build` limpos.
+
+### 2.6 Ajustes pontuais sobre a 2.5 — Histórico mais simples, engrenagem "Ação", linha clicável e solicitação de documento
+
+**Arquivos:** `src/routes/admin.servidores.$id.tsx`, `src/routes/admin.servidores.index.tsx`,
+`src/lib/prosaude-storage.ts`.
+
+- **Histórico visualmente mais simples:** a primeira versão (2.5) tinha, para cada mudança de
+  status, um chip separado com "de" riscado em vermelho + seta + "para" em verde — o usuário
+  achou confuso e enviou um print de outro sistema como referência (marcador circular vazado,
+  linha pontilhada, "Realizado por **Nome**" na mesma linha da data, descrição em texto corrido
+  logo abaixo, sem chip). A timeline foi refeita nesse padrão: a mudança de status agora vem
+  **embutida na própria frase** (ex.: `Alterou o status do cadastro de "Aguardando Validação"
+  para "Ativo".`), sem nenhum elemento vermelho/seta separado. `EventoHistorico` perdeu os
+  campos `de`/`para`/`cargo` (o cargo do responsável deixou de aparecer, seguindo a referência,
+  que só mostra o nome).
+- **Engrenagem "Ação" na listagem:** o usuário gostou do botão com ícone de engrenagem + "Ação"
+  do mockup do SISPRO (feito antes de qualquer código) e pediu para incorporar de verdade.
+  Adicionado em `/admin/servidores`, ao lado de "Carga Inicial" (que passou a ser um botão
+  secundário, com borda, para o botão de destaque ficar só no "Ação"): um menu suspenso
+  (`AcaoMenu`) com 2 itens simulados — "Exportar lista (.xlsx)" e "Notificar pendentes" — mock,
+  sem efeito real, mesmo tratamento de outras ações simuladas do protótipo. Fecha ao clicar fora,
+  mesmo padrão já usado no `NotificationBell`.
+- **Linha da tabela inteira clicável:** clicar em qualquer célula de uma linha em
+  `/admin/servidores` agora navega para a ficha do servidor (`/admin/servidores/$id`), não só o
+  link "Ver" (que continua existindo, com `stopPropagation` para não disparar navegação
+  duplicada) — mesmo padrão já usado em `associacao.gerenciamento.index.tsx`.
+- **Solicitação de documento dentro de Observações:** a aba ganhou um segundo "tipo" de registro,
+  ao lado da observação em texto livre. Ao abrir "Nova observação", um seletor de tipo aparece
+  primeiro (**Observação** vs. **Solicitar documento**); ao escolher "Solicitar documento", um
+  campo obrigatório "Documento solicitado" aparece (ex.: "Declaração de Imposto de Renda do
+  dependente"), com o texto livre virando um detalhe opcional (motivo/prazo). Continua podendo
+  ser direcionado ao servidor ou à associação, igual à observação comum. Na listagem, uma
+  solicitação de documento é visualmente distinta (ícone de alerta, cor de destaque) da
+  observação em texto simples, para o analista/gerência identificar rapidamente o que é um
+  pedido em aberto. Modelo de dados: `ObservacaoGerdab` ganhou `tipo: "observacao" |
+  "solicitacao_documento"` e `documento?: string` em `prosaude-storage.ts`.
+
+**Testado manualmente no navegador:** timeline do Histórico conferida visualmente — sem chip
+vermelho/seta, marcador vazado + linha pontilhada, "Realizado por Nome" na mesma linha da data.
+Botão "Ação" abrindo o menu com os 2 itens mock e fechando ao clicar fora. Clique em uma linha
+da tabela (Carlos Pereira) navegando corretamente para `/admin/servidores/34567`. Ciclo completo
+de "Solicitar documento": selecionado o tipo, preenchido "Comprovante de matrícula escolar",
+salvo — item aparece destacado em âmbar com ícone de alerta ("Documento solicitado: Comprovante
+de matrícula escolar"), badge da aba atualiza para "1"; observação removida ao final do teste
+(chave do localStorage limpa). `tsc --noEmit` (2 erros pré-existentes, sem mudança) e
+`npm run build` limpos.
+
+---
+
 ## 3. Módulo de Relatórios — ainda não iniciado
 
 Nenhuma etapa da Parte 2 do plano (R1 a R9) foi implementada nesta rodada. Ver o plano completo

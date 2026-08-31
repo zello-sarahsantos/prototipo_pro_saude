@@ -1,8 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { servidoresList, formatCurrency } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Search } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Search, Settings, ChevronDown, Download, BellRing } from "lucide-react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
 export const Route = createFileRoute("/admin/servidores/")({
   component: Servidores,
@@ -11,11 +11,58 @@ export const Route = createFileRoute("/admin/servidores/")({
 const TOTAL_REAL = 847;
 const PAGE_SIZE = 6;
 
+/** Menu de ações em massa (engrenagem "Ação") — mesmo padrão visual mostrado no mockup do
+ *  SISPRO. As ações aqui são simuladas (mock, sem efeito real), igual a outras ações
+ *  simuladas do protótipo — o objetivo é o padrão visual, não um novo fluxo de dados. */
+function AcaoMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary-light"
+      >
+        <Settings className="h-4 w-4" />
+        Ação
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-elevated z-20 overflow-hidden">
+          <button
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted text-left"
+          >
+            <Download className="h-4 w-4 text-muted-foreground" /> Exportar lista (.xlsx)
+          </button>
+          <button
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted text-left"
+          >
+            <BellRing className="h-4 w-4 text-muted-foreground" /> Notificar pendentes
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Servidores() {
+  const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroAssociacao, setFiltroAssociacao] = useState("");
   const [filtroPlano, setFiltroPlano] = useState("");
+  const [somentePendencia, setSomentePendencia] = useState(false);
 
   const filtrados = useMemo(() => {
     return servidoresList.filter((s) => {
@@ -32,12 +79,16 @@ function Servidores() {
           : s.associacao === filtroAssociacao);
       const matchPlano =
         !filtroPlano || s.plano.toLowerCase().includes(filtroPlano.toLowerCase());
-      return matchBusca && matchStatus && matchAssociacao && matchPlano;
+      const matchPendencia =
+        !somentePendencia || s.status === "pendente" || s.status === "alerta";
+      return matchBusca && matchStatus && matchAssociacao && matchPlano && matchPendencia;
     });
-  }, [busca, filtroStatus, filtroAssociacao, filtroPlano]);
+  }, [busca, filtroStatus, filtroAssociacao, filtroPlano, somentePendencia]);
+
+  const totalComPendencia = servidoresList.filter((s) => s.status === "pendente" || s.status === "alerta").length;
 
   const exibindo = filtrados.length;
-  const total = busca || filtroStatus || filtroAssociacao || filtroPlano
+  const total = busca || filtroStatus || filtroAssociacao || filtroPlano || somentePendencia
     ? exibindo
     : TOTAL_REAL;
 
@@ -50,29 +101,32 @@ function Servidores() {
             Exibindo {exibindo} de {total} cadastrados
           </p>
         </div>
-        <Link
-          to="/admin/carga-inicial"
-          className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary-light"
-        >
-          Carga Inicial
-        </Link>
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/admin/carga-inicial"
+            className="border border-border rounded-md px-4 py-2 text-sm font-medium hover:bg-muted"
+          >
+            Carga Inicial
+          </Link>
+          <AcaoMenu />
+        </div>
       </header>
 
-      {/* Filtros funcionais */}
-      <div className="bg-card rounded-xl border border-border shadow-card p-4 flex flex-wrap gap-3">
+      {/* Filtros funcionais — visual em chip, mesma lógica de antes */}
+      <div className="bg-card rounded-xl border border-border shadow-card p-3 flex flex-wrap items-center gap-2.5">
         <div className="relative flex-1 min-w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome ou matrícula"
-            className="w-full pl-9 pr-3 py-2 text-sm border border-input rounded-md bg-background"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-full bg-background"
           />
         </div>
         <select
           value={filtroStatus}
           onChange={(e) => setFiltroStatus(e.target.value)}
-          className="border border-input rounded-md px-3 py-2 text-sm bg-background"
+          className="border border-border rounded-full px-3.5 py-2 text-sm font-medium bg-background"
         >
           <option value="">Todos os status</option>
           <option value="ativo">Ativos</option>
@@ -83,7 +137,7 @@ function Servidores() {
         <select
           value={filtroAssociacao}
           onChange={(e) => setFiltroAssociacao(e.target.value)}
-          className="border border-input rounded-md px-3 py-2 text-sm bg-background"
+          className="border border-border rounded-full px-3.5 py-2 text-sm font-medium bg-background"
         >
           <option value="">Todas as associações</option>
           <option value="Assefaz">Assefaz</option>
@@ -93,7 +147,7 @@ function Servidores() {
         <select
           value={filtroPlano}
           onChange={(e) => setFiltroPlano(e.target.value)}
-          className="border border-input rounded-md px-3 py-2 text-sm bg-background"
+          className="border border-border rounded-full px-3.5 py-2 text-sm font-medium bg-background"
         >
           <option value="">Todos os planos</option>
           <option value="Bradesco">Bradesco</option>
@@ -101,6 +155,21 @@ function Servidores() {
           <option value="Amil">Amil</option>
           <option value="CASSI">CASSI</option>
         </select>
+        <div className="flex-1" />
+        <button
+          onClick={() => setSomentePendencia((v) => !v)}
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium border transition ${
+            somentePendencia
+              ? "bg-status-pendente-bg text-status-pendente-fg border-transparent"
+              : "border-border text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <span className={`h-2 w-2 rounded-full ${somentePendencia ? "bg-current" : "bg-border"}`} />
+          Só com pendência
+          <span className="inline-flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-background/60 text-[11px] font-semibold">
+            {totalComPendencia}
+          </span>
+        </button>
       </div>
 
       <div className="bg-card rounded-xl border border-border shadow-card overflow-x-auto">
@@ -127,7 +196,11 @@ function Servidores() {
               </tr>
             ) : (
               filtrados.map((s) => (
-                <tr key={s.matricula} className="hover:bg-muted/30">
+                <tr
+                  key={s.matricula}
+                  onClick={() => navigate({ to: "/admin/servidores/$id", params: { id: s.matricula } })}
+                  className="hover:bg-muted/30 cursor-pointer"
+                >
                   <td className="px-4 py-3 font-mono text-xs">{s.matricula}</td>
                   <td className="px-4 py-3 font-medium">{s.nome}</td>
                   <td className="px-4 py-3">{s.plano}</td>
@@ -140,6 +213,7 @@ function Servidores() {
                     <Link
                       to="/admin/servidores/$id"
                       params={{ id: s.matricula }}
+                      onClick={(e) => e.stopPropagation()}
                       className="text-primary text-sm font-medium hover:underline"
                     >
                       Ver
