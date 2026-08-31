@@ -537,7 +537,11 @@ function TabObservacoes({
           <div
             key={o.id}
             className={`border rounded-md p-4 flex items-start justify-between gap-3 ${
-              o.tipo === "solicitacao_documento" ? "bg-warning/5 border-warning/30" : "bg-accent/40 border-border"
+              o.tipo === "solicitacao_documento"
+                ? o.atendidaEm
+                  ? "bg-success/5 border-success/30"
+                  : "bg-warning/5 border-warning/30"
+                : "bg-accent/40 border-border"
             }`}
           >
             <div className="flex-1 min-w-0">
@@ -555,10 +559,15 @@ function TabObservacoes({
               </p>
               {o.tipo === "solicitacao_documento" ? (
                 <>
-                  <p className="text-sm font-semibold flex items-center gap-1.5 text-warning">
+                  <p className={`text-sm font-semibold flex items-center gap-1.5 ${o.atendidaEm ? "text-success" : "text-warning"}`}>
                     <FileWarning className="h-3.5 w-3.5" /> Documento solicitado: {o.documento}
                   </p>
                   {o.texto && <p className="text-sm mt-1">{o.texto}</p>}
+                  {o.atendidaEm && (
+                    <p className="text-xs text-success mt-1">
+                      ✓ Atendida em {new Date(o.atendidaEm).toLocaleDateString("pt-BR")}
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="text-sm">{o.texto}</p>

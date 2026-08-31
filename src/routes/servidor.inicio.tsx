@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { dependentes, requerimentos, servidorAtual, formatCurrency, calcularReembolso } from "@/lib/mock-data";
+import { SolicitacaoDocumentoBanner } from "@/components/SolicitacaoDocumentoBanner";
+import { getPendenciasDocumentaisDoServidor } from "@/lib/pendencias-documentais";
 import { ChevronRight, User, Info } from "lucide-react";
 
 export const Route = createFileRoute("/servidor/inicio")({
@@ -13,6 +15,16 @@ function Inicio() {
   const competenciaAtual = "abril/2026";
   const folhaPagamento = "maio/2026";
   const [showModalImportado, setShowModalImportado] = useState(true);
+  const [solicitacoesVersion, setSolicitacoesVersion] = useState(0);
+
+  // Pendências documentais direcionadas "para o servidor" (perfil individual, sem associação
+  // cuidando da comprovação por ele) — unifica pendências automáticas do sistema (dependentes
+  // com prazo/consequência mapeados) e solicitações manuais do analista/gerência sem prazo.
+  const pendenciasDocumento = useMemo(
+    () => getPendenciasDocumentaisDoServidor(servidorAtual.matricula, "servidor"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [solicitacoesVersion],
+  );
 
   const isPensionista = servidorAtual.cargo.startsWith("Pensionista");
   const isPensionistaTemporario = servidorAtual.cargo === "Pensionista Temporário";
@@ -63,6 +75,14 @@ function Inicio() {
         <h2 className="text-xl font-semibold">{servidorAtual.nome}</h2>
         <p className="text-xs text-muted-foreground">Matrícula {servidorAtual.matricula}</p>
       </section>
+
+      {pendenciasDocumento.map((p) => (
+        <SolicitacaoDocumentoBanner
+          key={p.id}
+          pendencia={p}
+          onEnviado={() => setSolicitacoesVersion((v) => v + 1)}
+        />
+      ))}
 
       <section className="bg-card rounded-xl p-4 shadow-card border border-border">
         <div className="flex justify-between items-start mb-3">

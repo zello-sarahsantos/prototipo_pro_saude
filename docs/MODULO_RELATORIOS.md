@@ -363,6 +363,106 @@ de matrícula escolar"), badge da aba atualiza para "1"; observação removida a
 (chave do localStorage limpa). `tsc --noEmit` (2 erros pré-existentes, sem mudança) e
 `npm run build` limpos.
 
+### 2.7 Fechando o ciclo — onde o servidor/associação envia o documento pedido
+
+**Arquivos:** `src/components/SolicitacaoDocumentoBanner.tsx` (novo), `src/routes/servidor.inicio.tsx`,
+`src/routes/associacao.gerenciamento.$id.tsx`, `src/lib/prosaude-storage.ts`.
+
+- **Contexto:** depois de criar a "Solicitação de documento" (2.6), faltava o outro lado — onde
+  quem recebeu o pedido (servidor ou associação, conforme o `destino` escolhido pela GERDAB)
+  consegue efetivamente enviar o documento. O campo `destino` já modelado decide isso sozinho:
+  não é uma escolha nova, é usar o que já existia.
+  - `destino: "servidor"` → aparece no **Portal do Servidor** (`/servidor/inicio`), como um
+    banner logo abaixo da saudação, antes do card "Meu cadastro" — o servidor que não tem
+    associação cuidando da comprovação por ele (`servidorAtual.associacao === "—"`) resolve
+    diretamente ali.
+  - `destino: "associacao"` → aparece na **Área da Associação**
+    (`associacao.gerenciamento.$id.tsx`), na aba "Dados" da ficha do beneficiário — trocando o
+    mock fixo que existia ali (2.4) por uma leitura de verdade das solicitações reais.
+- **Componente único reaproveitado nos dois lados:** `SolicitacaoDocumentoBanner` (novo, em
+  `src/components/`) — mesmo aviso "GERDAB solicitou documentação complementar" + `UploadBox` +
+  botões Cancelar/Enviar documento, extraído para não duplicar a lógica entre os dois contextos.
+- **Fechamento do ciclo:** `prosaude-storage.ts` ganhou `atendidaEm?: string` em
+  `ObservacaoGerdab`, a função `marcarObservacaoAtendida(id)` (chamada ao clicar "Enviar
+  documento" — mock, não guarda o arquivo em si, mas marca o pedido como resolvido) e
+  `getSolicitacoesDocumentoPendentes(matricula, destino)` (helper único usado pelos dois lados
+  para filtrar só as solicitações **não atendidas**). Assim que atendida, o banner some da tela
+  de quem recebeu o pedido, e a aba "Observações" do lado GERDAB passa a mostrar o item em verde
+  com "✓ Atendida em DD/MM/AAAA", sem removê-lo do histórico.
+
+**Testado manualmente no navegador:** criada uma solicitação "Para o servidor" em
+`/admin/servidores/12345678` → banner apareceu em `/servidor/inicio`, logo abaixo da saudação →
+"Enviar documento" → banner sumiu → voltando à ficha GERDAB, a mesma observação aparece em verde
+com "✓ Atendida em 31/08/2026". Testado também o caminho "Para a associação" (semeado via
+`localStorage`, já que o servidor de exemplo usado na ficha GERDAB é fixo e não tem associação
+vinculada — mesma simplificação de dado único já registrada em seções anteriores): banner
+apareceu em `/associacao/gerenciamento/34567`, badge da aba "Dados" foi de 1 para 2, e ao enviar
+o documento o banner sumiu e o badge voltou a 1. `tsc --noEmit` (2 erros pré-existentes, sem
+mudança) e `npm run build` limpos.
+
+### 2.8 Pendência documental unificada — regras de prazo/consequência do sistema + solicitação manual do analista
+
+**Arquivos:** `src/lib/pendencias-documentais.ts` (novo), `src/lib/mock-data.ts`,
+`src/components/SolicitacaoDocumentoBanner.tsx`, `src/routes/servidor.inicio.tsx`,
+`src/routes/servidor.dependentes.tsx`, `src/routes/associacao.gerenciamento.$id.tsx`.
+
+- **Contexto:** depois de fechar o ciclo da solicitação manual (2.7), o usuário observou que
+  pendência documental nem sempre vem de uma ação do analista — boa parte é **gerada pelo
+  próprio sistema** (ex.: comprovante de matrícula, IRPF de dependente), com **prazo** e
+  **consequência** conhecidos de antemão, diferente do pedido manual (que não tem prazo
+  mapeado e só fica em aberto até ser atendido). O usuário definiu as 3 decisões de modelo:
+  1. Unificar os dois em um único conceito de pendência (`origem: "sistema" | "analista"`);
+  2. Consequência é uma **regra fixa por tipo de documento**, não escolhida pelo analista;
+  3. Prazo: se o tipo já tem regra de sistema mapeada, a data **não pode ser alterada
+     manualmente**; se for um pedido do analista sem regra conhecida, **não há prazo** — a
+     pendência só fica em aberto até ser resolvida (comportamento já implementado na 2.6/2.7,
+     mantido sem mudança). A regra de prazo dos **comprovantes de despesa** do Módulo de
+     Pagamento (`competencias-pendentes.ts`) é um conceito totalmente separado e não foi tocada.
+- **`pendencias-documentais.ts` (novo):** define `TipoPendenciaDocumento` com as 4 regras
+  mapeadas pelo usuário (tabela "Validade Documental, Prazos e Trava de Inativação Automática")
+  + `"outro"` para pedidos manuais sem regra:
+  - `comprovante_matricula` — janela por semestre (1º: 1/jan até o 2º dia útil de março; 2º:
+    1/jul até o 2º dia útil de agosto), consequência `bloqueio_temporario_beneficio`.
+  - `declaracao_irpf_enteado` — anual, até 31 de maio, mesma consequência.
+  - `laudo_invalidez` — a cada 24 meses a partir do último laudo aceito; **mapeada, mas não
+    demonstrada com dado mock** (nenhum dependente do protótipo tem `ultimoLaudoEm` cadastrado
+    ainda) — `calcularPrazo` retorna `null` nesse caso, documentado como pendente de dado real.
+  - `limite_idade` — gatilho é a idade (24 anos), não uma data de envio; consequência
+    `inativacao_definitiva`. Mapeada na regra, mas a inativação automática de fato (mudar
+    `status` do dependente sozinha) **não foi implementada** — fora de escopo desta rodada,
+    fica só como regra documentada para quando fizer sentido automatizar.
+  - `getPendenciasDocumentaisDoServidor(matricula, destino)` — função única que combina as duas
+    fontes (pendências de sistema derivadas de `dependentes[].pendenciaTipo` + solicitações
+    manuais de `ObservacaoGerdab`), sempre recalculada na hora, nunca persistida como campo
+    novo. O **destino** de uma pendência de sistema segue a mesma regra já usada na solicitação
+    manual: se o servidor tem associação, é ela quem resolve; senão, o próprio servidor.
+  - `marcarPendenciaDocumentalAtendida` — atende pendência de qualquer origem: para "analista"
+    reaproveita `marcarObservacaoAtendida` (já existia); para "sistema", usa um novo override em
+    `localStorage` (`prosaude_pendencias_sistema_atendidas`, mesmo padrão de
+    `valoresCadastradosBeneficiarios` — override sobre mock estático).
+- **`mock-data.ts`:** `Dependente` ganhou `pendenciaTipo?: TipoPendenciaDocumento`. Os dois
+  dependentes que já tinham `alerta` (Lucas Souza, Marcos Lima) ganharam
+  `pendenciaTipo: "comprovante_matricula"` e `"declaracao_irpf_enteado"` respectivamente — o
+  texto de `alerta` continua existindo, agora como detalhe complementar da pendência
+  estruturada, não mais a única fonte de informação.
+- **`SolicitacaoDocumentoBanner` (reescrito):** passa a receber `pendencia: PendenciaDocumental`
+  em vez de `ObservacaoGerdab` — mostra o prazo (ou "Sem prazo definido"), destaca em vermelho
+  quando **vencido**, e exibe o texto da consequência daquele tipo. Continua reaproveitado nos
+  3 lugares: `/servidor/inicio`, `/servidor/dependentes` e a ficha do beneficiário na Área da
+  Associação.
+- **`servidor.dependentes.tsx`:** o botão "Enviar Comprovante" por dependente **já existia na
+  tela, mas nunca tinha ação nenhuma** (nem `onClick`) — foi conectado para abrir o mesmo banner
+  de pendência, agora com o prazo/consequência daquele dependente específico.
+
+**Testado manualmente no navegador (com a data real da máquina, 31/08/2026):** as duas
+pendências de exemplo já nasceram **vencidas** — a janela do 2º semestre do comprovante de
+matrícula fechou em 04/08/2026 e o prazo do IRPF fechou em 31/05/2026 — então ambas apareceram
+destacadas em vermelho (não em âmbar) tanto em `/servidor/inicio` quanto em
+`/servidor/dependentes`, com a consequência de bloqueio temporário do benefício explicada.
+Resolvida a pendência de Lucas Souza em ambas as telas (banner some, override gravado em
+`prosaude_pendencias_sistema_atendidas`, confirmado e depois limpo do `localStorage`).
+`tsc --noEmit` (2 erros pré-existentes, sem mudança) e `npm run build` limpos.
+
 ---
 
 ## 3. Módulo de Relatórios — ainda não iniciado
