@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { FileUp, Clock, ShieldAlert } from "lucide-react";
+import { FileUp, Clock, ShieldAlert, FileSearch, FileCheck2 } from "lucide-react";
 import { UploadBox } from "@/routes/servidor.requerimento.novo-plano";
 import {
   DESCRICAO_CONSEQUENCIA,
   estaVencida,
   marcarPendenciaDocumentalAtendida,
   type PendenciaDocumental,
+  type DocumentoPendenteView,
 } from "@/lib/pendencias-documentais";
 
 /**
@@ -100,6 +101,43 @@ export function SolicitacaoDocumentoBanner({
           <FileUp className="h-3.5 w-3.5" /> Incluir documento
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Status de um documento já enviado pelo servidor/associação — "em análise pela GERDAB" ou "já
+ * aprovado". Complementa `SolicitacaoDocumentoBanner` (que só mostra o que ainda está
+ * "aguardando envio"): sem isto, quem enviou nunca saberia se o documento foi aceito ou está
+ * parado esperando revisão. Quando o analista pede reenvio, este card some sozinho — uma nova
+ * solicitação em aberto (com a justificativa) passa a aparecer via `SolicitacaoDocumentoBanner`,
+ * mesmo mecanismo de sempre, sem tela/fluxo paralelo.
+ */
+export function StatusDocumentoEnviadoCard({ status }: { status: DocumentoPendenteView }) {
+  const aprovado = status.status === "aprovado";
+
+  return (
+    <div
+      className={`border rounded-xl p-4 flex items-start gap-3 ${
+        aprovado ? "bg-success/5 border-success/30" : "bg-info/5 border-info/30"
+      }`}
+    >
+      {aprovado ? (
+        <FileCheck2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
+      ) : (
+        <FileSearch className="h-4 w-4 text-info shrink-0 mt-0.5" />
+      )}
+      <div className="min-w-0">
+        <p className={`text-sm font-semibold ${aprovado ? "text-success" : "text-info"}`}>
+          {status.documento}
+          {status.beneficiarioNome && ` — ${status.beneficiarioNome}`}
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {aprovado
+            ? `Aprovado em ${new Date(status.analisadoEm!).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} pela GERDAB.`
+            : `Enviado em ${new Date(status.atendidaEm!).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} — aguardando análise da GERDAB.`}
+        </p>
+      </div>
     </div>
   );
 }

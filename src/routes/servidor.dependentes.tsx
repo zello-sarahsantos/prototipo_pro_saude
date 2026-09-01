@@ -2,8 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { dependentes, formatCurrency, servidorAtual } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { SolicitacaoDocumentoBanner } from "@/components/SolicitacaoDocumentoBanner";
-import { getPendenciasDocumentaisDoServidor } from "@/lib/pendencias-documentais";
+import { SolicitacaoDocumentoBanner, StatusDocumentoEnviadoCard } from "@/components/SolicitacaoDocumentoBanner";
+import { getPendenciasDocumentaisDoServidor, getStatusDocumentosDoServidor } from "@/lib/pendencias-documentais";
 import { Plus, User } from "lucide-react";
 
 export const Route = createFileRoute("/servidor/dependentes")({
@@ -20,6 +20,17 @@ function Dependentes() {
   // "Enviar Comprovante" (antes só um botão decorativo, sem ação nenhuma).
   const pendencias = useMemo(
     () => getPendenciasDocumentaisDoServidor(servidorAtual.matricula, "servidor"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendenciasVersion],
+  );
+
+  // Status de documentos já enviados por dependente (em análise ou aprovado) — sem isto, depois
+  // de enviar o comprovante o servidor não teria mais nenhum retorno sobre o que aconteceu.
+  const statusEnviados = useMemo(
+    () =>
+      getStatusDocumentosDoServidor(servidorAtual.matricula, "servidor").filter(
+        (s) => s.status !== "aguardando_envio",
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pendenciasVersion],
   );
@@ -54,6 +65,7 @@ function Dependentes() {
           const inactive = d.status === "inativo";
           const pending = d.status === "pendente";
           const pendencia = pendencias.find((p) => p.dependenteId === d.id);
+          const statusEnviado = statusEnviados.find((s) => s.beneficiarioId === d.id);
           return (
             <article
               key={d.id}
@@ -110,6 +122,12 @@ function Dependentes() {
                       setPendenciasVersion((v) => v + 1);
                     }}
                   />
+                </div>
+              )}
+
+              {statusEnviado && (
+                <div className="mt-3">
+                  <StatusDocumentoEnviadoCard status={statusEnviado} />
                 </div>
               )}
             </article>

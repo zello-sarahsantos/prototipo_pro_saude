@@ -9,6 +9,7 @@ const map: Record<StatusKey, string> = {
   inativo: "bg-status-inativo-bg text-status-inativo-fg",
   analise: "bg-status-analise-bg text-status-analise-fg",
   alerta: "bg-status-pendente-bg text-status-pendente-fg",
+  suspenso: "bg-status-suspenso-bg text-status-suspenso-fg",
 };
 
 export function StatusBadge({ status, label }: { status: StatusKey; label?: string }) {
