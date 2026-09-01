@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { servidoresList, formatCurrency } from "@/lib/mock-data";
+import { servidoresList, formatCurrency, type SituacaoFinanceira } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Search, Settings, ChevronDown, Download, BellRing } from "lucide-react";
+import { Search, Settings, ChevronDown, Download, BellRing, Copy, Check } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 
 export const Route = createFileRoute("/admin/servidores/")({
@@ -56,20 +56,83 @@ function AcaoMenu() {
   );
 }
 
+/** Segundo indicador da célula de Situação — situação financeira, dimensão independente do
+ *  status cadastral (ver `SituacaoFinanceira` em mock-data.ts): um servidor pode estar "Ativo
+ *  no Sistema" e, ao mesmo tempo, inadimplente com a competência atual. Texto simples (sem
+ *  pílula própria) abaixo do StatusBadge — o suficiente para diferenciar sem duplicar o
+ *  formato de badge e poluir a célula. */
+function SituacaoFinanceiraLabel({ situacao }: { situacao: SituacaoFinanceira }) {
+  const isAdimplente = situacao === "adimplente";
+  return (
+    <span className={`text-[11px] font-semibold ${isAdimplente ? "text-success" : "text-destructive"}`}>
+      {isAdimplente ? "Adimplente" : "Inadimplente"}
+    </span>
+  );
+}
+
+/** Consolida Operadora e Associação em uma única célula, respeitando o cadastro real — nunca
+ *  assume que uma associação (sobretudo ASSETRAN) tem operadora vinculada. Quando as duas
+ *  informações existem, a associação vem em destaque e a operadora como complemento; quando só
+ *  uma existe, mostra só essa; sem nenhuma das duas, mostra um traço. */
+function OperadoraAssociacaoCell({ associacao, operadora }: { associacao: string; operadora?: string }) {
+  const temAssociacao = associacao !== "—";
+
+  if (temAssociacao && operadora) {
+    return (
+      <div className="leading-tight">
+        <div className="font-medium">{associacao}</div>
+        <div className="text-xs text-muted-foreground">{operadora}</div>
+      </div>
+    );
+  }
+  if (temAssociacao) return <span className="font-medium">{associacao}</span>;
+  if (operadora) return <span className="font-medium">{operadora}</span>;
+  return <span className="text-muted-foreground">—</span>;
+}
+
+/** Nº do processo SEI com ação rápida de copiar — usado tanto para consulta no SEI quanto para
+ *  identificar o servidor sem depender da matrícula (que deixou de ser exibida na tabela). */
+function ProcessoSEICell({ numero }: { numero: string }) {
+  const [copiado, setCopiado] = useState(false);
+
+  return (
+    <div className="flex items-center gap-1.5 whitespace-nowrap">
+      <span className="font-mono text-xs">{numero}</span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(numero);
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 1500);
+        }}
+        className="text-muted-foreground hover:text-primary shrink-0"
+        aria-label="Copiar número do processo SEI"
+        title="Copiar número do processo SEI"
+      >
+        {copiado ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
 function Servidores() {
   const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroAssociacao, setFiltroAssociacao] = useState("");
-  const [filtroPlano, setFiltroPlano] = useState("");
+  const [filtroOperadora, setFiltroOperadora] = useState("");
+  const [filtroSituacaoFinanceira, setFiltroSituacaoFinanceira] = useState("");
   const [somentePendencia, setSomentePendencia] = useState(false);
 
   const filtrados = useMemo(() => {
     return servidoresList.filter((s) => {
+      const buscaNormalizada = busca.toLowerCase();
       const matchBusca =
         !busca ||
-        s.nome.toLowerCase().includes(busca.toLowerCase()) ||
-        s.matricula.includes(busca);
+        s.nome.toLowerCase().includes(buscaNormalizada) ||
+        s.matricula.includes(busca) ||
+        s.cpf.includes(busca) ||
+        s.processoSEI.toLowerCase().includes(buscaNormalizada);
       const matchStatus =
         !filtroStatus || s.status === filtroStatus;
       const matchAssociacao =
@@ -77,20 +140,30 @@ function Servidores() {
         (filtroAssociacao === "Individual"
           ? s.associacao === "—"
           : s.associacao === filtroAssociacao);
-      const matchPlano =
-        !filtroPlano || s.plano.toLowerCase().includes(filtroPlano.toLowerCase());
+      const matchOperadora =
+        !filtroOperadora || (s.operadora ?? "").toLowerCase().includes(filtroOperadora.toLowerCase());
+      const matchSituacaoFinanceira =
+        !filtroSituacaoFinanceira || s.situacaoFinanceira === filtroSituacaoFinanceira;
       const matchPendencia =
         !somentePendencia || s.status === "pendente" || s.status === "alerta";
-      return matchBusca && matchStatus && matchAssociacao && matchPlano && matchPendencia;
+      return (
+        matchBusca &&
+        matchStatus &&
+        matchAssociacao &&
+        matchOperadora &&
+        matchSituacaoFinanceira &&
+        matchPendencia
+      );
     });
-  }, [busca, filtroStatus, filtroAssociacao, filtroPlano, somentePendencia]);
+  }, [busca, filtroStatus, filtroAssociacao, filtroOperadora, filtroSituacaoFinanceira, somentePendencia]);
 
   const totalComPendencia = servidoresList.filter((s) => s.status === "pendente" || s.status === "alerta").length;
 
   const exibindo = filtrados.length;
-  const total = busca || filtroStatus || filtroAssociacao || filtroPlano || somentePendencia
-    ? exibindo
-    : TOTAL_REAL;
+  const total =
+    busca || filtroStatus || filtroAssociacao || filtroOperadora || filtroSituacaoFinanceira || somentePendencia
+      ? exibindo
+      : TOTAL_REAL;
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
@@ -119,7 +192,7 @@ function Servidores() {
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome ou matrícula"
+            placeholder="Buscar por nome, CPF ou processo SEI"
             className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-full bg-background"
           />
         </div>
@@ -133,6 +206,16 @@ function Servidores() {
           <option value="inativo">Inativos</option>
           <option value="pendente">Pendentes</option>
           <option value="alerta">Requer Atenção</option>
+          <option value="suspenso">Suspensos</option>
+        </select>
+        <select
+          value={filtroSituacaoFinanceira}
+          onChange={(e) => setFiltroSituacaoFinanceira(e.target.value)}
+          className="border border-border rounded-full px-3.5 py-2 text-sm font-medium bg-background"
+        >
+          <option value="">Todas as situações</option>
+          <option value="adimplente">Adimplente</option>
+          <option value="inadimplente">Inadimplente</option>
         </select>
         <select
           value={filtroAssociacao}
@@ -145,11 +228,11 @@ function Servidores() {
           <option value="Individual">Individual</option>
         </select>
         <select
-          value={filtroPlano}
-          onChange={(e) => setFiltroPlano(e.target.value)}
+          value={filtroOperadora}
+          onChange={(e) => setFiltroOperadora(e.target.value)}
           className="border border-border rounded-full px-3.5 py-2 text-sm font-medium bg-background"
         >
-          <option value="">Todos os planos</option>
+          <option value="">Todas as operadoras</option>
           <option value="Bradesco">Bradesco</option>
           <option value="SulAmérica">SulAmérica</option>
           <option value="Amil">Amil</option>
@@ -176,21 +259,20 @@ function Servidores() {
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="text-left px-4 py-3">Matrícula</th>
-              <th className="text-left px-4 py-3">Nome</th>
-              <th className="text-left px-4 py-3">Plano</th>
-              <th className="text-left px-4 py-3">Associação</th>
-              <th className="text-left px-4 py-3">Dep.</th>
-              <th className="text-left px-4 py-3">Valor plano</th>
-              <th className="text-left px-4 py-3">Auxílio previsto</th>
-              <th className="text-left px-4 py-3">Status</th>
-              <th className="text-right px-4 py-3">Ações</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Nº Processo SEI</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Servidor</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Operadora / Associação</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Dep.</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Valor Plano</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Auxílio Previsto</th>
+              <th className="text-left px-4 py-3 whitespace-nowrap">Situação</th>
+              <th className="text-right px-4 py-3 whitespace-nowrap">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
                   Nenhum servidor encontrado com os filtros aplicados.
                 </td>
               </tr>
@@ -201,15 +283,23 @@ function Servidores() {
                   onClick={() => navigate({ to: "/admin/servidores/$id", params: { id: s.matricula } })}
                   className="hover:bg-muted/30 cursor-pointer"
                 >
-                  <td className="px-4 py-3 font-mono text-xs">{s.matricula}</td>
-                  <td className="px-4 py-3 font-medium">{s.nome}</td>
-                  <td className="px-4 py-3">{s.plano}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{s.associacao}</td>
+                  <td className="px-4 py-3">
+                    <ProcessoSEICell numero={s.processoSEI} />
+                  </td>
+                  <td className="px-4 py-3 font-medium whitespace-nowrap">{s.nome}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <OperadoraAssociacaoCell associacao={s.associacao} operadora={s.operadora} />
+                  </td>
                   <td className="px-4 py-3">{s.dependentes}</td>
-                  <td className="px-4 py-3">{formatCurrency(s.valorPlano)}</td>
-                  <td className="px-4 py-3">{formatCurrency(s.valorAuxilio)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(s.valorPlano)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(s.valorAuxilio)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-0.5">
+                      <StatusBadge status={s.status} />
+                      {s.situacaoFinanceira && <SituacaoFinanceiraLabel situacao={s.situacaoFinanceira} />}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
                     <Link
                       to="/admin/servidores/$id"
                       params={{ id: s.matricula }}
@@ -229,7 +319,7 @@ function Servidores() {
         <div className="px-4 py-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground bg-muted/20">
           <span>
             Exibindo {Math.min(exibindo, PAGE_SIZE)} de {total} registros
-            {(busca || filtroStatus || filtroAssociacao || filtroPlano) &&
+            {(busca || filtroStatus || filtroAssociacao || filtroOperadora || filtroSituacaoFinanceira) &&
               " (filtros aplicados — base real: 847 servidores)"}
           </span>
           <div className="flex items-center gap-1">

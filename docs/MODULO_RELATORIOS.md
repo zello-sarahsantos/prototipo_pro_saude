@@ -463,6 +463,269 @@ Resolvida a pendência de Lucas Souza em ambas as telas (banner some, override g
 `prosaude_pendencias_sistema_atendidas`, confirmado e depois limpo do `localStorage`).
 `tsc --noEmit` (2 erros pré-existentes, sem mudança) e `npm run build` limpos.
 
+### 2.9 Tabela de Servidores — novas colunas, status Suspenso e situação financeira
+
+**Arquivos:** `src/routes/admin.servidores.index.tsx`, `src/lib/mock-data.ts`,
+`src/components/StatusBadge.tsx`, `src/styles.css`.
+
+- **Contexto:** evolução pontual da tabela em `/admin/servidores` (não uma tela nova) — troca
+  de colunas, novos campos e dois novos indicadores de status, preservando filtros, ações,
+  paginação mock e o clique na linha inteira (já existente) para abrir a ficha.
+- **Colunas, na ordem pedida:** Nº Processo SEI, Nome, CPF, Operadora, Associação, Dep., Valor
+  Plano, Auxílio Previsto, Status, Último Reajuste, Telefone, E-mail, Ações. **Matrícula saiu da
+  tabela visível** (não estava na lista de colunas pedida) — continua existindo nos dados e é
+  usada internamente como chave de linha, parâmetro de navegação para a ficha e na busca, só não
+  aparece mais como coluna. **"Plano" virou "Operadora"** — é o mesmo campo (`plano`, que já
+  guardava nomes de operadora: Bradesco, SulAmérica, Amil, CASSI), só renomeado no cabeçalho e no
+  filtro, sem duplicar dado.
+- **Nº Processo SEI:** número + botão de copiar (ícone, com feedback visual — vira um check
+  verde por 1,5s após copiar) via `navigator.clipboard.writeText`. O clique no botão usa
+  `stopPropagation` para não disparar a navegação da linha (mesmo tratamento já usado no link
+  "Ver").
+- **CPF e Telefone:** exibidos já formatados a partir do mock (`123.456.789-00`,
+  `(61) 98765-4321`) — os dados de exemplo já nascem mascarados, mesmo padrão de
+  `servidorAtual` usado no resto do protótipo; não foi necessário aplicar máscara em tempo de
+  render.
+- **E-mail:** truncado visualmente (`truncate` + `max-width`), com o endereço completo
+  disponível via `title` nativo do HTML (tooltip ao passar o mouse) — sem componente de tooltip
+  novo, suficiente para o caso.
+- **Status "Suspenso" (novo):** adicionado a `StatusKey` em `mock-data.ts`, com token de cor
+  próprio (`--status-suspenso-bg`/`-fg`, tom violeta) em `styles.css`, e mapeado em
+  `StatusBadge.tsx` — mesmo padrão visual dos demais badges, mas com cor que não colide com
+  nenhum status existente (verde=aprovado/ativo, âmbar=pendente/alerta, vermelho=rejeitado,
+  cinza=inativo, laranja=análise).
+- **Situação financeira (Adimplente/Inadimplente) — modelagem avaliada antes de implementar,
+  conforme pedido:** não virou um valor de `StatusKey`. É um campo próprio,
+  `SituacaoFinanceira` (`"adimplente" | "inadimplente"`), independente do status cadastral — um
+  servidor pode estar `ativo` (cadastral) e `inadimplente` (financeiro) ao mesmo tempo, exemplo
+  citado explicitamente no pedido. Exibido como um segundo selo, menor e discreto
+  (`SituacaoFinanceiraBadge`), empilhado abaixo do `StatusBadge` **dentro da mesma célula de
+  Status** — nenhuma coluna nova foi criada. Omitido quando não se aplica (ex: cadastro ainda
+  "Pendente de Validação").
+- **Filtros:** busca por nome, CPF ou nº do processo SEI (busca por matrícula continua
+  funcionando, só não é mais o texto do placeholder); filtro por Status (agora incluindo
+  "Suspensos"); novo filtro por Situação financeira (Todas/Adimplente/Inadimplente); filtro por
+  Associação (mantido); filtro por Operadora (mesmo filtro de antes, renomeado). Como Status
+  cadastral e Situação financeira são campos independentes, as combinações pedidas ("Ativo +
+  Adimplente", "Ativo + Inadimplente" etc.) já funcionam naturalmente selecionando os dois
+  filtros ao mesmo tempo — não foi necessário um seletor de combinações dedicado.
+- **Layout:** tabela com `min-w-[1500px]` dentro do container `overflow-x-auto` já existente,
+  para não comprimir colunas nem reduzir fonte — a rolagem horizontal aparece quando a tela é
+  mais estreita que isso. **Nome fica fixo (`sticky left-0`) e Ações fica fixo à direita
+  (`sticky right-0`)** durante a rolagem, com uma borda sutil marcando a transição e o fundo
+  acompanhando o hover da linha (`group-hover`), para não parecerem "grudados" sem contexto.
+- **Dado de exemplo:** um novo servidor fictício (Eduardo Nascimento) foi acrescentado só para
+  demonstrar o status "Suspenso" (combinado com "Inadimplente"); os demais já existentes
+  ganharam CPF/telefone/e-mail/reajuste coerentes e alguns receberam situação financeira
+  (adimplente ou inadimplente) para demonstrar a coexistência com o status cadastral.
+
+**Testado manualmente no navegador (1400×900, para ver a tabela sem rolagem forçada):** todas as
+13 colunas conferidas na ordem pedida; botão de copiar do processo SEI clicado (não navega para
+a ficha, confirmado via URL inalterada); rolagem horizontal testada via `scrollLeft` — Nome e
+Ações permanecem visíveis e fixos enquanto CPF/Operadora/Associação passam por baixo; badge de
+Situação Financeira visível abaixo do StatusBadge para os servidores com o dado preenchido,
+incluindo "Suspenso + Inadimplente" (Eduardo Nascimento); filtro combinado "Ativos" +
+"Inadimplente" retornou exatamente 1 resultado (Maria Oliveira), confirmando que os dois campos
+filtram de forma independente e combinável. `tsc --noEmit` (2 erros pré-existentes, sem mudança)
+e `npm run build` limpos.
+
+### 2.10 Simplificação da tabela de Servidores + nova aba "Documentação" na ficha
+
+O usuário pediu para separar em dois pedidos bem distintos, a partir do feedback sobre a 2.9: a
+tabela de servidores ficou "excessivamente carregada" depois de tantas colunas novas, e faltava
+um lugar para consultar os documentos do titular e de cada dependente sem misturá-los.
+
+**Arquivos:** `src/routes/admin.servidores.index.tsx`, `src/routes/admin.servidores.$id.tsx`,
+`src/lib/mock-data.ts`, `src/routes/associacao.gerenciamento.index.tsx`.
+
+#### Tabela de Servidores — simplificada de 13 para 8 colunas
+
+- **Colunas finais:** Nº Processo SEI, Servidor, Operadora / Associação, Dep., Valor Plano,
+  Auxílio Previsto, Situação, Ações. CPF, Telefone, E-mail e Último Reajuste **saíram da tabela**
+  (continuam nos dados e na ficha detalhada) — a busca continua funcionando por nome, CPF e
+  processo SEI mesmo sem essas colunas visíveis, sem nenhuma mudança na lógica de filtro.
+- **Operadora e Associação consolidadas em uma única célula** (`OperadoraAssociacaoCell`), sem
+  assumir uma relação que não existe no cadastro: quando as duas informações existem, a
+  associação vem em destaque e a operadora como complemento (ex: Maria Oliveira — "Assefaz" +
+  "SulAmérica"); quando só uma existe, mostra só essa (Carlos Pereira, ASSETRAN, aparece só
+  "Assetran" — nenhuma operadora foi inventada). O campo `plano` de `ServidorListItem` virou
+  `operadora?: string` (opcional), refletindo que nem todo cadastro tem essa informação —
+  ajustado também em `associacao.gerenciamento.index.tsx` (único outro consumidor do campo, com
+  fallback `"—"` quando ausente).
+- **Situação** mais compacta: o selo de situação financeira deixou de ser uma segunda pílula
+  (como na 2.9) e virou um texto simples colorido abaixo do `StatusBadge` — mesma informação,
+  menos "badge" ocupando espaço.
+- **Sem rolagem horizontal forçada:** removidos o `min-w` artificial e as colunas fixas
+  (sticky) da 2.9, que não fazem mais sentido com só 8 colunas — a tabela cabe inteira em
+  telas ≥ 1440px aproximadamente; em telas mais estreitas, o `overflow-x-auto` já existente
+  continua servindo de rede de segurança.
+- **Dado de exemplo ajustado:** Carlos Pereira (ASSETRAN) ficou sem operadora vinculada; Roberto
+  Santos (ASSETRAN) manteve a operadora (CASSI), para demonstrar que a relação pode existir às
+  vezes, não é regra fixa da associação.
+
+#### Nova aba "Documentação" na ficha do servidor
+
+- Adicionada entre "Requerimentos" e "Cálculo do Reembolso" na tira de abas de
+  `admin.servidores.$id.tsx`.
+- **Separação clara por beneficiário:** um bloco expansível (`BlocoDocumentosBeneficiario`) por
+  pessoa — um para o Titular (aberto por padrão) e um para cada Dependente (fechado por padrão,
+  mostrando nome, parentesco e a contagem de documentos no cabeçalho) — nunca uma lista única
+  misturando documentos de pessoas diferentes do grupo familiar.
+- **Cada documento** (`DocumentoRow`) mostra nome/tipo, data de envio e competência (quando
+  aplicável), com as ações "Visualizar" (só quando o formato permite — reaproveita o componente
+  `DocPreview` já existente, usado também na fila de requerimentos, dentro de um modal) e
+  "Baixar" (mock — sem arquivo real por trás, dá um retorno visual rápido de "Baixado", mesmo
+  espírito do botão de copiar da listagem de servidores).
+- **Estado vazio:** quando um beneficiário não tem nenhum documento, mostra "Nenhum documento
+  disponível para este beneficiário." em vez de uma lista em branco.
+- **Novo modelo de dados** em `mock-data.ts`: `DocumentoBeneficiario` +
+  `documentosServidor: DocumentoBeneficiario[]`, com `beneficiarioId: "titular" | <id do
+  dependente>`. Dados de exemplo cobrem os cenários pedidos: titular com múltiplos documentos
+  (incluindo um não visualizável, só "Baixar" — `.docx`), dependentes com documentos diferentes
+  entre si, e um dependente (Marcos Lima) propositalmente sem nenhum documento.
+- Nenhuma ação de exclusão ou alteração foi criada nessa aba — só consulta (visualizar/baixar),
+  como pedido.
+
+**Testado manualmente no navegador:** tabela de servidores conferida em 1600px (sem rolagem
+horizontal) e 1300px (com rolagem, aceitável em tela mais estreita); célula
+Operadora/Associação conferida nos 3 casos (só operadora, só associação, ambas); aba
+"Documentação" navegada — bloco do Titular aberto por padrão com 4 documentos, "Termo de
+Responsabilidade" mostrando só "Baixar" (sem "Visualizar"); "Visualizar" no RG abrindo o modal
+com `DocPreview` corretamente; expandido o bloco de Marcos Lima confirmando a mensagem de estado
+vazio. `tsc --noEmit` (2 erros pré-existentes, sem mudança) e `npm run build` limpos.
+
+### 2.11 Integração Documentação ↔ Histórico — rastreabilidade de solicitações de documento
+
+O usuário pediu para a aba "Documentação" mostrar não só os documentos já recebidos, mas também
+os **pendentes** e o estado de suas solicitações — com uma distinção conceitual explícita entre
+"pendência identificada" (o fato de faltar um documento, que pode ser detectado pelo sistema) e
+"documento solicitado" (o pedido em si, automático ou manual), e integração completa com a aba
+Histórico (toda solicitação vira um evento) sem nunca sobrescrever ocorrências anteriores.
+
+**Arquivos:** `src/lib/pendencias-documentais.ts`, `src/lib/prosaude-storage.ts`,
+`src/routes/admin.servidores.$id.tsx`.
+
+- **`ObservacaoGerdab` ganhou `beneficiarioId`/`beneficiarioNome`** — antes uma "Solicitação de
+  documento" só sabia o destino (servidor/associação), não **de quem** era o documento dentro do
+  grupo familiar. Agora toda solicitação (manual ou automática) sabe se é do titular ou de qual
+  dependente.
+- **Notificação automática do sistema (`garantirSolicitacoesAutomaticas`):** ao abrir a aba
+  Documentação, para cada pendência de sistema ainda em aberto (comprovante de matrícula, IRPF
+  de enteado) que ainda não tenha nenhuma solicitação registrada, é criada uma solicitação com
+  `autor: "Sistema"`, `cargo: "Automático"` — representando a notificação automática enviada ao
+  responsável. Idempotente: não duplica em re-renders, nem recria se a pendência já foi
+  atendida.
+- **`getStatusDocumentosDoServidor`** (nova): agrupa todas as solicitações de um servidor por
+  documento+beneficiário, sem nunca descartar ocorrências — expõe a solicitação **mais recente**
+  (quem pediu, quando) e o **total de vezes** que aquele documento foi pedido, além do status
+  atual (`aguardando_envio` ou `recebido`).
+  - **Aba Documentação:** cada documento pendente aparece com o rótulo "Aguardando envio", a
+    data/hora e autor da última solicitação (com "(automático)" quando foi o Sistema), a
+    contagem "N solicitações realizadas" quando há mais de uma, e o botão **"Solicitar
+    novamente"** — que reaproveita a mesma função `addObservacaoGerdab` já usada pela solicitação
+    manual (nenhum fluxo paralelo), criando uma nova entrada em nome do analista logado
+    (`getAdminRole()`), sem apagar as anteriores.
+  - Quando o documento é enviado (via `SolicitacaoDocumentoBanner`, já existente no Portal do
+    Servidor / Área da Associação), `marcarPendenciaDocumentalAtendida` agora também fecha a
+    solicitação em aberto mais recente daquele documento+beneficiário — a aba Documentação passa
+    a mostrar **"Recebido / Disponível"** com a data de recebimento, mantendo visível o total de
+    solicitações já feitas (nada é removido do histórico).
+- **Aba Observações** ganhou um seletor de **Beneficiário** (Titular ou cada Dependente) ao
+  criar uma "Solicitação de documento" — antes só existia o seletor de destino
+  (servidor/associação); a listagem de observações também passou a exibir o nome do
+  beneficiário junto ao documento solicitado.
+- **Aba Histórico** passou a incluir um evento para cada solicitação de documento já feita
+  (`Solicitado {documento} para {beneficiário} — realizado por {autor}.`, com data e hora) —
+  cada nova solicitação do mesmo documento gera uma linha nova, nenhuma sobrescreve a anterior.
+  A contagem da aba (badge) passou a somar também essas solicitações.
+
+**Testado manualmente no navegador:** aberta a aba Documentação de João da Silva — Lucas Souza e
+Marcos Lima já apareceram com badge "1 pendente" assim que a notificação automática foi criada
+(sem nenhuma ação manual); clicado "Solicitar novamente" em Lucas Souza — passou a mostrar "2
+solicitações realizadas" e "Realizado por Rebeca"; conferido na aba Histórico que **as duas**
+solicitações (a automática do Sistema e a manual da Rebeca) aparecem como eventos separados, sem
+nenhuma sobrescrever a outra; resolvida a pendência de Lucas Souza via "Enviar Comprovante" em
+`/servidor/dependentes` — ao voltar para a ficha GERDAB, o documento passou a mostrar "Recebido /
+Disponível" com a data de recebimento, ainda exibindo "2 solicitações realizadas". Dados de teste
+limpos do `localStorage` ao final. `tsc --noEmit` (2 erros pré-existentes, sem mudança) e
+`npm run build` limpos.
+
+### 2.12 Validação do documento enviado — Aprovar / Solicitar reenvio (com justificativa)
+
+O usuário pediu para o documento **recebido** passar por uma validação, no mesmo espírito já
+usado para requerimentos/comprovantes no Módulo de Pagamento: o analista/gerência abre o
+documento e decide entre aprovar ou solicitar reenvio (em caso de falha na leitura), sempre com
+justificativa nesse segundo caso — e que o servidor/associação também enxergue esse resultado.
+
+**Arquivos:** `src/lib/prosaude-storage.ts`, `src/lib/pendencias-documentais.ts`,
+`src/components/SolicitacaoDocumentoBanner.tsx`, `src/routes/admin.servidores.$id.tsx`,
+`src/routes/servidor.inicio.tsx`, `src/routes/servidor.dependentes.tsx`,
+`src/routes/associacao.gerenciamento.$id.tsx`.
+
+- **`ObservacaoGerdab` ganhou o ciclo de análise:** `analiseStatus` (`"aguardando_analise" |
+  "aprovado" | "reenvio_solicitado"`), `analisadoPor`, `analisadoCargo`, `analisadoEm` e
+  `justificativaReenvio`. Ao marcar um documento como enviado (`marcarObservacaoAtendida`), ele
+  entra automaticamente na fila de análise (`aguardando_analise`) — não fica "pronto" sozinho.
+- **`DocumentoPendenteView` ganhou um terceiro estado** (`aguardando_envio` → `aguardando_analise`
+  → `aprovado`), calculado a partir da solicitação mais recente do agrupamento documento+
+  beneficiário — sem precisar de nenhum campo novo de "estado atual" guardado à parte.
+- **`aprovarDocumento` / `solicitarReenvioDocumento`** (novas, em `pendencias-documentais.ts`):
+  - Aprovar só marca `analiseStatus: "aprovado"` — fim do ciclo.
+  - Solicitar reenvio marca o registro atual como `reenvio_solicitado` (com a justificativa,
+    permanece intacto no Histórico) **e cria uma nova solicitação em aberto** com a mesma
+    justificativa em `texto`/`detalhe` — reaproveita exatamente o mecanismo de "Solicitar
+    novamente" já existente (nenhum fluxo paralelo), então o documento volta a aparecer como
+    pendente para quem vai reenviar, agora com o motivo visível.
+- **Aba Documentação (GERDAB):** documentos "Recebido" (rótulo da 2.11) viraram "Aguardando
+  análise" — com o botão **"Analisar documento"**, que abre um modal reaproveitando `DocPreview`
+  (mesmo componente da fila de requerimentos) com dois botões: **Aprovar** e **Solicitar
+  reenvio** (este último revela um campo de justificativa obrigatório antes de confirmar).
+  Documentos aprovados mostram "Aprovado em DD/MM, HH:mm · por Fulano", sem ação — fim do ciclo.
+- **Portal do Servidor / Área da Associação** — novo componente `StatusDocumentoEnviadoCard`,
+  exibido ao lado do banner de pendência já existente: mostra "Aguardando análise da GERDAB"
+  logo após o envio, e "Aprovado ... pela GERDAB" quando aceito. Quando um reenvio é solicitado,
+  este card some sozinho e o banner de pendência de sempre reaparece, agora com a justificativa
+  do analista visível (reaproveitando o campo `detalhe` que já existia).
+- **Histórico** ganhou um evento por decisão de análise — `"Aprovou o documento X de Y —
+  realizado por Z."` ou `"Solicitou reenvio de X para Y (justificativa) — realizado por Z."` —
+  além do evento original da solicitação (que continua intacto, nunca é substituído).
+
+**Testado manualmente no navegador, ciclo completo:** Lucas Souza enviou o comprovante
+("Aguardando análise" no lado GERDAB) → analista clicou "Analisar documento" → "Solicitar
+reenvio" com justificativa ("Falha na leitura...") → documento voltou a "Aguardando envio" com
+a justificativa visível, "2 solicitações realizadas"; do lado do servidor, o banner de pendência
+reapareceu mostrando a mesma justificativa. Em seguida, Marcos Lima enviou seu documento →
+GERDAB abriu "Analisar documento" → **Aprovar** → documento passou a "Aprovado em DD/MM, HH:mm ·
+por Rebeca" sem ação disponível; do lado do servidor, o card mudou para "Aprovado ... pela
+GERDAB" e o botão do card voltou ao normal ("Solicitar exclusão"). Badge de Histórico
+incrementou a cada solicitação e a cada decisão de análise, sem nenhuma sobrescrever a anterior.
+Dados de teste limpos do `localStorage` ao final. `tsc --noEmit` (2 erros pré-existentes, sem
+mudança) e `npm run build` limpos.
+
+### 2.13 Exemplo mockado permanente — documento já enviado, pronto para Aprovar/Solicitar reenvio
+
+O usuário pediu um exemplo já pronto no protótipo, sem precisar passar primeiro pelo Portal do
+Servidor para simular o envio — para demonstrar o ciclo de validação (2.12) imediatamente.
+
+**Arquivo:** `src/lib/pendencias-documentais.ts` (`garantirExemploDocumentoEmAnalise`), chamada
+junto de `garantirSolicitacoesAutomaticas` no `useEffect` de `TabDocumentacao`.
+
+- Ao abrir a aba Documentação pela primeira vez (ou depois de um `localStorage` limpo), **Pedro
+  da Silva** (o único dependente sem nenhuma outra pendência de exemplo — Lucas Souza e Marcos
+  Lima já ilustram a 2.11/2.12) passa a ter, automaticamente, um documento "Atestado de
+  Frequência Escolar" já enviado e **Aguardando análise**, como se um analista tivesse pedido
+  manualmente e o servidor já tivesse respondido.
+- Idempotente (checa um id fixo, `obs-exemplo-analise-d2`, antes de criar) — reaparece sozinho
+  mesmo depois de limpar o `localStorage`, sem duplicar em re-renders.
+- Basta abrir a ficha de João da Silva → aba Documentação → Pedro da Silva → "Analisar
+  documento" para já testar **Aprovar** ou **Solicitar reenvio** sem nenhum passo manual antes.
+
+**Testado manualmente no navegador (localStorage limpo):** aba Documentação aberta do zero —
+Pedro da Silva já apareceu com badge "1 P/ Analisar"; expandido, mostrou "Atestado de Frequência
+Escolar — Aguardando análise"; "Analisar documento" abriu o modal com preview e os botões
+Aprovar/Solicitar reenvio prontos para uso. `tsc --noEmit` (2 erros pré-existentes, sem mudança)
+e `npm run build` limpos.
+
 ---
 
 ## 3. Módulo de Relatórios — ainda não iniciado

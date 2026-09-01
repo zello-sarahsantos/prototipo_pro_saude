@@ -1,8 +1,11 @@
 import { dependentes, servidorAtual, type Dependente } from "./mock-data";
 import {
   loadObservacoesGerdab,
+  addObservacaoGerdab,
   marcarObservacaoAtendida,
+  registrarAnaliseObservacao,
   type ObservacaoDestino,
+  type ObservacaoGerdab,
 } from "./prosaude-storage";
 
 /**
@@ -178,10 +181,23 @@ export function marcarPendenciaSistemaAtendida(id: string) {
 
 /** Marca a pendência como atendida — funciona tanto para pendências de origem "sistema"
  *  (override local sobre o mock) quanto "analista" (usa `marcarObservacaoAtendida`, já
- *  persistido de verdade em `ObservacaoGerdab`). */
+ *  persistido de verdade em `ObservacaoGerdab`). Para pendências de sistema, também fecha a
+ *  solicitação (real ou automática) mais recente daquele documento+beneficiário — mantém a aba
+ *  Documentação e a trilha de solicitações em Observações/Histórico sincronizadas, já que são
+ *  dois registros diferentes (mock estático vs. `ObservacaoGerdab`) para a mesma pendência. */
 export function marcarPendenciaDocumentalAtendida(pendencia: PendenciaDocumental) {
   if (pendencia.origem === "sistema") {
     marcarPendenciaSistemaAtendida(pendencia.id);
+    const solicitacaoAberta = loadObservacoesGerdab()
+      .filter(
+        (o) =>
+          o.tipo === "solicitacao_documento" &&
+          o.beneficiarioId === pendencia.dependenteId &&
+          o.documento === pendencia.documento &&
+          !o.atendidaEm,
+      )
+      .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
+    if (solicitacaoAberta) marcarObservacaoAtendida(solicitacaoAberta.id);
   } else {
     marcarObservacaoAtendida(pendencia.id);
   }
@@ -242,6 +258,8 @@ export function getPendenciasDocumentaisDoServidor(
     .map((o) => ({
       id: o.id,
       servidorMatricula,
+      dependenteId: o.beneficiarioId && o.beneficiarioId !== "titular" ? o.beneficiarioId : undefined,
+      dependenteNome: o.beneficiarioId && o.beneficiarioId !== "titular" ? o.beneficiarioNome : undefined,
       tipo: "outro" as const,
       origem: "analista" as const,
       documento: o.documento ?? "Documento solicitado",
@@ -255,4 +273,203 @@ export function getPendenciasDocumentaisDoServidor(
     }));
 
   return [...deSistema, ...deAnalista];
+}
+
+/**
+ * Garante que toda pendência de sistema hoje em aberto tenha ao menos uma solicitação
+ * registrada em `ObservacaoGerdab`, atribuída a "Sistema" — representa a notificação automática
+ * enviada ao responsável na primeira vez que a pendência foi identificada. Idempotente: não
+ * duplica se já existir alguma solicitação (automática ou de um analista) para aquele
+ * documento+beneficiário, nem recria se a pendência já foi atendida. Chamar ao abrir a aba
+ * Documentação — é o que alimenta, ali, o "Realizado por Sistema" e a contagem de solicitações
+ * mesmo antes de qualquer analista ter agido.
+ */
+export function garantirSolicitacoesAutomaticas(servidorMatricula: string) {
+  if (typeof window === "undefined") return;
+  const destinoSistema: ObservacaoDestino = servidorAtual.associacao !== "—" ? "associacao" : "servidor";
+  const atendidasSistema = carregarPendenciasSistemaAtendidas();
+  const existentes = loadObservacoesGerdab();
+
+  dependentes
+    .filter((d) => d.pendenciaTipo)
+    .forEach((d) => {
+      const tipo = d.pendenciaTipo as Exclude<TipoPendenciaDocumento, "outro">;
+      const regra = REGRAS[tipo];
+      if (atendidasSistema.includes(idPendenciaSistema(d.id, tipo))) return;
+      const jaTemSolicitacao = existentes.some(
+        (o) => o.tipo === "solicitacao_documento" && o.beneficiarioId === d.id && o.documento === regra.label,
+      );
+      if (jaTemSolicitacao) return;
+      addObservacaoGerdab({
+        id: `obs-auto-${d.id}-${tipo}`,
+        servidorMatricula,
+        beneficiarioId: d.id,
+        beneficiarioNome: d.nome,
+        destino: destinoSistema,
+        associacao: servidorAtual.associacao !== "—" ? servidorAtual.associacao : undefined,
+        tipo: "solicitacao_documento",
+        documento: regra.label,
+        autor: "Sistema",
+        cargo: "Automático",
+        texto: "Notificação automática enviada ao responsável pela pendência identificada pelo sistema.",
+        criadoEm: new Date().toISOString(),
+      });
+    });
+}
+
+export type StatusDocumentoPendente = "aguardando_envio" | "aguardando_analise" | "aprovado";
+
+export interface DocumentoPendenteView {
+  id: string;
+  servidorMatricula: string;
+  documento: string;
+  beneficiarioId: string;
+  beneficiarioNome: string;
+  destino: ObservacaoDestino;
+  status: StatusDocumentoPendente;
+  ultimaSolicitacao: { criadoEm: string; autor: string; cargo: string };
+  totalSolicitacoes: number;
+  /** Preenchido quando o documento já foi enviado (status "aguardando_analise" ou "aprovado"). */
+  atendidaEm?: string;
+  /** Texto livre da solicitação mais recente — quando esta solicitação nasceu de um pedido de
+   *  reenvio, é aqui que a justificativa do analista aparece para quem vai reenviar. */
+  detalhe?: string;
+  analisadoPor?: string;
+  analisadoEm?: string;
+}
+
+/**
+ * Visão consolidada, por documento+beneficiário, de todas as solicitações já feitas (sistema ou
+ * analista) — usada pela aba Documentação (GERDAB) e pelos banners de status no Portal do
+ * Servidor / Área da Associação, para mostrar: a solicitação mais recente (quem pediu, quando),
+ * o total de vezes que foi pedido, e o estado atual (aguardando envio, aguardando análise ou
+ * aprovado) — sem nunca sobrescrever ocorrências anteriores (elas continuam intactas em
+ * `ObservacaoGerdab`, só agrupadas aqui para exibição). Quando um reenvio é solicitado, uma
+ * nova solicitação (com a justificativa em `detalhe`) passa a ser a mais recente — o registro
+ * anterior, já analisado, permanece intacto no Histórico/Observações, só não é mais "o estado
+ * atual" deste agrupamento.
+ */
+export function getStatusDocumentosDoServidor(
+  servidorMatricula: string,
+  destino?: ObservacaoDestino,
+): DocumentoPendenteView[] {
+  const todas = loadObservacoesGerdab().filter(
+    (o): o is ObservacaoGerdab & { beneficiarioId: string; documento: string } =>
+      o.tipo === "solicitacao_documento" &&
+      o.servidorMatricula === servidorMatricula &&
+      (!destino || o.destino === destino) &&
+      !!o.beneficiarioId &&
+      !!o.documento,
+  );
+
+  const porChave = new Map<string, typeof todas>();
+  todas.forEach((o) => {
+    const chave = `${o.beneficiarioId}::${o.documento}`;
+    porChave.set(chave, [...(porChave.get(chave) ?? []), o]);
+  });
+
+  return [...porChave.values()].map((lista) => {
+    const ordenada = [...lista].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+    const maisRecente = ordenada[0];
+    let status: StatusDocumentoPendente = "aguardando_envio";
+    if (maisRecente.atendidaEm) {
+      status = maisRecente.analiseStatus === "aprovado" ? "aprovado" : "aguardando_analise";
+    }
+    return {
+      id: maisRecente.id,
+      servidorMatricula: maisRecente.servidorMatricula,
+      documento: maisRecente.documento,
+      beneficiarioId: maisRecente.beneficiarioId,
+      beneficiarioNome: maisRecente.beneficiarioNome ?? "",
+      destino: maisRecente.destino,
+      status,
+      atendidaEm: maisRecente.atendidaEm,
+      detalhe: maisRecente.texto || undefined,
+      analisadoPor: maisRecente.analisadoPor,
+      analisadoEm: maisRecente.analisadoEm,
+      ultimaSolicitacao: {
+        criadoEm: maisRecente.criadoEm,
+        autor: maisRecente.autor,
+        cargo: maisRecente.cargo,
+      },
+      totalSolicitacoes: ordenada.length,
+    };
+  });
+}
+
+/** Aprova o documento enviado — encerra o ciclo de validação deste envio. */
+export function aprovarDocumento(pendencia: DocumentoPendenteView, analisadoPor: string, analisadoCargo: string) {
+  registrarAnaliseObservacao(pendencia.id, { analiseStatus: "aprovado", analisadoPor, analisadoCargo });
+}
+
+/**
+ * Solicita o reenvio de um documento já enviado (ex.: falha na leitura) — sempre com
+ * justificativa, mostrada a quem enviou. O registro atual é marcado como
+ * "reenvio_solicitado" (permanece intacto, com a justificativa, no Histórico/Observações) e uma
+ * nova solicitação em aberto é criada com a mesma justificativa em `texto`/`detalhe` — reaproveita
+ * o mesmo mecanismo de "Solicitar novamente" já existente, então o servidor/associação vê o pedido
+ * de novo, com o motivo, sem que nenhuma ocorrência anterior seja apagada ou sobrescrita.
+ */
+export function solicitarReenvioDocumento(
+  pendencia: DocumentoPendenteView,
+  justificativa: string,
+  analisadoPor: string,
+  analisadoCargo: string,
+) {
+  registrarAnaliseObservacao(pendencia.id, {
+    analiseStatus: "reenvio_solicitado",
+    analisadoPor,
+    analisadoCargo,
+    justificativaReenvio: justificativa,
+  });
+  addObservacaoGerdab({
+    id: `obs-${Date.now()}`,
+    servidorMatricula: pendencia.servidorMatricula,
+    beneficiarioId: pendencia.beneficiarioId,
+    beneficiarioNome: pendencia.beneficiarioNome,
+    destino: pendencia.destino,
+    associacao: servidorAtual.associacao !== "—" ? servidorAtual.associacao : undefined,
+    tipo: "solicitacao_documento",
+    documento: pendencia.documento,
+    autor: analisadoPor,
+    cargo: analisadoCargo,
+    texto: `Reenvio solicitado: ${justificativa}`,
+    criadoEm: new Date().toISOString(),
+  });
+}
+
+/**
+ * Semeia, uma única vez (idempotente — checa o id fixo antes de criar), um exemplo já em
+ * "aguardando análise" — um documento que o servidor já enviou em resposta a um pedido manual do
+ * analista, pronto para o ciclo de Aprovar/Solicitar reenvio ser demonstrado sem precisar passar
+ * primeiro pelo Portal do Servidor. Usa Pedro da Silva (dependente sem nenhuma outra pendência
+ * hoje) para não se misturar com os exemplos de pendência automática (Lucas Souza, Marcos Lima).
+ * Chamar junto de `garantirSolicitacoesAutomaticas` ao abrir a aba Documentação.
+ */
+export function garantirExemploDocumentoEmAnalise(servidorMatricula: string) {
+  if (typeof window === "undefined") return;
+  const ID_EXEMPLO = "obs-exemplo-analise-d2";
+  if (loadObservacoesGerdab().some((o) => o.id === ID_EXEMPLO)) return;
+
+  const dependente = dependentes.find((d) => d.id === "d2");
+  if (!dependente) return;
+
+  const destinoSistema: ObservacaoDestino = servidorAtual.associacao !== "—" ? "associacao" : "servidor";
+  const agora = Date.now();
+  addObservacaoGerdab({
+    id: ID_EXEMPLO,
+    servidorMatricula,
+    beneficiarioId: dependente.id,
+    beneficiarioNome: dependente.nome,
+    destino: destinoSistema,
+    associacao: servidorAtual.associacao !== "—" ? servidorAtual.associacao : undefined,
+    tipo: "solicitacao_documento",
+    documento: "Atestado de Frequência Escolar",
+    autor: "Rebeca",
+    cargo: "Analista GERDAB",
+    texto: "Necessário para renovação do plano escolar do dependente.",
+    criadoEm: new Date(agora - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    atendidaEm: new Date(agora - 3 * 60 * 60 * 1000).toISOString(),
+    analiseStatus: "aguardando_analise",
+  });
 }

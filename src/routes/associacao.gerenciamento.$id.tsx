@@ -2,8 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { servidorAtual, dependentes, formatCurrency, type StatusKey } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { SolicitacaoDocumentoBanner } from "@/components/SolicitacaoDocumentoBanner";
-import { getPendenciasDocumentaisDoServidor, type PendenciaDocumental } from "@/lib/pendencias-documentais";
+import { SolicitacaoDocumentoBanner, StatusDocumentoEnviadoCard } from "@/components/SolicitacaoDocumentoBanner";
+import {
+  getPendenciasDocumentaisDoServidor,
+  getStatusDocumentosDoServidor,
+  type PendenciaDocumental,
+  type DocumentoPendenteView,
+} from "@/lib/pendencias-documentais";
 import { ArrowLeft, FilePlus, UserMinus, UserPlus, X } from "lucide-react";
 
 export const Route = createFileRoute("/associacao/gerenciamento/$id")({
@@ -68,6 +73,17 @@ function DetalheBeneficiarioAssetran() {
     [solicitacoesVersion],
   );
 
+  // Documentos já enviados pela associação, em análise ou já aprovados pela GERDAB — sem isto,
+  // depois de enviar o aviso simplesmente sumia, sem retorno nenhum sobre o resultado.
+  const statusDocumentosEnviados = useMemo(
+    () =>
+      getStatusDocumentosDoServidor(servidorAtual.matricula, "associacao").filter(
+        (s) => s.status !== "aguardando_envio",
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [solicitacoesVersion],
+  );
+
   const badgePorAba: Record<(typeof tabs)[number], number> = {
     Dados: (requerimentosPendentes > 0 ? 1 : 0) + pendenciasDocumento.length,
     Dependentes: dependentesComAlerta,
@@ -123,6 +139,7 @@ function DetalheBeneficiarioAssetran() {
       {tab === "Dados" && (
         <TabDados
           pendenciasDocumento={pendenciasDocumento}
+          statusDocumentosEnviados={statusDocumentosEnviados}
           onDocumentoEnviado={() => setSolicitacoesVersion((v) => v + 1)}
         />
       )}
@@ -134,9 +151,11 @@ function DetalheBeneficiarioAssetran() {
 
 function TabDados({
   pendenciasDocumento,
+  statusDocumentosEnviados,
   onDocumentoEnviado,
 }: {
   pendenciasDocumento: PendenciaDocumental[];
+  statusDocumentosEnviados: DocumentoPendenteView[];
   onDocumentoEnviado: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
@@ -161,6 +180,9 @@ function TabDados({
     <div className="space-y-4">
       {pendenciasDocumento.map((p) => (
         <SolicitacaoDocumentoBanner key={p.id} pendencia={p} onEnviado={onDocumentoEnviado} />
+      ))}
+      {statusDocumentosEnviados.map((s) => (
+        <StatusDocumentoEnviadoCard key={s.id} status={s} />
       ))}
 
       <div className="flex justify-end">

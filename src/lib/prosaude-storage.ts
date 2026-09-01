@@ -282,9 +282,23 @@ export type ObservacaoDestino = "servidor" | "associacao";
  *  não só uma nota informativa. */
 export type ObservacaoTipo = "observacao" | "solicitacao_documento";
 
+/** Estado da análise de um documento já enviado — mesmo espírito de validação já usado nos
+ *  requerimentos/comprovantes (`AcaoComprovante` no Módulo de Pagamento), simplificado para
+ *  este fluxo: "aguardando_analise" assim que o documento chega, "aprovado" quando o
+ *  analista/gerência aceita, "reenvio_solicitado" quando há falha na leitura/documento
+ *  inválido — sempre com justificativa. */
+export type AnaliseDocumentoStatus = "aguardando_analise" | "aprovado" | "reenvio_solicitado";
+
 export type ObservacaoGerdab = {
   id: string;
   servidorMatricula: string;
+  /** A quem pertence o documento pedido — `"titular"` ou o `id` de um `Dependente`. Só
+   *  preenchido em `tipo: "solicitacao_documento"`; permite mostrar, na aba Documentação, de
+   *  quem é cada pendência sem misturar beneficiários diferentes do grupo familiar. */
+  beneficiarioId?: string;
+  /** Nome do beneficiário, denormalizado para exibição sem precisar re-resolver `beneficiarioId`
+   *  contra `dependentes`/`servidorAtual` em todo lugar que lista solicitações. */
+  beneficiarioNome?: string;
   destino: ObservacaoDestino;
   associacao?: string;
   tipo: ObservacaoTipo;
@@ -297,6 +311,15 @@ export type ObservacaoGerdab = {
    *  pedido — a partir daí a solicitação some dos banners de pendência (Portal do Servidor /
    *  Área da Associação), mas continua existindo no histórico de Observações, agora "atendida". */
   atendidaEm?: string;
+  /** A partir daqui, campos da validação do documento já enviado — só fazem sentido depois de
+   *  `atendidaEm` preenchido. */
+  analiseStatus?: AnaliseDocumentoStatus;
+  analisadoPor?: string;
+  analisadoCargo?: string;
+  analisadoEm?: string;
+  /** Obrigatória quando `analiseStatus === "reenvio_solicitado"` — motivo apresentado a quem
+   *  enviou (servidor ou associação), ex.: falha na leitura do documento. */
+  justificativaReenvio?: string;
 };
 
 export function loadObservacoesGerdab(): ObservacaoGerdab[] {
@@ -336,13 +359,54 @@ export function getSolicitacoesDocumentoPendentes(
   );
 }
 
+/** Marca que o documento foi enviado — a partir daqui ele entra na fila de análise do
+ *  analista/gerência (`analiseStatus: "aguardando_analise"`), não fica "pronto" sozinho. */
 export function marcarObservacaoAtendida(id: string) {
   if (typeof window === "undefined") return;
   const atuais = loadObservacoesGerdab();
   localStorage.setItem(
     PROSAUDE_STORAGE_KEYS.observacoesGerdab,
     JSON.stringify(
-      atuais.map((o) => (o.id === id ? { ...o, atendidaEm: new Date().toISOString() } : o)),
+      atuais.map((o) =>
+        o.id === id
+          ? { ...o, atendidaEm: new Date().toISOString(), analiseStatus: "aguardando_analise" as const }
+          : o,
+      ),
+    ),
+  );
+}
+
+/** Registra a decisão do analista/gerência sobre um documento já enviado — "aprovado" encerra o
+ *  ciclo; "reenvio_solicitado" exige justificativa (mostrada a quem enviou) e é sempre
+ *  acompanhado, por quem chama esta função, da criação de uma nova solicitação em aberto (ver
+ *  `pendencias-documentais.ts`) — o registro atual nunca é apagado nem perde a justificativa,
+ *  só deixa de ser "a pendência atual" quando a nova solicitação é criada. */
+export function registrarAnaliseObservacao(
+  id: string,
+  analise: {
+    analiseStatus: "aprovado" | "reenvio_solicitado";
+    analisadoPor: string;
+    analisadoCargo: string;
+    justificativaReenvio?: string;
+  },
+) {
+  if (typeof window === "undefined") return;
+  const atuais = loadObservacoesGerdab();
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.observacoesGerdab,
+    JSON.stringify(
+      atuais.map((o) =>
+        o.id === id
+          ? {
+              ...o,
+              analiseStatus: analise.analiseStatus,
+              analisadoPor: analise.analisadoPor,
+              analisadoCargo: analise.analisadoCargo,
+              analisadoEm: new Date().toISOString(),
+              justificativaReenvio: analise.justificativaReenvio,
+            }
+          : o,
+      ),
     ),
   );
 }

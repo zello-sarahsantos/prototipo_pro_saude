@@ -50,6 +50,8 @@
   --color-status-inativo-fg: var(--status-inativo-fg);
   --color-status-analise-bg: var(--status-analise-bg);
   --color-status-analise-fg: var(--status-analise-fg);
+  --color-status-suspenso-bg: var(--status-suspenso-bg);
+  --color-status-suspenso-fg: var(--status-suspenso-fg);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -110,6 +112,8 @@
   --status-inativo-fg: oklch(0.45 0.02 250);
   --status-analise-bg: #fff7ed;
   --status-analise-fg: #d75c00;
+  --status-suspenso-bg: oklch(0.93 0.03 300);
+  --status-suspenso-fg: oklch(0.45 0.13 300);
 
   --radius: 0.75rem;
 

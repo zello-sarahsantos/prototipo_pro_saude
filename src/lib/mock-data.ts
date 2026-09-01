@@ -9,7 +9,8 @@ export type StatusKey =
   | "importado"
   | "aguardando_ativacao"
   | "aguardando_validacao"
-  | "divergencia";
+  | "divergencia"
+  | "suspenso";
 
 export const statusLabels: Record<StatusKey, string> = {
   pendente: "Pendente de Validação",
@@ -23,7 +24,17 @@ export const statusLabels: Record<StatusKey, string> = {
   aguardando_ativacao: "Aguardando Ativação",
   aguardando_validacao: "Aguardando Validação GERDAB",
   divergencia: "Divergência Cadastral",
+  suspenso: "Suspenso",
 };
+
+/**
+ * Situação financeira do servidor — dimensão independente do status cadastral (`StatusKey`):
+ * um servidor "Ativo no Sistema" pode estar, ao mesmo tempo, inadimplente com a competência
+ * atual. Por isso não vira mais um valor de `StatusKey` (que é mutuamente exclusivo) — é um
+ * campo à parte, exibido como um segundo indicador dentro da mesma célula de Status na tabela
+ * de servidores, nunca como coluna nova.
+ */
+export type SituacaoFinanceira = "adimplente" | "inadimplente";
 
 export const regrasProSaude = {
   percentualReembolso: 0.9,
@@ -202,13 +213,80 @@ export const requerimentos: Requerimento[] = [
   { id: "r4", numero: "REQ-2026-0044", tipo: "Alteração de Valor", servidor: "Fernanda Lima", matricula: "45678", detalhe: "Reajuste anual de R$ 1.850,00 para R$ 2.120,00 — documentação pendente", abertoEm: "30/04/2026", status: "rejeitado", documentos: ["boleto.pdf"], checklist: ["Justificativa de alteração de valor", "Documento da operadora", "Validação GERDAB"] },
 ];
 
-export const servidoresList = [
-  { matricula: "12345", cpf: "123.456.789-00", processoSEI: "00050.001111/2024-10", nome: "João da Silva", cargo: "Analista de Trânsito", plano: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo" as StatusKey },
-  { matricula: "23456", cpf: "345.678.901-22", processoSEI: "00050.002222/2024-10", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", plano: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo" as StatusKey },
-  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", plano: "Amil", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente" as StatusKey },
-  { matricula: "45678", cpf: "456.123.789-55", processoSEI: "00050.004444/2024-10", nome: "Fernanda Lima", cargo: "Analista de Trânsito", plano: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta" as StatusKey },
-  { matricula: "56789", cpf: "678.901.234-55", processoSEI: "00050.005555/2024-10", nome: "Roberto Santos", cargo: "Pensionista Temporário", plano: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo" as StatusKey },
-  { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", plano: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo" as StatusKey },
+/**
+ * Documentos vinculados ao servidor titular e a cada dependente — usado pela aba
+ * "Documentação" da ficha do servidor (`admin.servidores.$id.tsx`). `beneficiarioId` é
+ * `"titular"` para os documentos do próprio servidor (`servidorAtual`), ou o `id` de um
+ * `Dependente` — nunca uma lista única misturando pessoas diferentes do grupo familiar.
+ * `visualizavel` indica se o formato permite pré-visualização inline (`DocPreview`); quando
+ * `false`, só a ação de download é oferecida.
+ */
+export interface DocumentoBeneficiario {
+  id: string;
+  beneficiarioId: "titular" | string;
+  nome: string;
+  arquivo: string;
+  dataEnvio: string;
+  competencia?: string;
+  visualizavel: boolean;
+}
+
+export const documentosServidor: DocumentoBeneficiario[] = [
+  // Titular — João da Silva
+  { id: "doc1", beneficiarioId: "titular", nome: "RG", arquivo: "rg_joao_silva.pdf", dataEnvio: "10/01/2024", visualizavel: true },
+  { id: "doc2", beneficiarioId: "titular", nome: "Comprovante de Residência", arquivo: "comprovante_residencia_joao.pdf", dataEnvio: "10/01/2024", visualizavel: true },
+  { id: "doc3", beneficiarioId: "titular", nome: "Contracheque", arquivo: "contracheque_joao_abril2026.pdf", dataEnvio: "05/04/2026", competencia: "abril/2026", visualizavel: true },
+  { id: "doc4", beneficiarioId: "titular", nome: "Termo de Responsabilidade", arquivo: "termo_responsabilidade_joao.docx", dataEnvio: "10/01/2024", visualizavel: false },
+  // Dependente d1 — Ana da Silva (Cônjuge)
+  { id: "doc5", beneficiarioId: "d1", nome: "Certidão de Casamento", arquivo: "certidao_casamento_ana.pdf", dataEnvio: "10/01/2024", visualizavel: true },
+  { id: "doc6", beneficiarioId: "d1", nome: "RG", arquivo: "rg_ana.jpg", dataEnvio: "10/01/2024", visualizavel: true },
+  // Dependente d2 — Pedro da Silva (Filho)
+  { id: "doc7", beneficiarioId: "d2", nome: "Certidão de Nascimento", arquivo: "certidao_nascimento_pedro.pdf", dataEnvio: "10/01/2024", visualizavel: true },
+  // Dependente d3 — Lucas Souza (Filho, 23 anos — pendência de comprovante de matrícula)
+  { id: "doc8", beneficiarioId: "d3", nome: "Certidão de Nascimento", arquivo: "certidao_nascimento_lucas.pdf", dataEnvio: "10/01/2024", visualizavel: true },
+  { id: "doc9", beneficiarioId: "d3", nome: "Comprovante de Matrícula", arquivo: "comprovante_matricula_lucas_2025-2.pdf", dataEnvio: "15/07/2025", competencia: "2º semestre 2025", visualizavel: true },
+  // Dependente d4 — Marcos Lima (Enteado): nenhum documento, para demonstrar o estado vazio.
+];
+
+export interface ServidorListItem {
+  matricula: string;
+  cpf: string;
+  processoSEI: string;
+  nome: string;
+  cargo: string;
+  /** Operadora do plano de saúde — opcional de propósito: uma associação (sobretudo ASSETRAN)
+   *  pode existir sem operadora vinculada no cadastro, então este campo nunca é inventado só
+   *  para preencher a célula. Quando presente, o valor é o nome da operadora (Bradesco,
+   *  SulAmérica, Amil, CASSI). */
+  operadora?: string;
+  associacao: string;
+  dependentes: number;
+  valorPlano: number;
+  valorAuxilio: number;
+  status: StatusKey;
+  /** Situação financeira — dimensão independente do status cadastral, ver `SituacaoFinanceira`.
+   *  Omitido quando ainda não se aplica (ex: cadastro pendente de validação). */
+  situacaoFinanceira?: SituacaoFinanceira;
+  telefone: string;
+  email: string;
+  ultimoReajuste: string;
+}
+
+export const servidoresList: ServidorListItem[] = [
+  // Individual (sem associação), só com operadora.
+  { matricula: "12345", cpf: "123.456.789-00", processoSEI: "00050.001111/2024-10", nome: "João da Silva", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 98765-4321", email: "joao.silva@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
+  // ASSEFAZ com operadora vinculada no cadastro.
+  { matricula: "23456", cpf: "345.678.901-22", processoSEI: "00050.002222/2024-10", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo", situacaoFinanceira: "inadimplente", telefone: "(61) 99123-4567", email: "maria.oliveira.tecnica.transito@detran.df.gov.br", ultimoReajuste: "01/07/2025" },
+  // ASSETRAN sem operadora vinculada — não inventar uma só para preencher a célula.
+  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente", telefone: "(61) 98211-3344", email: "carlos.pereira@detran.df.gov.br", ultimoReajuste: "—" },
+  // Individual, só com operadora.
+  { matricula: "45678", cpf: "456.123.789-55", processoSEI: "00050.004444/2024-10", nome: "Fernanda Lima", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta", situacaoFinanceira: "inadimplente", telefone: "(61) 98432-1198", email: "fernanda.lima@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
+  // ASSETRAN com operadora vinculada — mostra que a relação existe às vezes, não é regra.
+  { matricula: "56789", cpf: "678.901.234-55", processoSEI: "00050.005555/2024-10", nome: "Roberto Santos", cargo: "Pensionista Temporário", operadora: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo", telefone: "(61) 98765-1122", email: "roberto.santos@detran.df.gov.br", ultimoReajuste: "01/07/2024" },
+  // ASSEFAZ com operadora vinculada.
+  { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 99887-6655", email: "patricia.costa@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
+  // Individual, suspenso + inadimplente (coexistência de dimensões).
+  { matricula: "78901", cpf: "234.567.890-99", processoSEI: "00050.007777/2024-10", nome: "Eduardo Nascimento", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "—", dependentes: 0, valorPlano: 950, valorAuxilio: calcularReembolso(950), status: "suspenso", situacaoFinanceira: "inadimplente", telefone: "(61) 98123-9900", email: "eduardo.nascimento@detran.df.gov.br", ultimoReajuste: "01/01/2025" },
 ];
 
 export const formatCurrency = (v: number) => {

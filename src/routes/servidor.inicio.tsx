@@ -2,8 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { dependentes, requerimentos, servidorAtual, formatCurrency, calcularReembolso } from "@/lib/mock-data";
-import { SolicitacaoDocumentoBanner } from "@/components/SolicitacaoDocumentoBanner";
-import { getPendenciasDocumentaisDoServidor } from "@/lib/pendencias-documentais";
+import { SolicitacaoDocumentoBanner, StatusDocumentoEnviadoCard } from "@/components/SolicitacaoDocumentoBanner";
+import { getPendenciasDocumentaisDoServidor, getStatusDocumentosDoServidor } from "@/lib/pendencias-documentais";
 import { ChevronRight, User, Info } from "lucide-react";
 
 export const Route = createFileRoute("/servidor/inicio")({
@@ -22,6 +22,17 @@ function Inicio() {
   // com prazo/consequência mapeados) e solicitações manuais do analista/gerência sem prazo.
   const pendenciasDocumento = useMemo(
     () => getPendenciasDocumentaisDoServidor(servidorAtual.matricula, "servidor"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [solicitacoesVersion],
+  );
+
+  // Documentos já enviados, em análise ou já aprovados pela GERDAB — para quem enviou não ficar
+  // sem saber o que aconteceu depois do envio (sem isto, o aviso simplesmente sumia).
+  const statusDocumentosEnviados = useMemo(
+    () =>
+      getStatusDocumentosDoServidor(servidorAtual.matricula, "servidor").filter(
+        (s) => s.status !== "aguardando_envio",
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [solicitacoesVersion],
   );
@@ -82,6 +93,9 @@ function Inicio() {
           pendencia={p}
           onEnviado={() => setSolicitacoesVersion((v) => v + 1)}
         />
+      ))}
+      {statusDocumentosEnviados.map((s) => (
+        <StatusDocumentoEnviadoCard key={s.id} status={s} />
       ))}
 
       <section className="bg-card rounded-xl p-4 shadow-card border border-border">

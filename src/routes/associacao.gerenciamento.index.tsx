@@ -109,7 +109,7 @@ function GerenciamentoAssetran() {
                     <td className="px-4 py-3 text-muted-foreground">{s.processoSEI}</td>
                     <td className="px-4 py-3">{s.cpf}</td>
                     <td className="px-4 py-3 font-medium">{s.nome}</td>
-                    <td className="px-4 py-3">{s.plano}</td>
+                    <td className="px-4 py-3">{s.operadora || "—"}</td>
                     <td className="px-4 py-3">{s.dependentes}</td>
                     <td className="px-4 py-3">{formatCurrency(s.valorPlano)}</td>
                     <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
