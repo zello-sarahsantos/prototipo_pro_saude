@@ -26,6 +26,11 @@ export type TitularCadastroPlano = {
   vigencia: string;
   valorTitular: number;
   empresarial: boolean;
+  /** Declaração do próprio servidor, no requerimento padrão de primeira inclusão: se ele faz
+   *  parte de alguma associação parceira (hoje só ASSEFAZ é oferecida como opção). Não altera
+   *  Operadora/Administradora, que continuam preenchidas normalmente — é só um dado a mais. */
+  associacaoVinculada?: boolean;
+  associacao?: string;
 };
 
 export type TitularCadastro = {

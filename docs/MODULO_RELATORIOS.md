@@ -726,6 +726,74 @@ Escolar — Aguardando análise"; "Analisar documento" abriu o modal com preview
 Aprovar/Solicitar reenvio prontos para uso. `tsc --noEmit` (2 erros pré-existentes, sem mudança)
 e `npm run build` limpos.
 
+### 2.14 Correção de regra — ASSETRAN sempre tem operadora vinculada
+
+A seção 2.10 modelou a ASSETRAN como podendo existir **sem** operadora vinculada (baseado no
+pedido original "não inventar nem exigir uma operadora para a ASSETRAN"). O usuário corrigiu:
+isso estava errado — a ASSETRAN **sempre** tem uma operadora, e informar só a associação no
+requerimento não é suficiente.
+
+**Arquivos:** `src/routes/primeiro-acesso.tsx`, `src/lib/mock-data.ts`.
+
+- **`FlowInclusao` (Nova Inclusão de Beneficiário, `associacaoFixa`):** antes, quando
+  `associacaoFixa` estava definida (ex: ASSETRAN), o passo "Plano" substituía Operadora e
+  Administradora por um único campo somente-leitura "Associação: Assetran" — e o estado
+  `plano.operadora` nascia preenchido com o **nome da associação**, o que é semanticamente
+  errado (associação não é operadora). Corrigido, em duas rodadas:
+  1. Primeira correção: o campo "Associação" (somente leitura) continua aparecendo, mas
+     **Operadora volta a ser exigida** normalmente — `plano.operadora` nasce vazio, e a
+     validação do passo "Plano" passou a exigir Operadora mesmo com `associacaoFixa` definida.
+  2. **Ajuste pontual seguinte** (o usuário pediu para não ir além do que foi corrigido):
+     **Administradora continua fora do requerimento da ASSETRAN** — só Operadora foi
+     adicionada, nada mais. `!associacaoFixa &&` voltou a esconder o campo Administradora (e a
+     dispensar sua validação), exatamente como estava antes da 2.14 — só a exigência de
+     Operadora é nova.
+- **`servidoresList` (tabela de servidores):** Carlos Pereira (ASSETRAN), que a 2.10 deixou
+  deliberadamente sem `operadora` como exemplo de "associação sem operadora", passou a ter
+  `operadora: "Amil"` — igual ao Roberto Santos (o outro exemplo ASSETRAN, que já tinha
+  operadora). Não sobrou mais nenhum exemplo de ASSETRAN sem operadora no protótipo, porque essa
+  situação não deveria existir de fato.
+
+**Testado manualmente no navegador:** fluxo de `/associacao/nova-inclusao` refeito do zero — o
+passo "Plano" mostra "Associação: Assetran" **e**, ao lado, "Operadora \*" obrigatória, **sem**
+nenhum campo "Administradora" na tela; clicar "Próximo" sem selecionar operadora bloqueia o
+avanço (mesma mensagem de campos obrigatórios de sempre); preenchendo só Operadora + Modalidade +
+Valor + Vigência (sem Administradora), o fluxo avança normalmente para "Dependentes". Em
+`/admin/servidores`, Carlos Pereira aparece como "Assetran / Amil" (associação + operadora,
+mesma hierarquia visual já usada para os casos ASSEFAZ). `tsc --noEmit` (2 erros pré-existentes,
+sem mudança) e `npm run build` limpos.
+
+### 2.15 Administradora de volta para ASSETRAN + novo questionamento de associação no requerimento padrão
+
+Depois de conversar com o stakeholder, o usuário trouxe duas correções sobre a 2.14:
+
+**Arquivos:** `src/routes/primeiro-acesso.tsx`, `src/lib/prosaude-storage.ts`.
+
+- **Administradora volta a aparecer para a ASSETRAN:** o ajuste pontual da 2.14 (esconder
+  Administradora quando `associacaoFixa` está definida) foi revertido — o stakeholder confirmou
+  que o campo deve continuar no requerimento da ASSETRAN. `!associacaoFixa &&` foi removido de
+  novo; Administradora volta a ser exigida sempre, igual à Operadora.
+- **Novo questionamento no requerimento padrão de primeira inclusão** (`/primeiro-acesso`, sem
+  `associacaoFixa` — não aparece na Nova Inclusão da ASSETRAN, cuja associação já é conhecida):
+  um toggle "Associação" no passo "Plano", no mesmo padrão visual do "Empresarial" logo acima
+  ("Faz parte de alguma associação?" Sim/Não). Ao marcar "Sim", aparece um select "Qual
+  associação? *" com a única opção disponível hoje, **ASSEFAZ** — deixado como select (não texto
+  livre) para já comportar mais associações no futuro, mesmo só uma existindo agora. Não altera
+  nada mais no formulário: Operadora e Administradora continuam preenchidas normalmente,
+  independente da resposta.
+  - Novos campos `plano.associacaoVinculada`/`plano.associacao`, validados só quando
+    `associacaoVinculada` é `true` (associação passa a ser obrigatória nesse caso).
+  - `TitularCadastroPlano` (prosaude-storage.ts) ganhou os mesmos dois campos opcionais, e
+    `handleSubmit` os inclui no cadastro salvo — mesmo tratamento dos demais campos do plano.
+
+**Testado manualmente no navegador:** `/associacao/nova-inclusao` (ASSETRAN) — "Administradora
+\*" voltou a aparecer junto de "Operadora \*"; nenhum questionamento de associação aparece aqui
+(esperado). `/primeiro-acesso` (requerimento padrão) — passo "Plano" mostra o novo bloco
+"Associação — Não / Faz parte de alguma associação?"; ativando o toggle, aparece "Qual
+associação? *" com a opção "ASSEFAZ"; preenchido tudo (Operadora, Administradora, Associação =
+ASSEFAZ, Modalidade, Valor, Vigência), o fluxo avança normalmente para "Dependentes". `tsc
+--noEmit` (2 erros pré-existentes, sem mudança) e `npm run build` limpos.
+
 ---
 
 ## 3. Módulo de Relatórios — ainda não iniciado

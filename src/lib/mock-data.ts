@@ -254,10 +254,11 @@ export interface ServidorListItem {
   processoSEI: string;
   nome: string;
   cargo: string;
-  /** Operadora do plano de saúde — opcional de propósito: uma associação (sobretudo ASSETRAN)
-   *  pode existir sem operadora vinculada no cadastro, então este campo nunca é inventado só
-   *  para preencher a célula. Quando presente, o valor é o nome da operadora (Bradesco,
-   *  SulAmérica, Amil, CASSI). */
+  /** Operadora do plano de saúde. Correção de regra: a ASSETRAN sempre tem operadora vinculada
+   *  (informar a associação sozinha não é suficiente) — todo beneficiário da ASSETRAN deve ter
+   *  este campo preenchido. Continua opcional no tipo só para acomodar a ASSEFAZ, cuja operadora
+   *  pode não constar no cadastro (ver seção 2.10 de docs/MODULO_RELATORIOS.md). Quando presente,
+   *  o valor é o nome da operadora (Bradesco, SulAmérica, Amil, CASSI). */
   operadora?: string;
   associacao: string;
   dependentes: number;
@@ -277,11 +278,11 @@ export const servidoresList: ServidorListItem[] = [
   { matricula: "12345", cpf: "123.456.789-00", processoSEI: "00050.001111/2024-10", nome: "João da Silva", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 98765-4321", email: "joao.silva@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
   // ASSEFAZ com operadora vinculada no cadastro.
   { matricula: "23456", cpf: "345.678.901-22", processoSEI: "00050.002222/2024-10", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo", situacaoFinanceira: "inadimplente", telefone: "(61) 99123-4567", email: "maria.oliveira.tecnica.transito@detran.df.gov.br", ultimoReajuste: "01/07/2025" },
-  // ASSETRAN sem operadora vinculada — não inventar uma só para preencher a célula.
-  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente", telefone: "(61) 98211-3344", email: "carlos.pereira@detran.df.gov.br", ultimoReajuste: "—" },
+  // ASSETRAN — associação sempre tem operadora vinculada (corrigido: não é opcional).
+  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente", telefone: "(61) 98211-3344", email: "carlos.pereira@detran.df.gov.br", ultimoReajuste: "—" },
   // Individual, só com operadora.
   { matricula: "45678", cpf: "456.123.789-55", processoSEI: "00050.004444/2024-10", nome: "Fernanda Lima", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta", situacaoFinanceira: "inadimplente", telefone: "(61) 98432-1198", email: "fernanda.lima@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
-  // ASSETRAN com operadora vinculada — mostra que a relação existe às vezes, não é regra.
+  // ASSETRAN — operadora sempre presente.
   { matricula: "56789", cpf: "678.901.234-55", processoSEI: "00050.005555/2024-10", nome: "Roberto Santos", cargo: "Pensionista Temporário", operadora: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo", telefone: "(61) 98765-1122", email: "roberto.santos@detran.df.gov.br", ultimoReajuste: "01/07/2024" },
   // ASSEFAZ com operadora vinculada.
   { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 99887-6655", email: "patricia.costa@detran.df.gov.br", ultimoReajuste: "01/01/2026" },

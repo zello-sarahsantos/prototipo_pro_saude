@@ -276,16 +276,23 @@ export function FlowInclusao({
     endereco: "",
   });
 
-  // Dados do Plano (Step 1) — quando associacaoFixa é informada, a operadora já nasce
-  // preenchida com o nome da associação (ver campo somente-leitura no passo "Plano" abaixo).
+  // Dados do Plano (Step 1) — correção de regra: mesmo quando associacaoFixa é informada
+  // (ex: ASSETRAN), a associação por si só não substitui a operadora — a ASSETRAN sempre tem
+  // uma operadora vinculada, que deve ser informada como em qualquer outro caso.
   const [plano, setPlano] = useState({
-    operadora: associacaoFixa ?? "",
+    operadora: "",
     outraOperadora: "",
     administradora: "",
     proposta: "",
     modalidade: "",
     vigencia: "",
     empresarial: false,
+    // Questionamento novo, no mesmo espírito de "Empresarial": o próprio servidor declara se
+    // faz parte de alguma associação parceira — hoje só ASSEFAZ está disponível como opção.
+    // Não substitui Operadora/Administradora (que continuam preenchidas normalmente); é só um
+    // dado a mais no requerimento padrão de primeira inclusão.
+    associacaoVinculada: false,
+    associacao: "",
   });
 
   const isPensionista = titular.situacao.startsWith("Titular de pensão");
@@ -341,19 +348,24 @@ export function FlowInclusao({
         setError(validationMessages.obrigatorios);
         return;
       }
-      if (!associacaoFixa) {
-        if (!plano.operadora) {
-          setError(validationMessages.obrigatorios);
-          return;
-        }
-        if (plano.operadora === "Outra" && !plano.outraOperadora) {
-          setError(validationMessages.obrigatorios);
-          return;
-        }
-        if (plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO" && !plano.administradora) {
-          setError(validationMessages.obrigatorios);
-          return;
-        }
+      // Operadora e Administradora são exigidas sempre — inclusive quando associacaoFixa está
+      // definida (ASSETRAN): a associação não substitui a operadora, e o stakeholder confirmou
+      // que a administradora também continua fazendo parte do requerimento nesse caso.
+      if (!plano.operadora) {
+        setError(validationMessages.obrigatorios);
+        return;
+      }
+      if (plano.operadora === "Outra" && !plano.outraOperadora) {
+        setError(validationMessages.obrigatorios);
+        return;
+      }
+      if (plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO" && !plano.administradora) {
+        setError(validationMessages.obrigatorios);
+        return;
+      }
+      if (plano.associacaoVinculada && !plano.associacao) {
+        setError(validationMessages.obrigatorios);
+        return;
       }
       const errValor = getCurrencyError(valorTitular);
       if (errValor) {
@@ -459,6 +471,8 @@ export function FlowInclusao({
           vigencia: plano.vigencia,
           valorTitular: valorTitularNum,
           empresarial: plano.empresarial,
+          associacaoVinculada: plano.associacaoVinculada,
+          associacao: plano.associacao,
         },
         dependentes: deps,
         updatedAt: new Date().toISOString(),
@@ -662,38 +676,40 @@ export function FlowInclusao({
 
         {currentStepName === "Plano" && (
           <div className="space-y-3">
-            {associacaoFixa ? (
+            {associacaoFixa && (
               <Field label="Associação">
                 <div className={`${inputCls} bg-muted/50 text-foreground font-medium`}>
                   {associacaoFixa}
                 </div>
               </Field>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Operadora" required>
-                  <select
-                    className={inputCls}
-                    value={plano.operadora}
-                    onChange={e => setPlano({ ...plano, operadora: e.target.value })}
-                  >
-                    <option value="">Selecione a operadora</option>
-                    {OPERADORAS.map((op) => (
-                      <option key={op} value={op}>{op}</option>
-                    ))}
-                    <option value="Outra">Outra</option>
-                  </select>
-                </Field>
-                {plano.operadora === "Outra" && (
-                  <Field label="Digite o nome da operadora" required>
-                    <input
-                      className={inputCls}
-                      value={plano.outraOperadora}
-                      onChange={e => setPlano({...plano, outraOperadora: e.target.value})}
-                    />
-                  </Field>
-                )}
-              </div>
             )}
+            {/* Correção de regra: a associação (ex: ASSETRAN) não substitui a operadora — ela
+                sempre tem uma vinculada, então Operadora/Administradora continuam obrigatórias
+                mesmo com associacaoFixa definida. */}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Operadora" required>
+                <select
+                  className={inputCls}
+                  value={plano.operadora}
+                  onChange={e => setPlano({ ...plano, operadora: e.target.value })}
+                >
+                  <option value="">Selecione a operadora</option>
+                  {OPERADORAS.map((op) => (
+                    <option key={op} value={op}>{op}</option>
+                  ))}
+                  <option value="Outra">Outra</option>
+                </select>
+              </Field>
+              {plano.operadora === "Outra" && (
+                <Field label="Digite o nome da operadora" required>
+                  <input
+                    className={inputCls}
+                    value={plano.outraOperadora}
+                    onChange={e => setPlano({...plano, outraOperadora: e.target.value})}
+                  />
+                </Field>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Modalidade do Plano" required>
                 <input
@@ -703,16 +719,16 @@ export function FlowInclusao({
                   onChange={e => setPlano({...plano, modalidade: e.target.value})}
                 />
               </Field>
-              {!associacaoFixa && (
-                <Field label="Administradora" required={plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO"}>
-                  <input
-                    className={inputCls}
-                    placeholder="Nome da administradora"
-                    value={plano.administradora}
-                    onChange={e => setPlano({...plano, administradora: e.target.value})}
-                  />
-                </Field>
-              )}
+              {/* Administradora sempre exigida, inclusive para ASSETRAN (associacaoFixa) — o
+                  stakeholder confirmou que o campo deve continuar no requerimento nesse caso. */}
+              <Field label="Administradora" required={plano.operadora !== "ASSEFAZ / OUTRO CONVÊNIO"}>
+                <input
+                  className={inputCls}
+                  placeholder="Nome da administradora"
+                  value={plano.administradora}
+                  onChange={e => setPlano({...plano, administradora: e.target.value})}
+                />
+              </Field>
             </div>
             <div className="grid grid-cols-1 gap-3">
               <Field label="Empresarial">
@@ -734,6 +750,39 @@ export function FlowInclusao({
                     Planos empresariais exigem o envio da fatura técnica no momento do envio de comprovantes de pagamento, pois o boleto empresarial isolado não permite identificar os valores individuais dos beneficiários.
                   </p>
                 </div>
+              )}
+              {/* Novo questionamento, mesmo padrão do "Empresarial" acima — só no requerimento
+                  padrão de primeira inclusão (não aparece quando associacaoFixa já define a
+                  associação, ex: ASSETRAN, onde a resposta já é conhecida). */}
+              {!associacaoFixa && (
+                <>
+                  <Field label="Associação">
+                    <div className={`${inputCls} flex items-center justify-between`}>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={plano.associacaoVinculada}
+                          onCheckedChange={(checked) =>
+                            setPlano({ ...plano, associacaoVinculada: checked, associacao: checked ? plano.associacao : "" })
+                          }
+                        />
+                        <span className="text-sm">{plano.associacaoVinculada ? "Sim" : "Não"}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">Faz parte de alguma associação?</span>
+                    </div>
+                  </Field>
+                  {plano.associacaoVinculada && (
+                    <Field label="Qual associação?" required>
+                      <select
+                        className={inputCls}
+                        value={plano.associacao}
+                        onChange={e => setPlano({ ...plano, associacao: e.target.value })}
+                      >
+                        <option value="">Selecione a associação</option>
+                        <option value="Assefaz">ASSEFAZ</option>
+                      </select>
+                    </Field>
+                  )}
+                </>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
