@@ -10,16 +10,21 @@ import {
   Menu,
   X,
   FileCheck,
+  BarChart3,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 // "Comprovantes" fica disponível para Analista e Gerência — a Gerência sempre tem, no
 // mínimo, as mesmas permissões do Analista (regra do Módulo de Pagamento).
+// "Relatórios" aponta para a Visão Geral do Módulo de Relatórios (`/admin/relatorios`), que
+// por sua vez destaca o Fechamento de Pagamento (prioridade do módulo, ver plano — seção 2.9)
+// e lista as demais sub-áreas ainda por implementar.
 const baseItems = [
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/admin/servidores", icon: Users, label: "Servidores" },
   { to: "/admin/requerimentos", icon: ClipboardList, label: "Requerimentos" },
   { to: "/admin/comprovantes", icon: FileCheck, label: "Comprovantes" },
+  { to: "/admin/relatorios", icon: BarChart3, label: "Relatórios" },
   { to: "/admin/carga-inicial", icon: Upload, label: "Carga Inicial" },
 ];
 

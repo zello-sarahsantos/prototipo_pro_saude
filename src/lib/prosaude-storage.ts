@@ -5,6 +5,8 @@ import {
   type Comprovante,
   type ConclusaoCompetencia,
   type BeneficiarioDispensado,
+  type FechamentoPagamento,
+  type ObservacaoNurfi,
 } from "./mock-data";
 
 export const PROSAUDE_STORAGE_KEYS = {
@@ -15,6 +17,8 @@ export const PROSAUDE_STORAGE_KEYS = {
   beneficiariosDispensados: "prosaude_beneficiarios_dispensados",
   valoresCadastradosBeneficiarios: "prosaude_valores_cadastrados_beneficiarios",
   observacoesGerdab: "prosaude_observacoes_gerdab",
+  fechamentosPagamento: "prosaude_fechamentos_pagamento",
+  observacoesNurfi: "prosaude_observacoes_nurfi",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -114,6 +118,7 @@ export function addComprovantePagamento(comprovante: Comprovante) {
     limparSolicitacaoComplementar(id, comprovante.competencia);
   });
   invalidarConclusaoCompetencia(comprovante.competencia);
+  invalidarFechamentoPagamento(comprovante.competencia);
 }
 
 /** Remove o pedido de documento complementar de qualquer comprovante do beneficiário/competência
@@ -150,6 +155,7 @@ export function updateComprovantePagamento(id: string, patch: Partial<Comprovant
   const atualizado = { ...existente, ...patch };
   const semAntigo = atuais.filter((c) => c.id !== id);
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.comprovantesPagamento, JSON.stringify([...semAntigo, atualizado]));
+  invalidarFechamentoPagamento(atualizado.competencia);
 }
 
 /** Conclusão do envio de uma competência pelo servidor — não representa novos comprovantes,
@@ -184,6 +190,73 @@ export function invalidarConclusaoCompetencia(competencia: string) {
   if (typeof window === "undefined") return;
   const atuais = loadConclusoesCompetencia().filter((c) => c.competencia !== competencia);
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.competenciasConcluidas, JSON.stringify(atuais));
+}
+
+/**
+ * Fechamento de Pagamento (GERDAB) — ver `FechamentoPagamento` (`mock-data.ts`) para a
+ * distinção em relação a `ConclusaoCompetencia`. Mesmo padrão de persistência/invalidação.
+ */
+export function loadFechamentosPagamento(): FechamentoPagamento[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.fechamentosPagamento);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as FechamentoPagamento[];
+  } catch {
+    return [];
+  }
+}
+
+export function getFechamentoPagamento(competencia: string): FechamentoPagamento | undefined {
+  return loadFechamentosPagamento().find((f) => f.competencia === competencia);
+}
+
+export function salvarFechamentoPagamento(competencia: string, fechadoPor: string) {
+  if (typeof window === "undefined") return;
+  const atuais = loadFechamentosPagamento().filter((f) => f.competencia !== competencia);
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.fechamentosPagamento,
+    JSON.stringify([...atuais, { competencia, fechadoEm: new Date().toISOString(), fechadoPor }]),
+  );
+}
+
+/** Invalida o fechamento de uma competência — chamado sempre que um comprovante novo ou uma
+ *  ação (aprovação/recusa/etc.) muda o conjunto/status de documentos daquela competência, pois
+ *  a classificação Adimplente/Inadimplente/Requer análise pode ter mudado (regra 2.5 do plano
+ *  do Módulo de Relatórios: nenhum fechamento sobrevive a um lançamento posterior). */
+export function invalidarFechamentoPagamento(competencia: string) {
+  if (typeof window === "undefined") return;
+  const atuais = loadFechamentosPagamento().filter((f) => f.competencia !== competencia);
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.fechamentosPagamento, JSON.stringify(atuais));
+}
+
+/** Observações excepcionais da GERDAB para o NURFI — ver `ObservacaoNurfi` (`mock-data.ts`).
+ *  Nunca sobrescreve: cada chamada substitui só o registro daquele par (beneficiário,
+ *  competência), mesmo padrão de override-por-chave já usado em outros dados do módulo. */
+export function loadObservacoesNurfi(): ObservacaoNurfi[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.observacoesNurfi);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as ObservacaoNurfi[];
+  } catch {
+    return [];
+  }
+}
+
+export function getObservacaoNurfi(beneficiarioId: string, competencia: string): ObservacaoNurfi | undefined {
+  return loadObservacoesNurfi().find((o) => o.beneficiarioId === beneficiarioId && o.competencia === competencia);
+}
+
+export function salvarObservacaoNurfi(beneficiarioId: string, competencia: string, texto: string, registradoPor: string) {
+  if (typeof window === "undefined") return;
+  const atuais = loadObservacoesNurfi().filter(
+    (o) => !(o.beneficiarioId === beneficiarioId && o.competencia === competencia),
+  );
+  localStorage.setItem(
+    PROSAUDE_STORAGE_KEYS.observacoesNurfi,
+    JSON.stringify([...atuais, { beneficiarioId, competencia, texto, registradoPor, data: new Date().toISOString() }]),
+  );
 }
 
 /** Beneficiários que o servidor optou conscientemente por deixar sem comprovante em uma

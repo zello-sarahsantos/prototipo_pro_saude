@@ -1,3 +1,5 @@
+import { SITUACOES_TITULAR } from "./form-options";
+
 export type StatusKey =
   | "pendente"
   | "aprovado"
@@ -264,6 +266,13 @@ export interface ServidorListItem {
   dependentes: number;
   valorPlano: number;
   valorAuxilio: number;
+  /** **Status no Pró-Saúde / status operacional do cadastro** — nunca a situação funcional do
+   *  titular (ver `situacaoBeneficiarioTitular` abaixo; os dois foram confundidos numa versão
+   *  anterior das Visões Gerenciais, corrigido — ver docs/MODULO_RELATORIOS.md). Um servidor
+   *  pode estar `status: 'ativo'` (cadastro Pró-Saúde em dia) mesmo sendo
+   *  `situacaoBeneficiarioTitular: 'Servidor efetivo inativo'` ou pensionista — as duas
+   *  dimensões são independentes. `'inativo'` aqui significa especificamente vínculo com o
+   *  Pró-Saúde encerrado por fluxo de exclusão, não aposentadoria. */
   status: StatusKey;
   /** Situação financeira — dimensão independente do status cadastral, ver `SituacaoFinanceira`.
    *  Omitido quando ainda não se aplica (ex: cadastro pendente de validação). */
@@ -271,23 +280,50 @@ export interface ServidorListItem {
   telefone: string;
   email: string;
   ultimoReajuste: string;
+  /** Data de nascimento (dd/mm/aaaa) — campo cadastral legítimo, mesma natureza de
+   *  `cpf`/`telefone`/`email`: já é coletado nos fluxos reais de cadastro/requerimento (ver
+   *  `servidorAtual.dataNascimento` e `Dependente.dataNascimento`, ambos em uso nesta mesma
+   *  seção do arquivo). O problema corrigido aqui não era "esse dado não existe no domínio" —
+   *  era `ServidorListItem` (a base ampla usada por `/admin/servidores` e pelo Módulo de
+   *  Relatórios) não carregar esse campo. Usar `calcularIdade()` para derivar a idade — nunca
+   *  persistir idade como campo próprio. */
+  dataNascimento: string;
+  /** **Situação do beneficiário titular** — mesmo campo/vocabulário já coletado no requerimento
+   *  de primeira inclusão (`SITUACOES_TITULAR`, `form-options.ts`; ver
+   *  `src/routes/primeiro-acesso.tsx`, campo "Situação do beneficiário titular"). Reaproveitado
+   *  aqui, não duplicado — é a fonte correta da classificação funcional do titular. Nunca
+   *  colapsar em um binário Ativo/Inativo sem regra explícita validada: pensionista **não** é
+   *  sinônimo de aposentado/inativo, é um tipo de titular semanticamente distinto (ver
+   *  docs/MODULO_RELATORIOS.md). */
+  situacaoBeneficiarioTitular: (typeof SITUACOES_TITULAR)[number];
+}
+
+/** Idade atual a partir de uma data de nascimento "dd/mm/aaaa" — sempre recalculada sob
+ *  demanda (mesmo padrão "recompute on demand" já usado em outras derivações do protótipo),
+ *  nunca persistida como campo próprio. */
+export function calcularIdade(dataNascimento: string, hoje: Date = new Date()): number {
+  const [dia, mes, ano] = dataNascimento.split("/").map(Number);
+  let idade = hoje.getFullYear() - ano;
+  const aniversarioJaPassou = hoje.getMonth() + 1 > mes || (hoje.getMonth() + 1 === mes && hoje.getDate() >= dia);
+  if (!aniversarioJaPassou) idade -= 1;
+  return idade;
 }
 
 export const servidoresList: ServidorListItem[] = [
   // Individual (sem associação), só com operadora.
-  { matricula: "12345", cpf: "123.456.789-00", processoSEI: "00050.001111/2024-10", nome: "João da Silva", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 98765-4321", email: "joao.silva@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
+  { matricula: "12345", cpf: "123.456.789-00", processoSEI: "00050.001111/2024-10", nome: "João da Silva", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 3190, valorAuxilio: calcularReembolso(3190), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 98765-4321", email: "joao.silva@detran.df.gov.br", ultimoReajuste: "01/01/2026", dataNascimento: "12/04/1980", situacaoBeneficiarioTitular: "Servidor efetivo ativo" },
   // ASSEFAZ com operadora vinculada no cadastro.
-  { matricula: "23456", cpf: "345.678.901-22", processoSEI: "00050.002222/2024-10", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo", situacaoFinanceira: "inadimplente", telefone: "(61) 99123-4567", email: "maria.oliveira.tecnica.transito@detran.df.gov.br", ultimoReajuste: "01/07/2025" },
+  { matricula: "23456", cpf: "345.678.901-22", processoSEI: "00050.002222/2024-10", nome: "Maria Oliveira", cargo: "Técnico de Trânsito", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 1, valorPlano: 1800, valorAuxilio: calcularReembolso(1800), status: "ativo", situacaoFinanceira: "inadimplente", telefone: "(61) 99123-4567", email: "maria.oliveira.tecnica.transito@detran.df.gov.br", ultimoReajuste: "01/07/2025", dataNascimento: "05/09/1990", situacaoBeneficiarioTitular: "Servidor efetivo inativo" },
   // ASSETRAN — associação sempre tem operadora vinculada (corrigido: não é opcional).
-  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente", telefone: "(61) 98211-3344", email: "carlos.pereira@detran.df.gov.br", ultimoReajuste: "—" },
+  { matricula: "34567", cpf: "567.890.123-44", processoSEI: "00050.003333/2024-10", nome: "Carlos Pereira", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "Assetran", dependentes: 0, valorPlano: 900, valorAuxilio: calcularReembolso(900), status: "pendente", telefone: "(61) 98211-3344", email: "carlos.pereira@detran.df.gov.br", ultimoReajuste: "—", dataNascimento: "15/05/2004", situacaoBeneficiarioTitular: "Servidor efetivo ativo" },
   // Individual, só com operadora.
-  { matricula: "45678", cpf: "456.123.789-55", processoSEI: "00050.004444/2024-10", nome: "Fernanda Lima", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta", situacaoFinanceira: "inadimplente", telefone: "(61) 98432-1198", email: "fernanda.lima@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
+  { matricula: "45678", cpf: "456.123.789-55", processoSEI: "00050.004444/2024-10", nome: "Fernanda Lima", cargo: "Analista de Trânsito", operadora: "Bradesco", associacao: "—", dependentes: 3, valorPlano: 5120, valorAuxilio: calcularReembolso(5120), status: "alerta", situacaoFinanceira: "inadimplente", telefone: "(61) 98432-1198", email: "fernanda.lima@detran.df.gov.br", ultimoReajuste: "01/01/2026", dataNascimento: "30/01/1965", situacaoBeneficiarioTitular: "Servidor efetivo ativo" },
   // ASSETRAN — operadora sempre presente.
-  { matricula: "56789", cpf: "678.901.234-55", processoSEI: "00050.005555/2024-10", nome: "Roberto Santos", cargo: "Pensionista Temporário", operadora: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo", telefone: "(61) 98765-1122", email: "roberto.santos@detran.df.gov.br", ultimoReajuste: "01/07/2024" },
+  { matricula: "56789", cpf: "678.901.234-55", processoSEI: "00050.005555/2024-10", nome: "Roberto Santos", cargo: "Pensionista Temporário", operadora: "CASSI", associacao: "Assetran", dependentes: 1, valorPlano: 1100, valorAuxilio: calcularReembolso(1100), status: "inativo", telefone: "(61) 98765-1122", email: "roberto.santos@detran.df.gov.br", ultimoReajuste: "01/07/2024", dataNascimento: "18/06/1958", situacaoBeneficiarioTitular: "Titular de pensão temporária" },
   // ASSEFAZ com operadora vinculada.
-  { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 99887-6655", email: "patricia.costa@detran.df.gov.br", ultimoReajuste: "01/01/2026" },
+  { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 99887-6655", email: "patricia.costa@detran.df.gov.br", ultimoReajuste: "01/01/2026", dataNascimento: "03/03/1950", situacaoBeneficiarioTitular: "Titular de pensão vitalícia" },
   // Individual, suspenso + inadimplente (coexistência de dimensões).
-  { matricula: "78901", cpf: "234.567.890-99", processoSEI: "00050.007777/2024-10", nome: "Eduardo Nascimento", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "—", dependentes: 0, valorPlano: 950, valorAuxilio: calcularReembolso(950), status: "suspenso", situacaoFinanceira: "inadimplente", telefone: "(61) 98123-9900", email: "eduardo.nascimento@detran.df.gov.br", ultimoReajuste: "01/01/2025" },
+  { matricula: "78901", cpf: "234.567.890-99", processoSEI: "00050.007777/2024-10", nome: "Eduardo Nascimento", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "—", dependentes: 0, valorPlano: 950, valorAuxilio: calcularReembolso(950), status: "suspenso", situacaoFinanceira: "inadimplente", telefone: "(61) 98123-9900", email: "eduardo.nascimento@detran.df.gov.br", ultimoReajuste: "01/01/2025", dataNascimento: "14/08/1998", situacaoBeneficiarioTitular: "Servidor efetivo ativo" },
 ];
 
 export const formatCurrency = (v: number) => {
@@ -612,6 +648,16 @@ export interface BeneficiarioPagamento {
   id: string;
   nome: string;
   parentesco: 'Titular' | 'Cônjuge' | 'Filho';
+  /** Só presente no `Titular` do grupo — é a unidade de classificação do Fechamento de
+   *  Pagamento (`fechamento-pagamento.ts`): o Fechamento classifica **servidores** (titulares),
+   *  não cada dependente isoladamente. Identificador ilustrativo deste cenário do Módulo de
+   *  Pagamento, propositalmente isolado do cenário de `servidoresList` (mesma decisão de
+   *  cenários de dados isolados já registrada acima — "Carlos/Marina/Pedro vs. João/Ana") —
+   *  não corresponde a nenhuma matrícula de `servidoresList`. */
+  matricula?: string;
+  /** Idem `matricula` — só presente no Titular, ilustrativo, isolado de `servidorAtual.cpf`.
+   *  Usado no cabeçalho do Comprovante de Rendimentos (`fechamento-pagamento.ts`). */
+  cpf?: string;
   operadora: string;
   valorCadastrado: number;
   situacao: 'ativo' | 'pendente_documentacao' | 'inativo';
@@ -633,7 +679,7 @@ export interface BeneficiarioPagamento {
  * para como editar estes registros e demonstrar os outros 2 padrões descritos pelo stakeholder.
  */
 export const beneficiariosPagamento: BeneficiarioPagamento[] = [
-  { id: 'ben-titular', nome: 'Carlos Eduardo Ramos', parentesco: 'Titular', operadora: 'Assefaz', valorCadastrado: 420, situacao: 'ativo', modalidadePlano: 'individual_familiar' },
+  { id: 'ben-titular', nome: 'Carlos Eduardo Ramos', matricula: '50001', cpf: '111.222.333-44', parentesco: 'Titular', operadora: 'Assefaz', valorCadastrado: 420, situacao: 'ativo', modalidadePlano: 'individual_familiar' },
   { id: 'ben-conjuge', nome: 'Marina Ramos', parentesco: 'Cônjuge', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo', modalidadePlano: 'individual_familiar' },
   { id: 'ben-filho', nome: 'Pedro Ramos', parentesco: 'Filho', operadora: 'Assefaz', valorCadastrado: 310, situacao: 'ativo', modalidadePlano: 'individual_familiar', associacao: 'Assetran' },
 ];
@@ -651,6 +697,31 @@ export const competenciasFechadas = ["2026-04", "2026-05", "2026-06"];
 export interface ConclusaoCompetencia {
   competencia: string;
   concluidoEm: string;
+}
+
+/**
+ * Fechamento de Pagamento (GERDAB) de uma competência — conceito novo e distinto de
+ * `ConclusaoCompetencia` (que é o Servidor dizendo "terminei de enviar meus comprovantes").
+ * Aqui é a GERDAB dizendo "revisei o universo de servidores desta competência e vou gerar o
+ * relatório para o NURFI" — ver seção 2.3-2.5 do plano do Módulo de Relatórios. Só é permitido
+ * quando não há nenhum registro em "Requer análise" (ver `fechamento-pagamento.ts`), e é
+ * invalidado automaticamente por qualquer novo comprovante/ação na competência (mesmo mecanismo
+ * de `invalidarConclusaoCompetencia`).
+ */
+export interface FechamentoPagamento {
+  competencia: string;
+  fechadoEm: string;
+  fechadoPor: string;
+}
+
+/** Observação excepcional e manual da GERDAB para o NURFI sobre um servidor inadimplente em uma
+ *  competência — complementa (nunca substitui) os campos estruturados Situação/Motivo. */
+export interface ObservacaoNurfi {
+  beneficiarioId: string;
+  competencia: string;
+  texto: string;
+  registradoPor: string;
+  data: string;
 }
 
 /** Registro de que o servidor optou conscientemente por seguir sem o comprovante de um beneficiário. */

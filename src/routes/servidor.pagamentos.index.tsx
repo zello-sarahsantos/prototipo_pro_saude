@@ -1,17 +1,28 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronRight, FileUp, ShieldAlert, AlertTriangle, RefreshCw, Paperclip } from "lucide-react";
+import {
+  ChevronRight,
+  FileUp,
+  ShieldAlert,
+  AlertTriangle,
+  RefreshCw,
+  Paperclip,
+  Receipt,
+  ArrowRight,
+} from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ServidorComprovanteDetail } from "@/components/ServidorComprovanteDetail";
 import {
   beneficiariosPagamento,
   competenciaAtual,
   formatCompetencia,
+  formatCurrency,
   servidorAtual,
   type Comprovante,
 } from "@/lib/mock-data";
 import { getComprovantesUnificados } from "@/lib/prosaude-storage";
 import { getCompetenciasPendentes, getBeneficiariosFaltantes } from "@/lib/competencias-pendentes";
+import { getExtratoServidor } from "@/lib/fechamento-pagamento";
 
 export const Route = createFileRoute("/servidor/pagamentos/")({
   component: PagamentosHome,
@@ -30,6 +41,31 @@ function PagamentosHome() {
   const competenciasPendentes = useMemo(() => getCompetenciasPendentes(), [refreshKey]);
   const pendentesExibidas = mostrarTodasPendentes ? competenciasPendentes : competenciasPendentes.slice(0, 3);
   const beneficiariosFaltantes = useMemo(() => getBeneficiariosFaltantes(competenciaAtual), [refreshKey]);
+
+  // Grupo familiar sem comprovação coletiva (mesma regra usada em toda a tela acima) — usado
+  // para casar cada comprovante com a competência a que ele pertence no Histórico de Comprovações.
+  const grupo = beneficiariosPagamento.filter((b) => !b.associacao);
+  const titular = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
+
+  // Histórico de Comprovações — evolução do antigo "Histórico de envios": em vez de listar
+  // documentos soltos, resume por competência (reaproveita `getExtratoServidor`, a mesma fonte
+  // já usada no Extrato administrativo — nenhum motor de cálculo/classificação novo). O nome e o
+  // conceito foram corrigidos: é o histórico das comprovações apresentadas por competência, não
+  // um "histórico de pagamentos" — o reembolso só acontece depois da comprovação ser aprovada.
+  const historicoComprovacoes = useMemo(() => {
+    if (!titular) return [];
+    return [...getExtratoServidor(titular.id)].reverse().map((linha) => {
+      const doCompetencia = comprovantes.filter(
+        (c) => c.competencia === linha.competencia && c.beneficiarioIds.some((id) => grupo.some((b) => b.id === id)),
+      );
+      return {
+        ...linha,
+        documentos: doCompetencia.flatMap((c) => c.arquivos.map((a) => a.nome)),
+        comprovanteMaisRecente: doCompetencia[doCompetencia.length - 1],
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comprovantes, titular?.id]);
 
   function abrirDetalheDoBeneficiario(beneficiarioId: string) {
     const doBeneficiario = daCompetenciaAtual.filter((c) => c.beneficiarioIds.includes(beneficiarioId));
@@ -206,35 +242,66 @@ function PagamentosHome() {
         </div>
       </section>
 
-      {comprovantes.length > 0 && (
+      {historicoComprovacoes.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            Histórico de envios
-          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Histórico de Comprovações
+            </h3>
+          </div>
+          <p className="text-xs text-muted-foreground mb-2">
+            Comprovações apresentadas por competência — o reembolso só ocorre após a análise e
+            aprovação do comprovante.
+          </p>
           <div className="space-y-2">
-            {comprovantes
-              .slice()
-              .reverse()
-              .map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setDetalhe({ comprovante: c })}
-                  className="w-full text-left bg-card rounded-xl p-3 border border-border flex items-center gap-3 hover:border-primary/40 transition"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{c.arquivos.map((a) => a.nome).join(", ")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatCompetencia(c.competencia)}
-                      {c.isRetroativo && " • Retroativo"}
-                    </p>
+            {historicoComprovacoes.map((linha) => (
+              <button
+                key={linha.competencia}
+                onClick={() => linha.comprovanteMaisRecente && setDetalhe({ comprovante: linha.comprovanteMaisRecente })}
+                disabled={!linha.comprovanteMaisRecente}
+                className="w-full text-left bg-card rounded-xl p-3 border border-border flex flex-col gap-1.5 disabled:cursor-default hover:border-primary/40 disabled:hover:border-border transition"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium">{formatCompetencia(linha.competencia)}</p>
+                  <div className="flex items-center gap-2 ml-auto">
+                    {linha.houvePagamento && (
+                      <span className="text-xs font-medium shrink-0">{formatCurrency(linha.valor)}</span>
+                    )}
+                    {linha.statusComprovante ? (
+                      <ComprovanteStatusBadge status={linha.statusComprovante} />
+                    ) : (
+                      <ComprovanteStatusBadge status="ilegivel" label="Sem comprovação" />
+                    )}
+                    {linha.comprovanteMaisRecente && (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
                   </div>
-                  <ComprovanteStatusBadge status={c.status} />
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </button>
-              ))}
+                </div>
+                <p className="text-xs text-muted-foreground truncate">
+                  {linha.documentos.length > 0 ? linha.documentos.join(", ") : "Sem comprovação apresentada"}
+                  {/* "Retroativo" já aparece no rótulo do badge de status (statusComprovanteLabels)
+                      para todo status da família retroativo_* — não repetir aqui evita
+                      redundância visual (ver ocorrenciaRetroativo só como dado, não como chip). */}
+                </p>
+              </button>
+            ))}
           </div>
         </section>
       )}
+
+      <Link
+        to="/servidor/comprovante-rendimentos"
+        className="flex items-center gap-3 bg-card rounded-xl p-3 border border-border hover:border-primary/40 transition"
+      >
+        <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <Receipt className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Comprovante de Rendimentos</p>
+          <p className="text-xs text-muted-foreground">Valores efetivamente recebidos, por ano.</p>
+        </div>
+        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+      </Link>
 
       {detalhe && (
         <ServidorComprovanteDetail

@@ -1,10 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { servidoresList, formatCurrency, type SituacaoFinanceira } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Search, Settings, ChevronDown, Download, BellRing, Copy, Check } from "lucide-react";
+import { Search, Settings, ChevronDown, Download, BellRing, Copy, Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 
 export const Route = createFileRoute("/admin/servidores/")({
+  // `origem: "relatorios"` é passado só pelo link do card "Beneficiários / Contratos" em
+  // `/admin/relatorios` — mostra um breadcrumb de contexto, sem duplicar tela/dados/lógica. O
+  // acesso normal pelo menu "Servidores" não passa esse parâmetro e a tela fica como sempre foi.
+  validateSearch: (search: Record<string, unknown>): { origem?: "relatorios" } => ({
+    origem: search.origem === "relatorios" ? "relatorios" : undefined,
+  }),
   component: Servidores,
 });
 
@@ -115,8 +121,22 @@ function ProcessoSEICell({ numero }: { numero: string }) {
   );
 }
 
+/**
+ * Esta tela também é a "Beneficiários / Contratos" do Módulo de Relatórios (ver plano/matriz
+ * de tratamento do SISPRO, docs/MODULO_RELATORIOS.md §3.9/§3.10): em vez de construir uma tela
+ * nova duplicando dados e lógica, o Módulo de Relatórios só passa a linkar para cá — com
+ * `?origem=relatorios` mostrando o breadcrumb "Relatórios > Beneficiários / Contratos" (ver
+ * `Route.validateSearch` acima); o acesso normal pelo menu "Servidores" não passa esse
+ * parâmetro e a tela fica exatamente como sempre foi. O filtro de "Status" abaixo já cobre
+ * Ativos/Inativos/Pendentes/etc. numa única visão — substituindo o que seriam duas telas
+ * separadas no SISPRO ("Pró-Saúde dos Ativos"/"Pró-Saúde dos Inativos"). Telefone/e-mail
+ * **não** são coluna da tabela principal (ajuste de UX — alta densidade horizontal já existia);
+ * continuam disponíveis na ficha individual (`/admin/servidores/$id`) e devem entrar na futura
+ * exportação desta visão (ver §3.10).
+ */
 function Servidores() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroAssociacao, setFiltroAssociacao] = useState("");
@@ -167,6 +187,15 @@ function Servidores() {
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
+      {search.origem === "relatorios" && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Link to="/admin/relatorios" className="hover:text-primary hover:underline">
+            Relatórios
+          </Link>
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-foreground font-medium">Beneficiários / Contratos</span>
+        </p>
+      )}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Servidores</h1>

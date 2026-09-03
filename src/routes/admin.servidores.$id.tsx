@@ -124,7 +124,11 @@ function DetalheServidor() {
           <button onClick={() => setInativarTitularOpen(true)} className="text-sm border border-destructive/30 text-destructive rounded-md px-3 py-1.5 hover:bg-destructive/5 font-medium">
             Alterar para Inativo
           </button>
-          <StatusBadge status="ativo" />
+          {/* Rótulo simplificado — "Status no Pró-Saúde" é Ativo/Inativo, distinto da
+              Situação do beneficiário titular (Servidor efetivo/comissionado/pensionista etc.,
+              ver docs/MODULO_RELATORIOS.md). "Ativo no Sistema" (rótulo padrão do StatusKey)
+              soava como se fosse essa segunda dimensão — corrigido aqui para só "Ativo". */}
+          <StatusBadge status="ativo" label="Ativo" />
         </div>
       </header>
 

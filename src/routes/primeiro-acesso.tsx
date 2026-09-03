@@ -296,7 +296,7 @@ export function FlowInclusao({
   });
 
   const isPensionista = titular.situacao.startsWith("Titular de pensão");
-  const isInativo = titular.situacao === "Servidor inativo";
+  const isInativo = titular.situacao === "Servidor efetivo inativo";
   const isAtivo = titular.situacao === "Servidor efetivo ativo" || titular.situacao === "Servidor comissionado";
 
   const steps = isPensionista 

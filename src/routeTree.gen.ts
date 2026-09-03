@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ServidorMeusDadosRouteImport } from './routes/servidor.meus-dados'
 import { Route as ServidorInicioRouteImport } from './routes/servidor.inicio'
 import { Route as ServidorDependentesRouteImport } from './routes/servidor.dependentes'
+import { Route as ServidorComprovanteRendimentosRouteImport } from './routes/servidor.comprovante-rendimentos'
 import { Route as AssociacaoUploadRouteImport } from './routes/associacao.upload'
 import { Route as AssociacaoNovaInclusaoRouteImport } from './routes/associacao.nova-inclusao'
 import { Route as AdminRequerimentosRouteImport } from './routes/admin.requerimentos'
@@ -28,6 +29,7 @@ import { Route as AdminCargaInicialRouteImport } from './routes/admin.carga-inic
 import { Route as ServidorPagamentosIndexRouteImport } from './routes/servidor.pagamentos.index'
 import { Route as AssociacaoGerenciamentoIndexRouteImport } from './routes/associacao.gerenciamento.index'
 import { Route as AdminServidoresIndexRouteImport } from './routes/admin.servidores.index'
+import { Route as AdminRelatoriosIndexRouteImport } from './routes/admin.relatorios.index'
 import { Route as ServidorRequerimentoNovoPlanoRouteImport } from './routes/servidor.requerimento.novo-plano'
 import { Route as ServidorRequerimentoNovoRouteImport } from './routes/servidor.requerimento.novo'
 import { Route as ServidorRequerimentoIncluirDependenteRouteImport } from './routes/servidor.requerimento.incluir-dependente'
@@ -35,6 +37,11 @@ import { Route as ServidorRequerimentoExclusaoRouteImport } from './routes/servi
 import { Route as ServidorPagamentosEnviarRouteImport } from './routes/servidor.pagamentos.enviar'
 import { Route as AssociacaoGerenciamentoIdRouteImport } from './routes/associacao.gerenciamento.$id'
 import { Route as AdminServidoresIdRouteImport } from './routes/admin.servidores.$id'
+import { Route as AdminRelatoriosPagamentosRouteImport } from './routes/admin.relatorios.pagamentos'
+import { Route as AdminRelatoriosGerencialRouteImport } from './routes/admin.relatorios.gerencial'
+import { Route as AdminRelatoriosDocumentacaoRouteImport } from './routes/admin.relatorios.documentacao'
+import { Route as AdminRelatoriosExtratoIndexRouteImport } from './routes/admin.relatorios.extrato.index'
+import { Route as AdminRelatoriosExtratoMatriculaRouteImport } from './routes/admin.relatorios.extrato.$matricula'
 
 const ServidorRoute = ServidorRouteImport.update({
   id: '/servidor',
@@ -81,6 +88,12 @@ const ServidorDependentesRoute = ServidorDependentesRouteImport.update({
   path: '/dependentes',
   getParentRoute: () => ServidorRoute,
 } as any)
+const ServidorComprovanteRendimentosRoute =
+  ServidorComprovanteRendimentosRouteImport.update({
+    id: '/comprovante-rendimentos',
+    path: '/comprovante-rendimentos',
+    getParentRoute: () => ServidorRoute,
+  } as any)
 const AssociacaoUploadRoute = AssociacaoUploadRouteImport.update({
   id: '/upload',
   path: '/upload',
@@ -132,6 +145,11 @@ const AdminServidoresIndexRoute = AdminServidoresIndexRouteImport.update({
   path: '/servidores/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminRelatoriosIndexRoute = AdminRelatoriosIndexRouteImport.update({
+  id: '/relatorios/',
+  path: '/relatorios/',
+  getParentRoute: () => AdminRoute,
+} as any)
 const ServidorRequerimentoNovoPlanoRoute =
   ServidorRequerimentoNovoPlanoRouteImport.update({
     id: '/requerimento/novo-plano',
@@ -173,6 +191,36 @@ const AdminServidoresIdRoute = AdminServidoresIdRouteImport.update({
   path: '/servidores/$id',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminRelatoriosPagamentosRoute =
+  AdminRelatoriosPagamentosRouteImport.update({
+    id: '/relatorios/pagamentos',
+    path: '/relatorios/pagamentos',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminRelatoriosGerencialRoute =
+  AdminRelatoriosGerencialRouteImport.update({
+    id: '/relatorios/gerencial',
+    path: '/relatorios/gerencial',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminRelatoriosDocumentacaoRoute =
+  AdminRelatoriosDocumentacaoRouteImport.update({
+    id: '/relatorios/documentacao',
+    path: '/relatorios/documentacao',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminRelatoriosExtratoIndexRoute =
+  AdminRelatoriosExtratoIndexRouteImport.update({
+    id: '/relatorios/extrato/',
+    path: '/relatorios/extrato/',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminRelatoriosExtratoMatriculaRoute =
+  AdminRelatoriosExtratoMatriculaRouteImport.update({
+    id: '/relatorios/extrato/$matricula',
+    path: '/relatorios/extrato/$matricula',
+    getParentRoute: () => AdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -188,9 +236,13 @@ export interface FileRoutesByFullPath {
   '/admin/requerimentos': typeof AdminRequerimentosRoute
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
   '/associacao/upload': typeof AssociacaoUploadRoute
+  '/servidor/comprovante-rendimentos': typeof ServidorComprovanteRendimentosRoute
   '/servidor/dependentes': typeof ServidorDependentesRoute
   '/servidor/inicio': typeof ServidorInicioRoute
   '/servidor/meus-dados': typeof ServidorMeusDadosRoute
+  '/admin/relatorios/documentacao': typeof AdminRelatoriosDocumentacaoRoute
+  '/admin/relatorios/gerencial': typeof AdminRelatoriosGerencialRoute
+  '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
   '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
@@ -198,9 +250,12 @@ export interface FileRoutesByFullPath {
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
+  '/admin/relatorios/': typeof AdminRelatoriosIndexRoute
   '/admin/servidores/': typeof AdminServidoresIndexRoute
   '/associacao/gerenciamento/': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
+  '/admin/relatorios/extrato/$matricula': typeof AdminRelatoriosExtratoMatriculaRoute
+  '/admin/relatorios/extrato/': typeof AdminRelatoriosExtratoIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -216,9 +271,13 @@ export interface FileRoutesByTo {
   '/admin/requerimentos': typeof AdminRequerimentosRoute
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
   '/associacao/upload': typeof AssociacaoUploadRoute
+  '/servidor/comprovante-rendimentos': typeof ServidorComprovanteRendimentosRoute
   '/servidor/dependentes': typeof ServidorDependentesRoute
   '/servidor/inicio': typeof ServidorInicioRoute
   '/servidor/meus-dados': typeof ServidorMeusDadosRoute
+  '/admin/relatorios/documentacao': typeof AdminRelatoriosDocumentacaoRoute
+  '/admin/relatorios/gerencial': typeof AdminRelatoriosGerencialRoute
+  '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
   '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
@@ -226,9 +285,12 @@ export interface FileRoutesByTo {
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
+  '/admin/relatorios': typeof AdminRelatoriosIndexRoute
   '/admin/servidores': typeof AdminServidoresIndexRoute
   '/associacao/gerenciamento': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos': typeof ServidorPagamentosIndexRoute
+  '/admin/relatorios/extrato/$matricula': typeof AdminRelatoriosExtratoMatriculaRoute
+  '/admin/relatorios/extrato': typeof AdminRelatoriosExtratoIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -245,9 +307,13 @@ export interface FileRoutesById {
   '/admin/requerimentos': typeof AdminRequerimentosRoute
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
   '/associacao/upload': typeof AssociacaoUploadRoute
+  '/servidor/comprovante-rendimentos': typeof ServidorComprovanteRendimentosRoute
   '/servidor/dependentes': typeof ServidorDependentesRoute
   '/servidor/inicio': typeof ServidorInicioRoute
   '/servidor/meus-dados': typeof ServidorMeusDadosRoute
+  '/admin/relatorios/documentacao': typeof AdminRelatoriosDocumentacaoRoute
+  '/admin/relatorios/gerencial': typeof AdminRelatoriosGerencialRoute
+  '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
   '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
@@ -255,9 +321,12 @@ export interface FileRoutesById {
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
   '/servidor/requerimento/novo': typeof ServidorRequerimentoNovoRoute
   '/servidor/requerimento/novo-plano': typeof ServidorRequerimentoNovoPlanoRoute
+  '/admin/relatorios/': typeof AdminRelatoriosIndexRoute
   '/admin/servidores/': typeof AdminServidoresIndexRoute
   '/associacao/gerenciamento/': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
+  '/admin/relatorios/extrato/$matricula': typeof AdminRelatoriosExtratoMatriculaRoute
+  '/admin/relatorios/extrato/': typeof AdminRelatoriosExtratoIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -275,9 +344,13 @@ export interface FileRouteTypes {
     | '/admin/requerimentos'
     | '/associacao/nova-inclusao'
     | '/associacao/upload'
+    | '/servidor/comprovante-rendimentos'
     | '/servidor/dependentes'
     | '/servidor/inicio'
     | '/servidor/meus-dados'
+    | '/admin/relatorios/documentacao'
+    | '/admin/relatorios/gerencial'
+    | '/admin/relatorios/pagamentos'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
     | '/servidor/pagamentos/enviar'
@@ -285,9 +358,12 @@ export interface FileRouteTypes {
     | '/servidor/requerimento/incluir-dependente'
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
+    | '/admin/relatorios/'
     | '/admin/servidores/'
     | '/associacao/gerenciamento/'
     | '/servidor/pagamentos/'
+    | '/admin/relatorios/extrato/$matricula'
+    | '/admin/relatorios/extrato/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -303,9 +379,13 @@ export interface FileRouteTypes {
     | '/admin/requerimentos'
     | '/associacao/nova-inclusao'
     | '/associacao/upload'
+    | '/servidor/comprovante-rendimentos'
     | '/servidor/dependentes'
     | '/servidor/inicio'
     | '/servidor/meus-dados'
+    | '/admin/relatorios/documentacao'
+    | '/admin/relatorios/gerencial'
+    | '/admin/relatorios/pagamentos'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
     | '/servidor/pagamentos/enviar'
@@ -313,9 +393,12 @@ export interface FileRouteTypes {
     | '/servidor/requerimento/incluir-dependente'
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
+    | '/admin/relatorios'
     | '/admin/servidores'
     | '/associacao/gerenciamento'
     | '/servidor/pagamentos'
+    | '/admin/relatorios/extrato/$matricula'
+    | '/admin/relatorios/extrato'
   id:
     | '__root__'
     | '/'
@@ -331,9 +414,13 @@ export interface FileRouteTypes {
     | '/admin/requerimentos'
     | '/associacao/nova-inclusao'
     | '/associacao/upload'
+    | '/servidor/comprovante-rendimentos'
     | '/servidor/dependentes'
     | '/servidor/inicio'
     | '/servidor/meus-dados'
+    | '/admin/relatorios/documentacao'
+    | '/admin/relatorios/gerencial'
+    | '/admin/relatorios/pagamentos'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
     | '/servidor/pagamentos/enviar'
@@ -341,9 +428,12 @@ export interface FileRouteTypes {
     | '/servidor/requerimento/incluir-dependente'
     | '/servidor/requerimento/novo'
     | '/servidor/requerimento/novo-plano'
+    | '/admin/relatorios/'
     | '/admin/servidores/'
     | '/associacao/gerenciamento/'
     | '/servidor/pagamentos/'
+    | '/admin/relatorios/extrato/$matricula'
+    | '/admin/relatorios/extrato/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -420,6 +510,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServidorDependentesRouteImport
       parentRoute: typeof ServidorRoute
     }
+    '/servidor/comprovante-rendimentos': {
+      id: '/servidor/comprovante-rendimentos'
+      path: '/comprovante-rendimentos'
+      fullPath: '/servidor/comprovante-rendimentos'
+      preLoaderRoute: typeof ServidorComprovanteRendimentosRouteImport
+      parentRoute: typeof ServidorRoute
+    }
     '/associacao/upload': {
       id: '/associacao/upload'
       path: '/upload'
@@ -490,6 +587,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminServidoresIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/relatorios/': {
+      id: '/admin/relatorios/'
+      path: '/relatorios'
+      fullPath: '/admin/relatorios/'
+      preLoaderRoute: typeof AdminRelatoriosIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/servidor/requerimento/novo-plano': {
       id: '/servidor/requerimento/novo-plano'
       path: '/requerimento/novo-plano'
@@ -539,6 +643,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminServidoresIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/relatorios/pagamentos': {
+      id: '/admin/relatorios/pagamentos'
+      path: '/relatorios/pagamentos'
+      fullPath: '/admin/relatorios/pagamentos'
+      preLoaderRoute: typeof AdminRelatoriosPagamentosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios/gerencial': {
+      id: '/admin/relatorios/gerencial'
+      path: '/relatorios/gerencial'
+      fullPath: '/admin/relatorios/gerencial'
+      preLoaderRoute: typeof AdminRelatoriosGerencialRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios/documentacao': {
+      id: '/admin/relatorios/documentacao'
+      path: '/relatorios/documentacao'
+      fullPath: '/admin/relatorios/documentacao'
+      preLoaderRoute: typeof AdminRelatoriosDocumentacaoRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios/extrato/': {
+      id: '/admin/relatorios/extrato/'
+      path: '/relatorios/extrato'
+      fullPath: '/admin/relatorios/extrato/'
+      preLoaderRoute: typeof AdminRelatoriosExtratoIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios/extrato/$matricula': {
+      id: '/admin/relatorios/extrato/$matricula'
+      path: '/relatorios/extrato/$matricula'
+      fullPath: '/admin/relatorios/extrato/$matricula'
+      preLoaderRoute: typeof AdminRelatoriosExtratoMatriculaRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
@@ -548,8 +687,14 @@ interface AdminRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminParametrosRoute: typeof AdminParametrosRoute
   AdminRequerimentosRoute: typeof AdminRequerimentosRoute
+  AdminRelatoriosDocumentacaoRoute: typeof AdminRelatoriosDocumentacaoRoute
+  AdminRelatoriosGerencialRoute: typeof AdminRelatoriosGerencialRoute
+  AdminRelatoriosPagamentosRoute: typeof AdminRelatoriosPagamentosRoute
   AdminServidoresIdRoute: typeof AdminServidoresIdRoute
+  AdminRelatoriosIndexRoute: typeof AdminRelatoriosIndexRoute
   AdminServidoresIndexRoute: typeof AdminServidoresIndexRoute
+  AdminRelatoriosExtratoMatriculaRoute: typeof AdminRelatoriosExtratoMatriculaRoute
+  AdminRelatoriosExtratoIndexRoute: typeof AdminRelatoriosExtratoIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
@@ -558,8 +703,14 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminDashboardRoute: AdminDashboardRoute,
   AdminParametrosRoute: AdminParametrosRoute,
   AdminRequerimentosRoute: AdminRequerimentosRoute,
+  AdminRelatoriosDocumentacaoRoute: AdminRelatoriosDocumentacaoRoute,
+  AdminRelatoriosGerencialRoute: AdminRelatoriosGerencialRoute,
+  AdminRelatoriosPagamentosRoute: AdminRelatoriosPagamentosRoute,
   AdminServidoresIdRoute: AdminServidoresIdRoute,
+  AdminRelatoriosIndexRoute: AdminRelatoriosIndexRoute,
   AdminServidoresIndexRoute: AdminServidoresIndexRoute,
+  AdminRelatoriosExtratoMatriculaRoute: AdminRelatoriosExtratoMatriculaRoute,
+  AdminRelatoriosExtratoIndexRoute: AdminRelatoriosExtratoIndexRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
@@ -583,6 +734,7 @@ const AssociacaoRouteWithChildren = AssociacaoRoute._addFileChildren(
 )
 
 interface ServidorRouteChildren {
+  ServidorComprovanteRendimentosRoute: typeof ServidorComprovanteRendimentosRoute
   ServidorDependentesRoute: typeof ServidorDependentesRoute
   ServidorInicioRoute: typeof ServidorInicioRoute
   ServidorMeusDadosRoute: typeof ServidorMeusDadosRoute
@@ -595,6 +747,7 @@ interface ServidorRouteChildren {
 }
 
 const ServidorRouteChildren: ServidorRouteChildren = {
+  ServidorComprovanteRendimentosRoute: ServidorComprovanteRendimentosRoute,
   ServidorDependentesRoute: ServidorDependentesRoute,
   ServidorInicioRoute: ServidorInicioRoute,
   ServidorMeusDadosRoute: ServidorMeusDadosRoute,
