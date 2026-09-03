@@ -62,6 +62,20 @@ export function buildRelatorioPdfBlob<T>(spec: RelatorioExportSpec<T>): Blob {
   doc.text(spec.titulo, larguraPagina / 2, y, { align: "center" });
   y += 7;
 
+  // Bloco de identificação (documentos individuais, ex.: Comprovante de Rendimentos) — Nome/
+  // Matrícula/CPF do titular a quem o documento se refere. Não existe em relatórios
+  // administrativos agregados (spec.identificacao omitido nesses casos).
+  if (spec.identificacao && spec.identificacao.length > 0) {
+    doc.setFont("times", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    spec.identificacao.forEach(({ label, valor }) => {
+      doc.text(`${label}: ${valor}`, MARGEM, y);
+      y += 5;
+    });
+    y += 1;
+  }
+
   // Área de parâmetros do relatório — competência (quando existir), filtros efetivamente
   // aplicados (ou "Filtros: Todos") e data/hora de geração. Bloco discreto, tipograficamente
   // menor que o título, para separar claramente "o que é o relatório" de "com que recorte".
@@ -69,11 +83,13 @@ export function buildRelatorioPdfBlob<T>(spec: RelatorioExportSpec<T>): Blob {
   doc.setFontSize(9);
   doc.setTextColor(70, 70, 70);
   if (spec.competencia) {
-    doc.text(`Competência: ${spec.competencia}`, MARGEM, y);
+    doc.text(`${spec.rotuloCompetencia ?? "Competência"}: ${spec.competencia}`, MARGEM, y);
     y += 5;
   }
-  doc.text(textoFiltros(spec.filtrosAplicados), MARGEM, y);
-  y += 5;
+  if (spec.filtrosAplicados.length > 0 || !spec.ocultarLinhaFiltrosSeVazia) {
+    doc.text(textoFiltros(spec.filtrosAplicados), MARGEM, y);
+    y += 5;
+  }
   doc.text(`Gerado em: ${formatarDataHoraGeracao()}`, MARGEM, y);
   y += 3;
   doc.setTextColor(0, 0, 0);

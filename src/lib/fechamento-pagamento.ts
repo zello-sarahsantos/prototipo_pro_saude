@@ -295,18 +295,28 @@ export function getExtratoServidor(beneficiarioId: string): LinhaExtrato[] {
 
 /**
  * Comprovante de Rendimentos (seção 2.1 item 7 / 2.10 do plano) — consolidado **anual** dos
- * valores efetivamente pagos ao servidor, para informe/consulta. **Nunca a mesma tela** que a
- * Documentação e Pendências (§3.4, docs/MODULO_RELATORIOS.md) — aquela é sobre documentação
- * obrigatória (IRPF/escolaridade/etc.), esta é sobre valores pagos (correção explícita do
- * usuário à v1 do plano, que confundia os dois conceitos). Reaproveita `getExtratoServidor`
- * (mesma fonte de dados do Extrato do Servidor) — só agrupa por ano, nenhum motor novo.
+ * valores de auxílio recebidos pelo servidor, para informe/consulta/exportação (uso declarado:
+ * declaração de Imposto de Renda). **Nunca a mesma tela** que a Documentação e Pendências (§3.4,
+ * docs/MODULO_RELATORIOS.md) — aquela é sobre documentação obrigatória (IRPF/escolaridade/etc.),
+ * esta é sobre valores recebidos (correção explícita do usuário à v1 do plano, que confundia os
+ * dois conceitos). Reaproveita `getExtratoServidor` (mesma fonte de dados do Extrato do
+ * Servidor) — só agrupa por ano, nenhum motor novo.
+ *
+ * **Limitação de dados conhecida (não resolvida nesta rodada):** `l.houvePagamento` vem de
+ * `detalhe.classificacao === "adimplente"`, ou seja, comprovante **aprovado** na competência —
+ * o protótipo não tem nenhum dado de confirmação de repasse efetivo em folha/conta (mesma
+ * limitação já registrada para o Histórico de Comprovações, ver comentário acima de
+ * `LinhaHistoricoComprovacoes`). "Aprovado" é usado aqui como melhor proxy disponível para
+ * "recebido", mas as duas coisas **não são a mesma garantia** — não inventar uma equivalência
+ * mais forte do que os dados sustentam. Ver nota de limitação em
+ * docs/MODULO_RELATORIOS.md §3.19.
  */
 export interface ComprovanteRendimentos {
   ano: string;
   nome: string;
   matricula?: string;
   cpf?: string;
-  linhas: { competencia: string; valorPago: number }[];
+  linhas: { competencia: string; valorRecebido: number }[];
   totalAnual: number;
 }
 
@@ -320,14 +330,14 @@ export function getComprovanteRendimentos(beneficiarioId: string, ano: string): 
   if (!titular) return undefined;
   const linhas = getExtratoServidor(beneficiarioId)
     .filter((l) => l.ano === ano)
-    .map((l) => ({ competencia: l.competencia, valorPago: l.houvePagamento ? l.valor : 0 }));
+    .map((l) => ({ competencia: l.competencia, valorRecebido: l.houvePagamento ? l.valor : 0 }));
   return {
     ano,
     nome: titular.nome,
     matricula: titular.matricula,
     cpf: titular.cpf,
     linhas,
-    totalAnual: linhas.reduce((soma, l) => soma + l.valorPago, 0),
+    totalAnual: linhas.reduce((soma, l) => soma + l.valorRecebido, 0),
   };
 }
 

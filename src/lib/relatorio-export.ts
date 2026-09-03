@@ -41,9 +41,22 @@ export interface RelatorioExportSpec<T> {
   origem: string;
   /** Competência/período — omitido quando o relatório é uma fotografia sem recorte temporal. */
   competencia?: string;
+  /** Rótulo exibido antes de `competencia` (ex.: "Competência", "Ano-calendário"). Padrão:
+   *  "Competência" — só é preciso informar quando o período do relatório não é uma competência
+   *  mensal (ex.: o Comprovante de Rendimentos, que é anual). */
+  rotuloCompetencia?: string;
   /** Descrição legível dos filtros aplicados na tela no momento da exportação (ex.:
    *  ["Vínculo: Ativos", "Operadora: Bradesco"]) — vazio quando nenhum filtro está ativo. */
   filtrosAplicados: string[];
+  /** Quando true, e `filtrosAplicados` estiver vazio, omite a linha "Filtros: Todos" — usado por
+   *  documentos individuais (ex.: Comprovante de Rendimentos) onde "filtros" não é um conceito
+   *  relevante e a linha soaria fora de contexto num documento formal de uma só pessoa. Se
+   *  `filtrosAplicados` não estiver vazio, a linha é sempre exibida independente desta opção. */
+  ocultarLinhaFiltrosSeVazia?: boolean;
+  /** Bloco opcional de identificação (ex.: Nome/Matrícula/CPF do titular), exibido entre o título
+   *  e os parâmetros — usado por documentos individuais que precisam identificar a pessoa a quem
+   *  o documento se refere, algo que não se aplica a relatórios administrativos agregados. */
+  identificacao?: { label: string; valor: string }[];
   colunas: ColunaExport<T>[];
   /** Linhas já filtradas exatamente como exibidas na tela — nunca só a página visual atual. */
   linhas: T[];

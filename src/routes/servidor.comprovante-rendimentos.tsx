@@ -8,6 +8,8 @@ import {
   getComprovanteRendimentos,
 } from "@/lib/fechamento-pagamento";
 import { getBeneficiariosPagamentoAtual } from "@/lib/prosaude-storage";
+import { ExportarRelatorio } from "@/components/ExportarRelatorio";
+import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/servidor/comprovante-rendimentos")({
   component: ComprovanteDeRendimentos,
@@ -21,6 +23,33 @@ function ComprovanteDeRendimentos() {
   const [ano, setAno] = useState(anos[anos.length - 1] ?? "");
   const comprovante = titular ? getComprovanteRendimentos(titular.id, ano) : undefined;
 
+  // Exportação (PDF/XLSX) — documento individual do Portal do Servidor, exclusivo desta tela
+  // (nunca um relatório administrativo equivalente). Reaproveita a camada compartilhada com os
+  // relatórios do Módulo de Relatórios (RelatorioExportSpec/ExportarRelatorio), sem motor
+  // próprio: mesmas linhas já exibidas na tela para o ano-calendário selecionado, sem paginação.
+  const specExport: RelatorioExportSpec<{ competencia: string; valorRecebido: number }> | undefined = comprovante
+    ? {
+        titulo: "Comprovante de Rendimentos — Pró-Saúde",
+        origem: "Portal do Servidor",
+        competencia: comprovante.ano,
+        rotuloCompetencia: "Ano-calendário",
+        filtrosAplicados: [],
+        ocultarLinhaFiltrosSeVazia: true,
+        identificacao: [
+          { label: "Nome", valor: comprovante.nome },
+          { label: "Matrícula", valor: comprovante.matricula ?? "—" },
+          { label: "CPF", valor: comprovante.cpf ?? "—" },
+        ],
+        colunas: [
+          { header: "Mês/Competência", valor: (l) => formatCompetencia(l.competencia), tipo: "texto", width: 20 },
+          { header: "Valor do Auxílio Recebido", valor: (l) => l.valorRecebido, tipo: "moeda", width: 26 },
+        ],
+        linhas: comprovante.linhas,
+        linhaTotal: { label: "Total recebido no ano", valores: [comprovante.totalAnual] },
+        nomeArquivoBase: `pro-saude_comprovante_rendimentos_${comprovante.ano}`,
+      }
+    : undefined;
+
   if (!titular || !comprovante) return null;
 
   return (
@@ -32,7 +61,8 @@ function ComprovanteDeRendimentos() {
       <header>
         <h1 className="text-xl font-bold">Comprovante de Rendimentos</h1>
         <p className="text-sm text-muted-foreground">
-          Consulte os valores de reembolso efetivamente recebidos pelo Pró-Saúde em cada ano.
+          Consulte e exporte os valores de auxílio recebidos pelo Pró-Saúde em cada ano, para uso
+          na declaração de Imposto de Renda.
         </p>
       </header>
 
@@ -64,14 +94,17 @@ function ComprovanteDeRendimentos() {
           </label>
         </div>
 
-        <div className="flex items-center gap-3 pt-2 border-t border-border">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <Receipt className="h-4 w-4" />
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <Receipt className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total recebido em {comprovante.ano}</p>
+              <p className="text-xl font-bold">{formatCurrency(comprovante.totalAnual)}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Total pago em {comprovante.ano}</p>
-            <p className="text-xl font-bold">{formatCurrency(comprovante.totalAnual)}</p>
-          </div>
+          {specExport && <ExportarRelatorio spec={specExport} />}
         </div>
       </div>
 
@@ -80,7 +113,7 @@ function ComprovanteDeRendimentos() {
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
               <th className="text-left px-4 py-2">Mês/Competência</th>
-              <th className="text-right px-4 py-2">Valor pago</th>
+              <th className="text-right px-4 py-2">Valor do auxílio recebido</th>
             </tr>
           </thead>
           <tbody>
@@ -88,13 +121,22 @@ function ComprovanteDeRendimentos() {
               <tr key={l.competencia} className="border-t border-border">
                 <td className="px-4 py-2">{formatCompetencia(l.competencia)}</td>
                 <td className="px-4 py-2 text-right">
-                  {l.valorPago > 0 ? formatCurrency(l.valorPago) : "—"}
+                  {l.valorRecebido > 0 ? formatCurrency(l.valorRecebido) : "—"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </section>
+
+      {/* Limitação de dados conhecida (ver docs/MODULO_RELATORIOS.md §3.19): o protótipo não
+         distingue "comprovante aprovado" de "repasse efetivamente processado em folha/conta" —
+         o valor exibido/exportado usa a aprovação como melhor proxy disponível. Nota exibida só
+         na tela (não no documento exportado), para não comprometer a leitura do PDF formal. */}
+      <p className="text-xs text-muted-foreground">
+        Os valores acima refletem comprovantes aprovados pela GERDAB nesta competência. Este
+        protótipo ainda não confirma o repasse efetivo em folha/conta separadamente da aprovação.
+      </p>
     </div>
   );
 }

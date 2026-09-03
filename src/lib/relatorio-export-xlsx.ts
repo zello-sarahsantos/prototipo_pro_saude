@@ -55,12 +55,23 @@ export async function buildRelatorioXlsxBlob<T>(spec: RelatorioExportSpec<T>): P
   mergeCentralizada(spec.titulo, linhaAtual, true, 12);
   linhaAtual++;
 
+  // Bloco de identificação (documentos individuais, ex.: Comprovante de Rendimentos) — Nome/
+  // Matrícula/CPF do titular. Ausente em relatórios administrativos agregados.
+  if (spec.identificacao && spec.identificacao.length > 0) {
+    spec.identificacao.forEach(({ label, valor }) => {
+      mergeCentralizada(`${label}: ${valor}`, linhaAtual, false, 10);
+      linhaAtual++;
+    });
+  }
+
   if (spec.competencia) {
-    mergeCentralizada(`Competência: ${spec.competencia}`, linhaAtual, false, 10);
+    mergeCentralizada(`${spec.rotuloCompetencia ?? "Competência"}: ${spec.competencia}`, linhaAtual, false, 10);
     linhaAtual++;
   }
-  mergeCentralizada(textoFiltros(spec.filtrosAplicados), linhaAtual, false, 10);
-  linhaAtual++;
+  if (spec.filtrosAplicados.length > 0 || !spec.ocultarLinhaFiltrosSeVazia) {
+    mergeCentralizada(textoFiltros(spec.filtrosAplicados), linhaAtual, false, 10);
+    linhaAtual++;
+  }
   mergeCentralizada(`Gerado em: ${formatarDataHoraGeracao()}`, linhaAtual, false, 10);
   linhaAtual += 2; // linha em branco antes do cabeçalho da tabela
 
