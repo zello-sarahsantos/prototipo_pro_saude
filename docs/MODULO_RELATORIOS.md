@@ -1522,6 +1522,150 @@ confirmado que `/primeiro-acesso` (fluxo "Solicitação inicial de inclusão") m
 opções, com "Servidor efetivo inativo" no mesmo lugar — vocabulário idêntico nos dois pontos.
 `npx tsc --noEmit` e `npm run build` limpos (só os 2 erros pré-existentes).
 
+### 3.17 Exportação real (PDF/XLSX) — camada compartilhada + relatório-piloto (Consolidado por Operadora/Seguradora)
+
+**Contexto:** pedido explícito do usuário — todo relatório administrativo efetivamente
+implementado deve poder ser exportado em PDF e XLSX reais (não mock), refletindo os filtros
+aplicados na tela (nunca só a página visual). Antes de propagar para os demais relatórios, o
+usuário pediu um único relatório-piloto para validar tipografia/cabeçalho/tabela/rodapé/Excel:
+**Visões Gerenciais → Consolidado por Operadora/Seguradora**. Os demais relatórios listados
+abaixo **aguardam aprovação do template** antes de receber a mesma exportação.
+
+**Identidade documental de referência**: `relatorio-de-seguradoras.pdf`/`.xlsx` (SISPRO),
+fornecidos pelo usuário — usados só para a **forma** do documento (cabeçalho institucional,
+título centralizado, tabela com cabeçalho destacado, paginação, estrutura do Excel), nunca para
+copiar a interface visual do SISPRO nem suas colunas de negócio. As colunas exportadas são
+sempre as do modelo de dados novo do Pró-Saúde (ex.: `Situação do Beneficiário Titular` com as 5
+categorias reais, nunca o "Quantidade Ativos/Quantidade Inativos" do legado).
+
+**Arquitetura (camada comum, reaproveitada por todos os relatórios):**
+- `src/lib/relatorio-export.ts` — tipos (`RelatorioExportSpec<T>`, `ColunaExport<T>`,
+  `LinhaTotalExport`), formatação de valor (`formatarValorExport`) e o único ponto que toca o
+  DOM para disparar download (`baixarBlob`). Cada tela monta um `RelatorioExportSpec` a partir
+  dos dados **que já calcula para a própria tabela** (mesmo array de linhas exibido, sem
+  paginação) — nenhuma consulta/classificação/agregação nova só para exportar.
+- `src/lib/relatorio-export-pdf.ts` — motor único de PDF (jsPDF + jspdf-autotable):
+  cabeçalho institucional (`GOVERNO DO DISTRITO FEDERAL` / `SECRETARIA DE SEGURANÇA PÚBLICA` /
+  `DEPARTAMENTO DE TRÂNSITO DO DISTRITO FEDERAL` + linha "PRÓ-SAÚDE — <origem>"), título
+  centralizado, competência/filtros abaixo do título, tabela com cabeçalho repetido em toda
+  página (`showHead: "everyPage"`), rodapé paginado (`Pró-Saúde` + `página/total`), paisagem
+  automática quando há mais de 5 colunas (`decidirOrientacao`).
+- `src/lib/relatorio-export-xlsx.ts` — motor único de XLSX (ExcelJS): mesmo cabeçalho
+  institucional/título/filtros nas primeiras linhas (mescladas, centralizadas), linha de
+  cabeçalho da tabela com preenchimento cinza, larguras de coluna por `ColunaExport.width`,
+  formatos nativos de número/moeda/percentual (não texto), cabeçalho **congelado**
+  (`sheet.views` com `state: "frozen"`) e **autofiltro** cobrindo cabeçalho + linhas de dados
+  (nunca a linha de Total). Nenhuma coluna técnica/ID interno — só as colunas de `ColunaExport`.
+- `src/components/ExportarRelatorio.tsx` — ação única de UI ("Exportar ▾" com PDF/Excel como
+  itens do menu, nunca dois botões separados), com estado de carregamento
+  ("Gerando PDF…"/"Gerando Excel…"). Os módulos pesados (jsPDF/autoTable/ExcelJS) são importados
+  dinamicamente dentro dos handlers de clique (`import()`), para não inflar o bundle de cada
+  tela que só usa o componente — confirmado no build: o chunk de `admin.relatorios.gerencial`
+  caiu de ~2,77 MB para ~21 KB depois dessa mudança, com `relatorio-export-pdf`/
+  `relatorio-export-xlsx` como chunks lazy próprios (664 KB / 2,08 MB, carregados só ao clicar).
+
+**Bugs reais encontrados e corrigidos durante a validação do piloto** (via geração real de
+arquivos, não só leitura de código):
+- Nome de aba do Excel não pode conter `* ? : \ / [ ]` — o título "Consolidado por Operadora /
+  Seguradora" quebrava a geração (erro do ExcelJS: caractere inválido no nome da aba). Corrigido
+  com `nomeAbaValido()`, que sanitiza o título antes de usar como nome de aba.
+- Autofiltro (`sheet.autoFilter`) cobria só a linha de cabeçalho (`A9:E9`), sem nenhuma linha de
+  dado — o filtro aparecia no Excel mas não tinha o que filtrar. Corrigido para cobrir cabeçalho
+  + todas as linhas de dados (nunca a linha de Total, que fica fora do filtro).
+
+**Relatório-piloto implementado**: `admin.relatorios.gerencial.tsx`, tabela "Consolidado por
+Operadora / Seguradora" — colunas exportadas: Operadora/Seguradora, Nº Titulares, Nº
+Dependentes, Total de Beneficiários, % da Base (mais linha de Total) — exatamente as mesmas já
+validadas na tela, sem `Quantidade Ativos/Quantidade Inativos` do SISPRO. Sem filtro nesta tela
+hoje (`filtrosAplicados: []`); nome de arquivo `pro-saude_visao_operadoras_2026-09.{pdf,xlsx}`.
+
+**Testado (geração real de arquivo, não só inspeção de código)**: PDF e XLSX gerados e
+inspecionados byte a byte (`pdftotext`/leitura de PDF e `openpyxl` para o XLSX) — cabeçalho
+institucional correto, título/filtros corretos, tabela com os 5 registros + Total, valores e
+percentuais batendo com a tela; XLSX com aba nomeada corretamente, 6 linhas de mesclagem no
+cabeçalho, cabeçalho da tabela com preenchimento cinza, formatos `#,##0`/`0.0%` nativos (não
+texto), larguras de coluna aplicadas, cabeçalho congelado em `A10`, autofiltro em `A9:E13`
+(cabeçalho + 4 linhas de dado, Total de fora). Testado também o clique real dos dois botões
+("PDF"/"Excel (.xlsx)") na tela, sem erros de execução. `npx tsc --noEmit` e `npm run build`
+limpos (só os 2 erros pré-existentes).
+
+**Pendente de aprovação do usuário antes de propagar**: tipografia, cabeçalho, espaçamento,
+tabela e rodapé do PDF; estrutura do XLSX. Só depois da aprovação o mesmo padrão (mesma
+`RelatorioExportSpec`, mesmo `ExportarRelatorio`) deve ser aplicado a: Fechamento de Pagamento
+(Adimplentes, Inadimplentes, Consolidado), Histórico de Comprovações, Documentação e Pendências,
+Beneficiários/Contratos, e os demais blocos de Visões Gerenciais (Situação do Beneficiário
+Titular, Faixa Etária). Ressarcimentos/Retroativos e o Comprovante de Rendimentos do Portal do
+Servidor **não** recebem esta exportação administrativa (o primeiro por estar fora de escopo
+nesta rodada; o segundo por ser documento individual do servidor, tratado separadamente — ver
+§3.5).
+
+### 3.18 Revisão de template (v2) + confirmação de fuso horário + propagação a todos os relatórios administrativos
+
+**Contexto:** após aprovação funcional do piloto (§3.17), o usuário pediu uma última revisão de
+template antes de propagar — 8 ajustes pontuais, sem alterar a arquitetura compartilhada — e só
+então autorizou a propagação para os demais relatórios administrativos.
+
+**Ajustes de template aplicados (v1 → v2 do PDF/XLSX, arquitetura inalterada):**
+1. Hierarquia visual do PDF reorganizada para aproximar a organização documental do SISPRO
+   (cabeçalho institucional → título → parâmetros → tabela) sem copiar o visual antigo:
+   `desenharCabecalhoInstitucional()` agora desenha as 3 linhas institucionais em negrito (11pt),
+   a linha "Pró-Saúde — <origem>" (9pt normal) e um filete cinza de separação antes do título.
+2. **Bug real corrigido**: a linha de Total exibia `100` em vez de `100,0%` porque
+   `formatarValorExport` era chamado sem o parâmetro `tipo` para os valores de `linhaTotal` (caía
+   no branch numérico genérico). Corrigido passando `spec.colunas[i+1]?.tipo` explicitamente.
+3. Novo bloco "Parâmetros do relatório" abaixo do título — `Competência: ...` quando aplicável,
+   `Filtros: Todos` quando nenhum filtro está ativo (nunca uma lista vazia), ou a lista dos
+   filtros realmente aplicados (`textoFiltros()`), e `Gerado em: <data/hora>`.
+4. **Fuso horário confirmado explicitamente**: `formatarDataHoraGeracao()` passa
+   `timeZone: "America/Sao_Paulo"` ao `toLocaleString`, garantindo horário de Brasília
+   independentemente do timezone do servidor/navegador que gera o documento — verificado com
+   `TZ=UTC node -e "..."` mostrando a conversão correta (08:00 UTC → 05:00 exibido) antes de
+   autorizar a propagação, por pedido explícito do usuário.
+5. Rodapé do PDF padronizado: `Pró-Saúde` à esquerda, `Página X de Y` à direita, em todas as
+   páginas (`desenharRodape()`).
+6. Cabeçalho da tabela confirmado repetindo em toda nova página (`showHead: "everyPage"`,
+   já existente desde o piloto, sem alteração).
+7. XLSX recebeu os mesmos metadados do PDF (título, competência/filtros, data/hora de geração)
+   nas linhas iniciais mescladas, preservando autofiltro, congelamento de cabeçalho, larguras de
+   coluna e tipos numéricos nativos já validados no piloto.
+8. Nenhum logo/imagem inventado — o documento usa só texto/tabela; nenhum asset gráfico oficial
+   do Pró-Saúde existe no projeto até o momento, então nenhuma imagem foi adicionada.
+
+PDF aprovado como **template padrão de exportação** após esta revisão.
+
+**Propagação — mesma arquitetura (`RelatorioExportSpec` + `ExportarRelatorio`), colunas e
+filtros próprios de cada visão de origem (nenhuma tela forçada a ter a mesma tabela):**
+
+| Relatório | Arquivo | Especificações de exportação | Filtros refletidos |
+|---|---|---|---|
+| Fechamento de Pagamento — Adimplentes | `admin.relatorios.pagamentos.tsx` | `specAdimplentes` — Matrícula, Nome, Situação do Vínculo, Competência de Referência, Valor Aprovado | Vínculo (Ativos/Inativos) |
+| Fechamento de Pagamento — Inadimplentes | idem | `specInadimplentes` — Matrícula, Nome, Valor Relacionado à Competência, Situação, Motivo, Observação NURFI (nunca reduzido a 2 campos) | Vínculo |
+| Fechamento de Pagamento — Requer Análise | idem | `specRequerAnalise` — Matrícula, Servidor, Competência, Pendência/Motivo, Tempo Aguardando | Vínculo |
+| Histórico de Comprovações | `admin.relatorios.extrato.index.tsx` | `specExport` — Matrícula, Servidor, Competências, **Comprovadas**, **Não Comprovadas**, **Em Análise** (nunca "Pagas/Não pagas"), Valor Aprovado | Ano, Competência, Situação, Vínculo, Busca |
+| Documentação e Pendências | `admin.relatorios.documentacao.tsx` | `specExport` — Beneficiário/Dependente, Documento, Status, Prazo/Vencimento, Origem, Última Solicitação, Solicitado Por, Qtd. Solicitações | Status |
+| Beneficiários/Contratos | `admin.servidores.index.tsx` | `specExport` — Processo SEI, Servidor, Operadora/Associação, Dependentes, Valor Plano, Auxílio Previsto, Situação | Busca, Status, Associação, Operadora, Situação financeira, Só com pendência |
+| Visões Gerenciais — Situação do Beneficiário Titular | `admin.relatorios.gerencial.tsx` | `specSituacaoTitular` — Situação do Beneficiário Titular, Nº Titulares, % da Base | — |
+| Visões Gerenciais — Faixa Etária | idem | `specFaixaEtaria` — Faixa Etária, Titulares, % da Base (deliberadamente **sem** as colunas "Dependentes"/"Total" da UI, que hoje são placeholder `—` sem dado calculável real) | — |
+
+Também nesta rodada, o botão mock **"Exportar lista (.xlsx)"** do menu de ações de
+`admin.servidores.index.tsx` (`AcaoMenu`) foi **removido**, substituído pelo botão real de
+exportação no cabeçalho da tela — evitando duas ações de exportação divergentes na mesma tela
+(uma real, uma mock).
+
+**Testado (regressão em navegador, uma tela por vez)**: clique real em "Exportar → PDF" e
+"Exportar → Excel (.xlsx)" nas 8 especificações acima (incluindo o caso de 0 registros na aba
+Inadimplentes de uma competência sem inadimplentes, confirmando que exportação de dataset vazio
+não quebra), com um listener de `error`/`unhandledrejection` instalado na página confirmando
+ausência de exceções em todos os casos. `npx tsc --noEmit` e `npm run build` limpos (só os 2
+erros pré-existentes, não relacionados) após a propagação completa.
+
+**Fora desta propagação, propositalmente**: Ressarcimentos/Retroativos (ainda sem tela/
+levantamento específico — ver §4) e Comprovante de Rendimentos do Portal do Servidor (documento
+individual do servidor, não um relatório administrativo — ver §3.5).
+
+**Aguardando validação final do usuário antes de commit** — nenhum commit foi feito nesta rodada
+de propagação.
+
 ## 4. Fora de escopo (decisão explícita, registrada desde já)
 
 - **Ressarcimentos/retroativos** — motor de cálculo, casos especiais **e a própria tela

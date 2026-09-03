@@ -6,7 +6,10 @@ import {
   formatCompetencia,
   getCompetenciasConhecidas,
   getHistoricoComprovacoes,
+  type LinhaHistoricoComprovacoes,
 } from "@/lib/fechamento-pagamento";
+import { ExportarRelatorio } from "@/components/ExportarRelatorio";
+import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/admin/relatorios/extrato/")({
   component: HistoricoDeComprovacoes,
@@ -62,6 +65,39 @@ function HistoricoDeComprovacoes() {
       const alvo = busca.trim().toLowerCase();
       return l.nome.toLowerCase().includes(alvo) || (l.matricula ?? "").includes(alvo);
     });
+
+  // Exportação (PDF/XLSX) — mesmas linhas já filtradas na tela (`filtradas`), nunca só a
+  // página visual; filtros listados refletem exatamente os controles ativos acima.
+  const situacaoLabel: Record<FiltroSituacao, string> = {
+    todos: "",
+    comprovado: "Comprovado",
+    nao_comprovado: "Não comprovado",
+    em_analise: "Em análise",
+  };
+  const filtrosAplicados = [
+    ano && `Ano: ${ano}`,
+    competencia && `Competência: ${formatCompetencia(competencia)}`,
+    situacao !== "todos" && `Situação: ${situacaoLabel[situacao]}`,
+    vinculo !== "todos" && `Vínculo: ${vinculo === "ativo" ? "Ativos" : "Inativos"}`,
+    busca.trim() && `Busca: "${busca.trim()}"`,
+  ].filter((f): f is string => Boolean(f));
+
+  const specExport: RelatorioExportSpec<LinhaHistoricoComprovacoes> = {
+    titulo: "Histórico de Comprovações",
+    origem: "Relatórios",
+    filtrosAplicados,
+    colunas: [
+      { header: "Matrícula", valor: (l) => l.matricula ?? "—", tipo: "texto" },
+      { header: "Servidor", valor: (l) => l.nome, tipo: "texto", width: 26 },
+      { header: "Competências", valor: (l) => l.competencias, tipo: "numero" },
+      { header: "Comprovadas", valor: (l) => l.comprovadas, tipo: "numero" },
+      { header: "Não Comprovadas", valor: (l) => l.naoComprovadas, tipo: "numero" },
+      { header: "Em Análise", valor: (l) => l.emAnalise, tipo: "numero" },
+      { header: "Valor Aprovado", valor: (l) => l.valorAprovado, tipo: "moeda" },
+    ],
+    linhas: filtradas,
+    nomeArquivoBase: `pro-saude_historico_comprovacoes_${ano || "todos"}`,
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
@@ -155,6 +191,10 @@ function HistoricoDeComprovacoes() {
             />
           </div>
         </label>
+      </div>
+
+      <div className="flex justify-end">
+        <ExportarRelatorio spec={specExport} />
       </div>
 
       <section className="bg-card rounded-xl border border-border shadow-card overflow-x-auto">

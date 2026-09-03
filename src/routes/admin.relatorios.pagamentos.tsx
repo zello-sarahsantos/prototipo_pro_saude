@@ -19,6 +19,8 @@ import {
   getObservacaoNurfi,
   salvarObservacaoNurfi,
 } from "@/lib/prosaude-storage";
+import { ExportarRelatorio } from "@/components/ExportarRelatorio";
+import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/admin/relatorios/pagamentos")({
   component: FechamentoDePagamento,
@@ -80,6 +82,83 @@ function FechamentoDePagamento() {
         .filter((r) => filtroVinculo === "todos" || r.situacaoVinculo === filtroVinculo),
     [registros, tab, filtroVinculo],
   );
+
+  // Exportação (PDF/XLSX) — uma spec por aba, já que cada classificação tem colunas próprias
+  // (não força Adimplentes/Inadimplentes/Requer análise a compartilhar uma tabela genérica).
+  // Reaproveita exatamente `registrosFiltrados` (mesmo dado da tela, já com o filtro de
+  // Vínculo aplicado) — nenhuma consulta/agregação nova só para exportar.
+  const filtrosAplicados = filtroVinculo !== "todos" ? [`Vínculo: ${filtroVinculo === "ativo" ? "Ativos" : "Inativos"}`] : [];
+  const competenciaLabel = formatCompetencia(competencia);
+
+  const specAdimplentes: RelatorioExportSpec<RegistroFechamento> = useMemo(
+    () => ({
+      titulo: "Fechamento de Pagamento — Adimplentes",
+      origem: "Fechamento de Pagamento",
+      competencia: competenciaLabel,
+      filtrosAplicados,
+      colunas: [
+        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
+        { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
+        { header: "Situação do Vínculo", valor: (r) => situacaoVinculoLabel[r.situacaoVinculo] ?? r.situacaoVinculo, tipo: "texto" },
+        { header: "Competência de Referência", valor: () => competenciaLabel, tipo: "texto" },
+        { header: "Valor Aprovado", valor: (r) => r.valor, tipo: "moeda" },
+      ],
+      linhas: registros.filter((r) => r.classificacao === "adimplente" && (filtroVinculo === "todos" || r.situacaoVinculo === filtroVinculo)),
+      nomeArquivoBase: `pro-saude_fechamento_pagamento_adimplentes_${competencia}`,
+    }),
+    [registros, filtroVinculo, competencia, competenciaLabel, filtrosAplicados],
+  );
+
+  const specInadimplentes: RelatorioExportSpec<RegistroFechamento> = useMemo(
+    () => ({
+      titulo: "Fechamento de Pagamento — Inadimplentes",
+      origem: "Fechamento de Pagamento",
+      competencia: competenciaLabel,
+      filtrosAplicados,
+      colunas: [
+        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
+        { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
+        { header: "Valor Relacionado à Competência", valor: (r) => r.valor, tipo: "moeda" },
+        { header: "Situação", valor: (r) => r.situacao ?? "—", tipo: "texto" },
+        { header: "Motivo", valor: (r) => r.motivo ?? "—", tipo: "texto", width: 34 },
+        {
+          header: "Observação NURFI",
+          valor: (r) => getObservacaoNurfi(r.beneficiarioId, competencia)?.texto ?? "",
+          tipo: "texto",
+          width: 30,
+        },
+      ],
+      linhas: registros.filter((r) => r.classificacao === "inadimplente" && (filtroVinculo === "todos" || r.situacaoVinculo === filtroVinculo)),
+      nomeArquivoBase: `pro-saude_fechamento_pagamento_inadimplentes_${competencia}`,
+    }),
+    [registros, filtroVinculo, competencia, competenciaLabel, filtrosAplicados],
+  );
+
+  const specRequerAnalise: RelatorioExportSpec<RegistroFechamento> = useMemo(
+    () => ({
+      titulo: "Fechamento de Pagamento — Requer Análise",
+      origem: "Fechamento de Pagamento",
+      competencia: competenciaLabel,
+      filtrosAplicados,
+      colunas: [
+        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
+        { header: "Servidor", valor: (r) => r.nome, tipo: "texto", width: 26 },
+        { header: "Competência", valor: (r) => formatCompetencia(r.competencia), tipo: "texto" },
+        {
+          header: "Pendência/Motivo",
+          valor: (r) => (r.statusComprovante ? statusComprovanteLabels[r.statusComprovante] : "—"),
+          tipo: "texto",
+          width: 26,
+        },
+        { header: "Tempo Aguardando", valor: (r) => tempoAguardando(r.ultimaAcaoEm), tipo: "texto" },
+      ],
+      linhas: registros.filter((r) => r.classificacao === "requer_analise" && (filtroVinculo === "todos" || r.situacaoVinculo === filtroVinculo)),
+      nomeArquivoBase: `pro-saude_fechamento_pagamento_requer_analise_${competencia}`,
+    }),
+    [registros, filtroVinculo, competencia, competenciaLabel, filtrosAplicados],
+  );
+
+  const specAtual = tab === "adimplente" ? specAdimplentes : tab === "inadimplente" ? specInadimplentes : specRequerAnalise;
 
   function irParaAba(c: ClassificacaoFechamento) {
     setTab(c);
@@ -189,26 +268,29 @@ function FechamentoDePagamento() {
       </section>
 
       {/* Abas */}
-      <div className="flex gap-1 border-b border-border">
-        {(
-          [
-            ["adimplente", "Adimplentes", resumo.adimplentes],
-            ["inadimplente", "Inadimplentes", resumo.inadimplentes],
-            ["requer_analise", "Requer análise", resumo.requerAnalise],
-          ] as [ClassificacaoFechamento, string, number][]
-        ).map(([key, label, count]) => (
-          <button
-            key={key}
-            onClick={() => irParaAba(key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-              tab === key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label} ({count})
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 border-b border-border">
+        <div className="flex gap-1">
+          {(
+            [
+              ["adimplente", "Adimplentes", resumo.adimplentes],
+              ["inadimplente", "Inadimplentes", resumo.inadimplentes],
+              ["requer_analise", "Requer análise", resumo.requerAnalise],
+            ] as [ClassificacaoFechamento, string, number][]
+          ).map(([key, label, count]) => (
+            <button
+              key={key}
+              onClick={() => irParaAba(key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+                tab === key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label} ({count})
+            </button>
+          ))}
+        </div>
+        <ExportarRelatorio spec={specAtual} />
       </div>
 
       {/* Filtro Todos | Ativos | Inativos */}

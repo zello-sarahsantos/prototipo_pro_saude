@@ -10,6 +10,8 @@ import {
   estaVencida,
   type StatusDocumentoPendente,
 } from "@/lib/pendencias-documentais";
+import { ExportarRelatorio } from "@/components/ExportarRelatorio";
+import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/admin/relatorios/documentacao")({
   component: DocumentacaoEPendencias,
@@ -90,6 +92,26 @@ function DocumentacaoEPendencias() {
     aprovado: linhas.filter((l) => l.status === "aprovado").length,
   };
 
+  // Exportação (PDF/XLSX) — mesmas `filtradas` já exibidas na tela, com o filtro de status
+  // ativo refletido em `filtrosAplicados`; nenhuma consulta nova.
+  const specExport: RelatorioExportSpec<(typeof filtradas)[number]> = {
+    titulo: "Documentação e Pendências",
+    origem: "Relatórios",
+    filtrosAplicados: filtro !== "todos" ? [`Status: ${statusLabel[filtro]}`] : [],
+    colunas: [
+      { header: "Beneficiário/Dependente", valor: (l) => l.beneficiarioNome, tipo: "texto", width: 24 },
+      { header: "Documento", valor: (l) => l.documento, tipo: "texto", width: 28 },
+      { header: "Status", valor: (l) => statusLabel[l.status], tipo: "texto" },
+      { header: "Prazo/Vencimento", valor: (l) => l.prazo?.texto ?? "—", tipo: "texto", width: 22 },
+      { header: "Origem", valor: (l) => l.origem, tipo: "texto" },
+      { header: "Última Solicitação", valor: (l) => new Date(l.ultimaSolicitacao.criadoEm).toLocaleString("pt-BR"), tipo: "texto" },
+      { header: "Solicitado Por", valor: (l) => l.ultimaSolicitacao.autor, tipo: "texto" },
+      { header: "Qtd. Solicitações", valor: (l) => l.totalSolicitacoes, tipo: "numero" },
+    ],
+    linhas: filtradas,
+    nomeArquivoBase: `pro-saude_documentacao_pendencias_${filtro}`,
+  };
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       <header>
@@ -102,25 +124,28 @@ function DocumentacaoEPendencias() {
         </p>
       </header>
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        {(
-          [
-            ["todos", "Todos"],
-            ["aguardando_envio", statusLabel.aguardando_envio],
-            ["aguardando_analise", statusLabel.aguardando_analise],
-            ["aprovado", statusLabel.aprovado],
-          ] as [FiltroStatus, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setFiltro(key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-              filtro === key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {label} ({totais[key === "todos" ? "todos" : key]})
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["todos", "Todos"],
+              ["aguardando_envio", statusLabel.aguardando_envio],
+              ["aguardando_analise", statusLabel.aguardando_analise],
+              ["aprovado", statusLabel.aprovado],
+            ] as [FiltroStatus, string][]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setFiltro(key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+                filtro === key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {label} ({totais[key === "todos" ? "todos" : key]})
+            </button>
+          ))}
+        </div>
+        <ExportarRelatorio spec={specExport} />
       </div>
 
       <section className="bg-card rounded-xl border border-border shadow-card overflow-x-auto">

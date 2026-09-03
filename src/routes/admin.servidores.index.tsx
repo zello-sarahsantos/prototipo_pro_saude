@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { servidoresList, formatCurrency, type SituacaoFinanceira } from "@/lib/mock-data";
+import { servidoresList, formatCurrency, statusLabels, type ServidorListItem, type SituacaoFinanceira } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Search, Settings, ChevronDown, Download, BellRing, Copy, Check, ChevronRight } from "lucide-react";
+import { Search, Settings, ChevronDown, BellRing, Copy, Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
+import { ExportarRelatorio } from "@/components/ExportarRelatorio";
+import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/admin/servidores/")({
   // `origem: "relatorios"` é passado só pelo link do card "Beneficiários / Contratos" em
@@ -44,12 +46,6 @@ function AcaoMenu() {
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-elevated z-20 overflow-hidden">
-          <button
-            onClick={() => setOpen(false)}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted text-left"
-          >
-            <Download className="h-4 w-4 text-muted-foreground" /> Exportar lista (.xlsx)
-          </button>
           <button
             onClick={() => setOpen(false)}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted text-left"
@@ -185,6 +181,35 @@ function Servidores() {
       ? exibindo
       : TOTAL_REAL;
 
+  // Exportação (PDF/XLSX) — mesmas `filtrados` já exibidas na tabela (todos os filtros acima
+  // já aplicados), colunas iguais às da tabela visível (sem Contato, removido por decisão de
+  // UX — ver docs/MODULO_RELATORIOS.md §3.10). Nenhuma consulta nova.
+  const filtrosAplicados = [
+    busca.trim() && `Busca: "${busca.trim()}"`,
+    filtroStatus && `Status: ${statusLabels[filtroStatus as keyof typeof statusLabels] ?? filtroStatus}`,
+    filtroAssociacao && `Associação: ${filtroAssociacao}`,
+    filtroOperadora && `Operadora: ${filtroOperadora}`,
+    filtroSituacaoFinanceira && `Situação financeira: ${filtroSituacaoFinanceira === "adimplente" ? "Adimplente" : "Inadimplente"}`,
+    somentePendencia && "Só com pendência",
+  ].filter((f): f is string => Boolean(f));
+
+  const specExport: RelatorioExportSpec<ServidorListItem> = {
+    titulo: "Beneficiários / Contratos",
+    origem: "Relatórios",
+    filtrosAplicados,
+    colunas: [
+      { header: "Processo SEI", valor: (s) => s.processoSEI, tipo: "texto", width: 20 },
+      { header: "Servidor", valor: (s) => s.nome, tipo: "texto", width: 24 },
+      { header: "Operadora/Associação", valor: (s) => (s.associacao !== "—" ? s.associacao : s.operadora ?? "—"), tipo: "texto", width: 18 },
+      { header: "Dependentes", valor: (s) => s.dependentes, tipo: "numero" },
+      { header: "Valor Plano", valor: (s) => s.valorPlano, tipo: "moeda" },
+      { header: "Auxílio Previsto", valor: (s) => s.valorAuxilio, tipo: "moeda" },
+      { header: "Situação", valor: (s) => statusLabels[s.status], tipo: "texto" },
+    ],
+    linhas: filtrados,
+    nomeArquivoBase: "pro-saude_beneficiarios_contratos",
+  };
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       {search.origem === "relatorios" && (
@@ -210,6 +235,7 @@ function Servidores() {
           >
             Carga Inicial
           </Link>
+          <ExportarRelatorio spec={specExport} />
           <AcaoMenu />
         </div>
       </header>
