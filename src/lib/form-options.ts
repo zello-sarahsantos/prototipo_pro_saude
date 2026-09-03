@@ -36,9 +36,13 @@ export const CARGOS_SERVIDOR = [
   "Especialista",
 ] as const;
 
+/** Situação do beneficiário titular — vocabulário canônico e única fonte de verdade,
+ *  usado no requerimento de primeira inclusão (`primeiro-acesso.tsx`) e reaproveitado
+ *  integralmente pelo Módulo de Relatórios (Visões Gerenciais, `ServidorListItem.situacaoBeneficiarioTitular`
+ *  em `mock-data.ts`) — nunca duplicar ou criar variação paralela deste domínio. */
 export const SITUACOES_TITULAR = [
   "Servidor efetivo ativo",
-  "Servidor inativo",
+  "Servidor efetivo inativo",
   "Servidor comissionado",
   "Titular de pensão vitalícia",
   "Titular de pensão temporária",

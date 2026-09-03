@@ -726,22 +726,954 @@ Escolar — Aguardando análise"; "Analisar documento" abriu o modal com preview
 Aprovar/Solicitar reenvio prontos para uso. `tsc --noEmit` (2 erros pré-existentes, sem mudança)
 e `npm run build` limpos.
 
+### 2.14 Correção de regra — ASSETRAN sempre tem operadora vinculada
+
+A seção 2.10 modelou a ASSETRAN como podendo existir **sem** operadora vinculada (baseado no
+pedido original "não inventar nem exigir uma operadora para a ASSETRAN"). O usuário corrigiu:
+isso estava errado — a ASSETRAN **sempre** tem uma operadora, e informar só a associação no
+requerimento não é suficiente.
+
+**Arquivos:** `src/routes/primeiro-acesso.tsx`, `src/lib/mock-data.ts`.
+
+- **`FlowInclusao` (Nova Inclusão de Beneficiário, `associacaoFixa`):** antes, quando
+  `associacaoFixa` estava definida (ex: ASSETRAN), o passo "Plano" substituía Operadora e
+  Administradora por um único campo somente-leitura "Associação: Assetran" — e o estado
+  `plano.operadora` nascia preenchido com o **nome da associação**, o que é semanticamente
+  errado (associação não é operadora). Corrigido, em duas rodadas:
+  1. Primeira correção: o campo "Associação" (somente leitura) continua aparecendo, mas
+     **Operadora volta a ser exigida** normalmente — `plano.operadora` nasce vazio, e a
+     validação do passo "Plano" passou a exigir Operadora mesmo com `associacaoFixa` definida.
+  2. **Ajuste pontual seguinte** (o usuário pediu para não ir além do que foi corrigido):
+     **Administradora continua fora do requerimento da ASSETRAN** — só Operadora foi
+     adicionada, nada mais. `!associacaoFixa &&` voltou a esconder o campo Administradora (e a
+     dispensar sua validação), exatamente como estava antes da 2.14 — só a exigência de
+     Operadora é nova.
+- **`servidoresList` (tabela de servidores):** Carlos Pereira (ASSETRAN), que a 2.10 deixou
+  deliberadamente sem `operadora` como exemplo de "associação sem operadora", passou a ter
+  `operadora: "Amil"` — igual ao Roberto Santos (o outro exemplo ASSETRAN, que já tinha
+  operadora). Não sobrou mais nenhum exemplo de ASSETRAN sem operadora no protótipo, porque essa
+  situação não deveria existir de fato.
+
+**Testado manualmente no navegador:** fluxo de `/associacao/nova-inclusao` refeito do zero — o
+passo "Plano" mostra "Associação: Assetran" **e**, ao lado, "Operadora \*" obrigatória, **sem**
+nenhum campo "Administradora" na tela; clicar "Próximo" sem selecionar operadora bloqueia o
+avanço (mesma mensagem de campos obrigatórios de sempre); preenchendo só Operadora + Modalidade +
+Valor + Vigência (sem Administradora), o fluxo avança normalmente para "Dependentes". Em
+`/admin/servidores`, Carlos Pereira aparece como "Assetran / Amil" (associação + operadora,
+mesma hierarquia visual já usada para os casos ASSEFAZ). `tsc --noEmit` (2 erros pré-existentes,
+sem mudança) e `npm run build` limpos.
+
+### 2.15 Administradora de volta para ASSETRAN + novo questionamento de associação no requerimento padrão
+
+Depois de conversar com o stakeholder, o usuário trouxe duas correções sobre a 2.14:
+
+**Arquivos:** `src/routes/primeiro-acesso.tsx`, `src/lib/prosaude-storage.ts`.
+
+- **Administradora volta a aparecer para a ASSETRAN:** o ajuste pontual da 2.14 (esconder
+  Administradora quando `associacaoFixa` está definida) foi revertido — o stakeholder confirmou
+  que o campo deve continuar no requerimento da ASSETRAN. `!associacaoFixa &&` foi removido de
+  novo; Administradora volta a ser exigida sempre, igual à Operadora.
+- **Novo questionamento no requerimento padrão de primeira inclusão** (`/primeiro-acesso`, sem
+  `associacaoFixa` — não aparece na Nova Inclusão da ASSETRAN, cuja associação já é conhecida):
+  um toggle "Associação" no passo "Plano", no mesmo padrão visual do "Empresarial" logo acima
+  ("Faz parte de alguma associação?" Sim/Não). Ao marcar "Sim", aparece um select "Qual
+  associação? *" com a única opção disponível hoje, **ASSEFAZ** — deixado como select (não texto
+  livre) para já comportar mais associações no futuro, mesmo só uma existindo agora. Não altera
+  nada mais no formulário: Operadora e Administradora continuam preenchidas normalmente,
+  independente da resposta.
+  - Novos campos `plano.associacaoVinculada`/`plano.associacao`, validados só quando
+    `associacaoVinculada` é `true` (associação passa a ser obrigatória nesse caso).
+  - `TitularCadastroPlano` (prosaude-storage.ts) ganhou os mesmos dois campos opcionais, e
+    `handleSubmit` os inclui no cadastro salvo — mesmo tratamento dos demais campos do plano.
+
+**Testado manualmente no navegador:** `/associacao/nova-inclusao` (ASSETRAN) — "Administradora
+\*" voltou a aparecer junto de "Operadora \*"; nenhum questionamento de associação aparece aqui
+(esperado). `/primeiro-acesso` (requerimento padrão) — passo "Plano" mostra o novo bloco
+"Associação — Não / Faz parte de alguma associação?"; ativando o toggle, aparece "Qual
+associação? *" com a opção "ASSEFAZ"; preenchido tudo (Operadora, Administradora, Associação =
+ASSEFAZ, Modalidade, Valor, Vigência), o fluxo avança normalmente para "Dependentes". `tsc
+--noEmit` (2 erros pré-existentes, sem mudança) e `npm run build` limpos.
+
 ---
 
-## 3. Módulo de Relatórios — ainda não iniciado
+## 3. Módulo de Relatórios
 
-Nenhuma etapa da Parte 2 do plano (R1 a R9) foi implementada nesta rodada. Ver o plano completo
-em `/Users/User/.claude/plans/ol-como-fa-o-para-atomic-sun.md` para a lista de etapas, a base de
-dados necessária (extensão de `servidoresList` com data de nascimento + dataset histórico só
-para relatórios) e a ordem sugerida. Esta seção será preenchida progressivamente, etapa a etapa,
-seguindo o mesmo processo já usado no Módulo de Pagamento (implementar → testar → documentar →
-autorização explícita → commit).
+> **Correção de escopo (v3 do plano):** ao contrário do que uma versão anterior deste plano
+> registrava, o Módulo de Relatórios **inteiro** entra nesta rodada — só o aprofundamento
+> funcional de Ressarcimentos/Retroativos (motor de cálculo, casos especiais e a própria tela
+> administrativa) fica para uma rodada futura, após levantamento específico com a stakeholder.
+> Ver a versão completa e revisada do plano (arquitetura, matriz de tratamento dos relatórios do
+> SISPRO, matriz de campos/colunas aprovada com ajustes v3.1) em
+> `/Users/User/.claude/plans/ol-como-fa-o-para-atomic-sun.md`.
+
+Esta seção é preenchida progressivamente, etapa a etapa, seguindo o mesmo processo já usado no
+Módulo de Pagamento (implementar → testar → documentar → autorização explícita → commit).
+
+### 3.1 Fechamento de Pagamento — estrutura visual e classificação (primeira etapa)
+
+**Contexto:** o Relatório de Pagamento do SISPRO nunca funcionou bem, segundo a stakeholder — a
+GERDAB acabou usando documentos manuais para reportar ao NURFI. O pedido explícito foi não
+copiar aquela tela, e sim construir um "Relatório de Pagamento" que nasça do próprio Módulo de
+Pagamento já implementado (`Comprovante`/`AcaoComprovante`) e represente o fechamento
+operacional mensal da competência — não uma tela de consulta "quanto o servidor X recebeu".
+
+**Arquivos:** `src/lib/fechamento-pagamento.ts` (novo — motor de classificação);
+`src/routes/admin.relatorios.pagamentos.tsx` (novo — tela); `src/lib/mock-data.ts` (novos tipos
+`FechamentoPagamento`, `ObservacaoNurfi`, campo `matricula?` em `BeneficiarioPagamento`);
+`src/lib/prosaude-storage.ts` (novas funções de persistência); `src/components/AdminLayout.tsx`
+(novo item de menu "Relatórios").
+
+- **Uma única tela**, não duas — `Fechamento de Pagamento — [Competência]`, com abas
+  Adimplentes | Inadimplentes | Requer análise, exatamente como desenhado no plano (nunca
+  "Relatório de Adimplentes" e "Relatório de Inadimplentes" como funcionalidades separadas).
+- **Unidade de classificação: o servidor titular**, não cada dependente isoladamente —
+  `getRegistrosFechamento()` filtra `beneficiariosPagamento` por `parentesco === 'Titular'` e
+  agrega o status de todo o grupo familiar dele (excluindo dependentes com comprovação coletiva
+  via associação, regra 6b do Módulo de Pagamento) para decidir a classificação daquele
+  servidor.
+- **Classificação por competência, nunca persistida** — mesmo padrão "recompute on demand" já
+  usado em notificações/pendências: `StatusComprovante` aprovado/aprovado_com_ressalva →
+  Adimplente; recusado → Inadimplente; sem nenhum comprovante do grupo → Inadimplente
+  ("Situação"/"Motivo" pré-preenchidos: "Suspender" / "Não apresentou comprovante de pagamento
+  nesta competência", ou o motivo da dispensa quando o servidor optou por "continuar sem
+  comprovante"); qualquer status ainda em decisão (`em_analise`, `ilegivel`,
+  `correcao_solicitada`, retroativo aguardando aprovação, etc.) → Requer análise. **Este
+  mapeamento é proposta técnica, não regra de negócio fechada** — marcado como tal em
+  comentário no próprio código e na seção 8 abaixo.
+- **Situação, Motivo e Observação NURFI são três campos sempre distintos** na aba Inadimplentes
+  — Motivo é reaproveitado automaticamente de `AcaoComprovante.motivo` quando a recusa já
+  registrou uma causa; Observação NURFI é um `<textarea>` opcional, persistido por
+  (beneficiário, competência) via `salvarObservacaoNurfi()`, nunca obrigatório e nunca
+  substituindo os outros dois campos.
+- **Coluna "QT"** exibida só como sequencial de exibição (`i + 1` da própria listagem), rotulada
+  "(a validar)" — não é tratada como indicador agregado (correção de leitura do documento manual
+  da GERDAB, onde os valores aparecem sequenciais, não como contagem por situação).
+- **Coluna "Competência de pagamento"** (aba Adimplentes) exibida com o mesmo valor da
+  competência de referência e rotulada "(a validar)" — o modelo de dados atual não tem um campo
+  separado para uma eventual competência de processamento distinta da de referência; criar esse
+  campo depende de confirmação da stakeholder (seção 8).
+- **Cabeçalho com rastreabilidade real**: os 3 contadores (Adimplentes/Inadimplentes/Requer
+  análise) são clicáveis e trocam a aba ativa — nunca um número solto sem lista por trás.
+- **Fechamento de competência**: `FechamentoPagamento` (novo tipo, distinto de
+  `ConclusaoCompetencia` — este último é o Servidor dizendo "terminei de enviar", aquele é a
+  GERDAB dizendo "revisei e vou gerar o relatório para o NURFI"). O botão "Fechar competência"
+  fica desabilitado enquanto houver qualquer registro em Requer análise
+  (`podeFecharCompetencia()`), com mensagem explicando o motivo — regra recomendada pelo plano,
+  também marcada como pendente de confirmação. Qualquer novo comprovante ou ação
+  (`addComprovantePagamento`/`updateComprovantePagamento`) invalida automaticamente um
+  fechamento existente daquela competência (`invalidarFechamentoPagamento`), mesmo mecanismo já
+  usado para `ConclusaoCompetencia`.
+- **Filtro Todos \| Ativos \| Inativos** dentro de cada aba, usando `BeneficiarioPagamento.situacao`
+  — nunca telas separadas por vínculo.
+- **Limitação de dados registrada explicitamente na própria tela** (banner acima do cabeçalho):
+  o cenário de referência do Módulo de Pagamento tem só 1 grupo familiar/1 servidor titular
+  (Carlos Eduardo Ramos, matrícula ilustrativa `50001` — campo novo, opcional, isolado do
+  cenário de `servidoresList` como já documentado nesta seção 2), então os números do Fechamento
+  são pequenos, mas **reais e rastreáveis** — nunca inflados para parecer GERDAB-escala. Expandir
+  essa base é a etapa "Base de dados necessária" do plano, ainda não feita.
+
+**Testado manualmente no navegador:** confirmado, em `/admin/relatorios/pagamentos`, que (a)
+Julho/2026 (competência atual, com 1 comprovante em `em_analise`) mostra 1 registro em "Requer
+análise" e bloqueia o botão "Fechar competência" com a mensagem explicativa; (b) Junho/2026
+(competência fechada sem nenhum comprovante do grupo) mostra 1 registro em "Inadimplentes" com
+Situação "Suspender" e Motivo "Não apresentou comprovante de pagamento nesta competência",
+Observação NURFI vazia e editável, e o botão "Fechar competência" habilitado; (c) clicar em
+"Fechar competência" persiste o fechamento e substitui o botão por um aviso de bloqueio ("🔒
+Competência fechada em .../.../... por Erandir / Gerência"); (d) os 3 contadores do cabeçalho
+trocam a aba ativa ao serem clicados; (e) o item "Relatórios" aparece no menu do `AdminLayout`
+entre "Comprovantes" e "Carga Inicial". `npx tsc --noEmit` e `npm run build` limpos (só os 2
+erros pré-existentes e não relacionados). Dados de teste (`prosaude_role`,
+`prosaude_fechamentos_pagamento`, `prosaude_observacoes_nurfi`) limpos do `localStorage` ao
+final da verificação.
+
+### 3.2 Visão Geral / Dashboard do módulo
+
+**Contexto:** com o Fechamento de Pagamento já implementado, a Visão Geral (item 1 da
+arquitetura do plano) fica simples — um ponto de entrada que destaca o Fechamento e mapeia as
+demais sub-áreas ainda por implementar, sem duplicar nenhum dado.
+
+**Arquivos:** `src/routes/admin.relatorios.index.tsx` (novo — rota `/admin/relatorios`);
+`src/components/AdminLayout.tsx` (item "Relatórios" do menu passa a apontar para
+`/admin/relatorios` em vez de direto para `/admin/relatorios/pagamentos`).
+
+- Card "Fechamento de Pagamento" com o resumo real da competência mais recente
+  (`getResumoFechamento`, mesma fonte de dados da tela de Fechamento — nunca um número
+  duplicado/hardcoded) e link para `/admin/relatorios/pagamentos`.
+- Lista "Demais áreas do módulo" com as 6 sub-áreas ainda não implementadas (Extrato do
+  Servidor, Documentação e Pendências, Beneficiários/Contratos, Visões Gerenciais, Comprovante
+  de Rendimentos, Ressarcimentos/Retroativos) — exibidas só como indicação de arquitetura
+  ("Em construção"), sem nenhuma tela vazia criada por antecipação e sem link (não navegam para
+  lugar nenhum ainda). Consistente com a decisão de não construir uma tela de
+  Ressarcimentos/Retroativos nesta rodada (seção 4).
+
+**Testado manualmente no navegador:** confirmado que `/admin/relatorios` mostra os mesmos
+números da competência mais recente que `/admin/relatorios/pagamentos` exibe, que o clique no
+card do Fechamento navega corretamente para a tela de Fechamento, e que as 6 áreas "Em
+construção" aparecem sem links quebrados. `npx tsc --noEmit` e `npm run build` limpos (só os 2
+erros pré-existentes).
+
+### 3.3 Extrato do Servidor
+
+> **Correção posterior (§3.8):** "Meu Extrato" como relatório separado do lado do Servidor foi
+> **descontinuado** — o conceito estava incorreto (não é "histórico de pagamentos", e sim
+> histórico das comprovações apresentadas por competência; o reembolso ocorre só depois da
+> aprovação). O texto abaixo descreve a versão original, para registro; a versão vigente do lado
+> do Servidor foi absorvida pelo "Histórico de Comprovações" dentro da área de Pagamentos (ver
+> §3.8). **O lado GERDAB não mudou**: `/admin/relatorios/extrato/$matricula` e
+> `/admin/relatorios/extrato` (Histórico de Pagamentos administrativo, §3.6) continuam existindo
+> normalmente, reaproveitando a mesma função `getExtratoServidor`.
+
+**Contexto:** visão individual e histórica dos pagamentos de 1 servidor ao longo das
+competências — deliberadamente distinta do Fechamento de Pagamento (coletivo, por competência)
+e do Comprovante de Rendimentos (consolidado anual de valores pagos, ainda não implementado),
+seguindo a diretriz explícita do usuário de nunca consolidar essas três visões em uma tela só.
+
+**Arquivos:** `src/lib/fechamento-pagamento.ts` (refatorado — o núcleo de classificação
+`classificarTitularNaCompetencia` foi extraído de `getRegistrosFechamento` para ser reaproveitado
+também aqui, evitando duplicar a lógica de aprovado/recusado/sem-envio/em-análise; nova função
+`getExtratoServidor`); `src/routes/admin.relatorios.extrato.$matricula.tsx` (novo — lado GERDAB);
+`src/routes/servidor.extrato.tsx` (novo — lado Servidor, "Meu Extrato"); `admin.relatorios.index.tsx`
+(novo link para o Extrato, substituindo o card "Em construção").
+
+- Colunas exatamente como aprovadas na matriz 2.10: Ano, Competência, Houve pagamento?, Valor,
+  Status, Ocorrência (retroativo) — a coluna de retroativo só sinaliza status
+  (`Comprovante.isRetroativo`), sem nenhum motor de cálculo de diferença/teto (fora de escopo,
+  seção 4).
+- Cobre as mesmas competências do Fechamento (`competenciasParaFechamento`) mais qualquer outra
+  competência com comprovante real (`getCompetenciasConhecidas()`), para não perder um eventual
+  retroativo fora dessa janela.
+- Lado GERDAB (`/admin/relatorios/extrato/$matricula`) busca o titular pela matrícula na URL;
+  lado Servidor (`/servidor/extrato`, "Meu Extrato") reaproveita a mesma convenção já usada em
+  `servidor.pagamentos.index.tsx` — sem autenticação real, "o servidor logado" é sempre o titular
+  do cenário de referência (Carlos Eduardo Ramos).
+
+**Testado manualmente no navegador:** confirmado que `/admin/relatorios/extrato/50001` e
+`/servidor/extrato` mostram as 4 competências conhecidas (Abril a Julho/2026), com Maio/2026
+corretamente sinalizada como "Retroativo" (ícone + rótulo) e Julho/2026 mostrando o status "Em
+Análise" (coerente com o mesmo registro que aparece em "Requer análise" no Fechamento — mesma
+fonte de dados, nenhuma duplicação de lógica). `npx tsc --noEmit` e `npm run build` limpos (só os
+2 erros pré-existentes).
+
+### 3.4 Documentação e Pendências dos Beneficiários/Dependentes
+
+**Contexto:** absorve o que o SISPRO chamava de "Relatório IRPF" (e os controles equivalentes de
+IR de enteado, comprovante de matrícula/escolaridade) — são documentação obrigatória a
+acompanhar, **não** valores pagos (essa distinção, pedida explicitamente pelo usuário, está
+registrada na matriz de tratamento, seção 2 do plano). A consolidação continua sendo
+interpretação atual, não substituição definitivamente validada (pendência registrada na seção 5).
+
+**Arquivo:** `src/routes/admin.relatorios.documentacao.tsx` (novo). **Nenhum código novo em
+`pendencias-documentais.ts`** — a tela só consome o que já existia:
+`getStatusDocumentosDoServidor()` (que já trazia, prontos, os 3 campos pedidos no ajuste v3.1 da
+matriz: data/hora da última solicitação, solicitado por, quantidade de solicitações) e
+`getPendenciasDocumentaisDoServidor()` (para o Prazo/Vencimento e sinalizar quando está vencido,
+via `estaVencida()`).
+
+- Colunas conforme a matriz 2.10: Beneficiário/Dependente, Documento, Status, Prazo/Vencimento,
+  Origem, mais os 3 campos do ajuste v3.1 (Última solicitação, Solicitado por, Qtd. solicitações).
+- Filtro por status (Todos | Aguardando envio | Aguardando análise | Aprovado) — os únicos 3
+  valores de `StatusDocumentoPendente`, já existentes.
+- "Origem" derivada de `ultimaSolicitacao.cargo === "Automático"` (mesma convenção já usada por
+  `garantirSolicitacoesAutomaticas`) — não é um campo novo, só uma leitura direta do que já
+  existe.
+- Ação "Ver na ficha" leva à aba Documentação já existente em `/admin/servidores/$id` (que faz o
+  ciclo completo de Aprovar/Solicitar reenvio) — esta tela é uma visão consolidada/panorâmica,
+  não duplica a ação de aprovação que já existe na ficha do servidor.
+- **Notificação em massa** (mencionada na arquitetura do plano) não foi implementada nesta
+  etapa — não há hoje uma função pronta para reaproveitar (diferente de aprovar/solicitar
+  reenvio, que já existiam) e criar uma nova só para isso seria inflar escopo sem pedido
+  explícito; registrado como pendência (seção 5) para quando for priorizado.
+- Mesma limitação de cenário isolado já registrada no Fechamento/Extrato: os dados vêm de
+  `servidorAtual`/`dependentes` (o único servidor de referência do protótipo) — não há uma
+  planilha completa de todos os servidores da GERDAB.
+
+**Testado manualmente no navegador:** confirmado que `/admin/relatorios/documentacao` mostra os
+3 registros de pendência já existentes no protótipo (Lucas Souza — Comprovante de Matrícula,
+vencido; Marcos Lima — Declaração de IR; Pedro da Silva — Atestado de Frequência Escolar,
+aguardando análise), com prazo vencido destacado, filtros funcionando e o link "Ver na ficha"
+apontando corretamente para `/admin/servidores/12345678`. `npx tsc --noEmit` e `npm run build`
+limpos (só os 2 erros pré-existentes).
+
+### 3.5 Comprovante de Rendimentos
+
+**Contexto:** consolidado **anual** dos valores efetivamente pagos ao servidor — deliberadamente
+distinto da Documentação e Pendências (§3.4, que é sobre documentação obrigatória, não valores)
+e do Extrato do Servidor (§3.3, que é por competência, não anual). Reaproveita a mesma fonte de
+dados do Extrato (`getExtratoServidor`) — só agrupa por ano, nenhum motor de cálculo novo.
+
+**Arquivos:** `src/lib/fechamento-pagamento.ts` (novo: `getAnosDisponiveis`,
+`getComprovanteRendimentos`); `src/routes/servidor.comprovante-rendimentos.tsx` (novo — única
+tela, só do lado do Servidor, conforme o plano); `src/lib/mock-data.ts` (novo campo opcional
+`cpf?` em `BeneficiarioPagamento`, mesmo espírito ilustrativo/isolado de `matricula`);
+`admin.relatorios.index.tsx` (link de visualização para a tela do Servidor).
+
+- Cabeçalho com Nome, Matrícula/CPF e Ano-calendário (seletor), conforme aprovado no ajuste v3.1
+  da matriz — "Titular/dependentes relacionados" **não** aparece na tela: ainda não confirmado
+  se o informe detalha por dependente ou só consolida o titular, e a diretriz do backlog (seção
+  6) já pede não expor rótulos "a validar" ao usuário final — a limitação fica só registrada
+  aqui na documentação, não na interface.
+- Tabela Mês/Competência × Valor pago, somando só competências com pagamento efetivamente
+  aprovado (`houvePagamento`, mesmo critério do Extrato) — nunca um valor "aprovado mas não
+  pago".
+- Sem tela correspondente do lado GERDAB (`/admin/...`) — o plano só previu esta visão do lado
+  do Servidor.
+
+> **Correção arquitetural (§3.6):** a Visão Geral administrativa chegou a ganhar, nesta etapa,
+> um link de conveniência direto para esta tela do Portal do Servidor — isso foi revertido logo
+> em seguida por violar a separação de perfis (ver §3.6). O Admin **nunca** deve ter um atalho
+> que redirecione para uma rota `/servidor/...`.
+>
+> **Correção posterior (§3.8):** o texto de apresentação mudou de uma explicação técnica
+> ("Diferente da Documentação e Pendências...") para uma frase voltada ao usuário ("Consulte os
+> valores de reembolso efetivamente recebidos..."), e a tela ganhou um link "Voltar para
+> Pagamentos" — o acesso deixou de depender de um item próprio no menu (removido, ver §3.8) e
+> passou a ficar dentro da área de Pagamentos.
+
+**Testado manualmente no navegador:** confirmado que `/servidor/comprovante-rendimentos` mostra
+o cabeçalho correto (Carlos Eduardo Ramos, 50001 / 111.222.333-44), seletor de ano (só 2026
+disponível) e a tabela com as 4 competências, total R$ 0,00 (honesto — nenhum comprovante do
+cenário seed chegou a "aprovado" sem ressalva). `npx tsc --noEmit` e `npm run build` limpos (só
+os 2 erros pré-existentes).
+
+### 3.6 Correção arquitetural — separação de perfis Portal do Servidor × Módulo de Relatórios GERDAB
+
+**Contexto:** as etapas 3.3 e 3.5 introduziram, na Visão Geral administrativa, links que
+levavam diretamente a rotas `/servidor/...` (Extrato individual de uma matrícula fixa,
+Comprovante de Rendimentos). Isso confundia dois perfis com responsabilidades diferentes: o
+Portal do Servidor (consultas sobre os **próprios** dados) e o Módulo de Relatórios da GERDAB
+(visões **consolidadas** do universo administrado, com drill-down individual). Esta correção
+formaliza a regra e ajusta a navegação — nenhuma lógica de classificação foi descartada.
+
+**Regra de arquitetura por perfil (vale para todo o Módulo de Relatórios daqui em diante):**
+
+- **Portal do Servidor** (`/servidor/...`) apresenta consultas individuais dos **próprios**
+  dados do servidor logado (Meu Extrato, Meu Comprovante de Rendimentos, Meus Pagamentos, Meus
+  Requerimentos).
+- **Módulo de Relatórios da GERDAB** (`/admin/relatorios/...`) apresenta prioritariamente **visões
+  consolidadas** do universo administrado (todos os servidores, todas as competências, todas as
+  pendências). Uma consulta individual pode existir no Admin, mas só como **drill-down** de uma
+  visão consolidada — nunca como a porta de entrada.
+- **Nenhuma funcionalidade do Módulo de Relatórios administrativo usa uma tela do Portal do
+  Servidor como sua interface final.** O compartilhamento acontece na camada de dados/lógica/
+  componentes (mesma função, mesmo tipo), nunca por navegação entre perfis — uma rota nunca
+  redireciona para a outra, mesmo quando ambas usam a mesma fonte.
+
+**Arquivos:** `src/lib/fechamento-pagamento.ts` (nova função `getHistoricoPagamentos` — reaproveita
+`getExtratoServidor`, nenhum motor de classificação novo; `getCompetenciasConhecidas` exportada
+para alimentar os filtros de Ano/Competência); `src/routes/admin.relatorios.extrato.index.tsx`
+(novo — **Histórico de Pagamentos**, a nova porta de entrada consolidada); `admin.relatorios.extrato.$matricula.tsx`
+(preservado — só o link "Voltar" passou a apontar para o Histórico, com breadcrumb "Relatórios →
+Histórico de Pagamentos → Extrato Individual", em vez de para a Visão Geral); `admin.relatorios.index.tsx`
+(card "Extrato do Servidor" → "Histórico de Pagamentos", agora sem parâmetro de matrícula fixo;
+card "Comprovante de Rendimentos" removido por completo).
+
+- **Comprovante de Rendimentos**: continua **exclusivo do Portal do Servidor** nesta rodada —
+  não existe tela administrativa correspondente. Se a GERDAB precisar consultar rendimentos
+  anuais individualmente no futuro, isso será uma funcionalidade administrativa própria (rota e
+  fluxo dedicados), não um atalho para a tela do Servidor.
+- **Histórico de Pagamentos** (`/admin/relatorios/extrato`, novo): tabela com **todos os
+  servidores titulares** (hoje só 1, pela mesma limitação de dados já registrada — ver §3.1),
+  colunas Matrícula, Servidor, Competências, Pagas, Não pagas, Em análise, Total pago, Ação ("Ver
+  extrato"). Filtros: Ano, Competência, Situação do pagamento (Pago/Não pago/Em análise — cada
+  um conta se o servidor tem ao menos 1 competência naquele estado, dentro do recorte de
+  Ano/Competência escolhido), Todos\|Ativos\|Inativos, busca por Nome/Matrícula — só filtros
+  sobre dados que já existem, nenhum inventado.
+- **Hierarquia de navegação**: Relatórios → Histórico de Pagamentos → Extrato Individual (Admin);
+  separadamente, Meu Extrato (Servidor) — mesma fonte de dados (`getExtratoServidor`), duas
+  experiências deliberadamente distintas, sem link cruzado entre uma e outra.
+
+**Testado manualmente no navegador:** confirmado que (a) `/admin/relatorios` não tem mais
+nenhum link para `/servidor/...`; (b) o card "Histórico de Pagamentos" abre
+`/admin/relatorios/extrato`, mostrando a tabela consolidada com filtros funcionando; (c) "Ver
+extrato" abre `/admin/relatorios/extrato/50001` com o breadcrumb correto e o botão "Voltar"
+retornando ao Histórico; (d) `/servidor/extrato` e `/servidor/comprovante-rendimentos` continuam
+funcionando de forma totalmente independente, sem qualquer link administrativo apontando para
+elas. `npx tsc --noEmit` e `npm run build` limpos (só os 2 erros pré-existentes) — todos os
+chunks de rota (`admin.relatorios.extrato.index`, `admin.relatorios.extrato.$matricula`, etc.)
+gerados corretamente.
+
+### 3.7 Área "Relatórios" no Portal do Servidor (menu inferior) — REVERTIDA, ver §3.8
+
+> **Esta etapa foi desfeita na §3.8 seguinte.** O item "Relatórios" no menu inferior gerou
+> redundância e prejudicou o layout mobile; o texto abaixo é mantido como registro histórico do
+> que foi tentado e por que foi revertido, não como o estado atual da aplicação.
+
+**Contexto:** `/servidor/extrato` e `/servidor/comprovante-rendimentos` (§3.3, §3.5) existiam
+desde as etapas anteriores, mas sem entrada no menu inferior — praticamente inacessíveis para
+validação/uso normal. Esta etapa só resolve a navegação; nenhuma lógica nova.
+
+**Arquivos:** `src/components/ServidorLayout.tsx` (menu inferior: `grid-cols-5` → `grid-cols-6`,
+novo item "Relatórios" entre "Dependentes" e "Meus Dados"; `NavTab` ganhou a prop opcional
+`activePaths` — rotas adicionais que também marcam a aba como ativa); `src/routes/servidor.relatorios.tsx`
+(novo — página de entrada da área, só 2 links para as telas já existentes, nenhuma lógica nova).
+
+- Menu inferior: Início | Pagamentos | Requerimentos | Dependentes | **Relatórios** | Meus Dados
+  — mesmo padrão visual/ícones/estados ativo-inativo já usado nos demais itens.
+  - Ícone `BarChart3` (mesmo ícone já usado para "Relatórios" no menu do `AdminLayout`,
+    consistência entre os dois perfis).
+- `/servidor/relatorios` lista "Meu Extrato" e "Comprovante de Rendimentos" como cards, no
+  mesmo padrão visual dos cards já usados na Visão Geral administrativa — só navegação.
+- A aba "Relatórios" do menu inferior permanece destacada (ativa) também quando o usuário está
+  em `/servidor/extrato` ou `/servidor/comprovante-rendimentos` (via `activePaths` no `NavTab`),
+  já que essas telas pertencem a essa área mesmo sem estarem sob o prefixo `/servidor/relatorios`.
+
+**Testado manualmente no navegador:** confirmado que o menu inferior mostra os 6 itens na ordem
+correta em `/servidor/inicio`; que "Relatórios" abre `/servidor/relatorios` com os 2 cards; que
+clicar em "Meu Extrato" abre `/servidor/extrato` mantendo a aba "Relatórios" destacada no menu.
+`npx tsc --noEmit` e `npm run build` limpos (só os 2 erros pré-existentes).
+
+### 3.8 Correção arquitetural — remoção do item "Relatórios" e descontinuação do "Meu Extrato"
+
+**Contexto:** a §3.7 (item "Relatórios" no menu inferior) gerou redundância e prejudicou o
+layout mobile. Além disso, o conceito de "Meu Extrato" (§3.3) estava **conceitualmente errado**:
+não é um "histórico de pagamentos" — é o histórico das **comprovações apresentadas** por
+competência, já que o reembolso só acontece depois da apresentação e aprovação do comprovante.
+Esta correção reverte a §3.7 e evolui a lógica útil do Extrato para dentro da área de Pagamentos,
+sem descartar nada que já funcionava.
+
+**Arquivos:**
+- `src/components/ServidorLayout.tsx` — menu inferior volta a `grid-cols-5`, item "Relatórios"
+  removido; `NavTab` volta à forma simples (sem a prop `activePaths`, que só existia para essa
+  aba).
+- `src/routes/servidor.relatorios.tsx` e `src/routes/servidor.extrato.tsx` — **removidos**
+  (não só esvaziados). "Meu Extrato" não existe mais como relatório separado; a página de
+  entrada da área "Relatórios" deixou de fazer sentido sem o item de menu.
+- `src/routes/servidor.pagamentos.index.tsx` — a seção "Histórico de envios" (lista plana de
+  documentos) evoluiu para **"Histórico de Comprovações"**, agrupada por competência. Ganhou um
+  link de acesso ao Comprovante de Rendimentos (card, não item de menu). **Nenhum motor de
+  cálculo/classificação novo**: a nova seção reaproveita `getExtratoServidor`
+  (`fechamento-pagamento.ts`) — a mesma função já usada pelo Extrato administrativo — só
+  enriquecida com os nomes dos arquivos apresentados em cada competência (lidos diretamente de
+  `Comprovante.arquivos`, já existentes).
+- `src/routes/servidor.comprovante-rendimentos.tsx` — texto de apresentação trocado por uma
+  frase voltada ao usuário; ganhou link "Voltar para Pagamentos" (antes dependia do item de menu
+  removido).
+- `src/lib/fechamento-pagamento.ts` e `src/routes/admin.relatorios.extrato.$matricula.tsx` /
+  `admin.relatorios.extrato.index.tsx` — **inalterados**. A arquitetura administrativa da GERDAB
+  não faz parte desta correção (ela é específica do Portal do Servidor).
+
+**"Histórico de Comprovações" — o que mostra por competência:**
+- Se houve comprovação apresentada (nomes dos arquivos) ou "Sem comprovação apresentada";
+- Situação da comprovação/análise (mesmo `ComprovanteStatusBadge` já usado no restante da tela;
+  o rótulo já inclui "Retroativo" para toda a família de status `retroativo_*` —
+  propositalmente **não** duplicado como um chip separado, para não repetir a mesma informação
+  duas vezes na mesma linha);
+- Valor aprovado, mostrado **somente quando `houvePagamento` é verdadeiro** (nunca um valor
+  "aprovado mas ainda não pago" — mesmo critério já usado no Extrato/Comprovante de Rendimentos);
+- Clique abre o comprovante mais recente daquela competência no mesmo modal já existente
+  (`ServidorComprovanteDetail`), sem nenhuma tela nova.
+- Layout em duas linhas (competência+status na primeira, documentos na segunda) para evitar que
+  o rótulo mais longo de status (ex.: "Retroativo — Aguardando Aprovação") force a competência a
+  ficar ilegível em telas estreitas — ajuste puramente de CSS/responsividade, sem relação com a
+  regra de negócio.
+
+**Testado manualmente no navegador (mobile, 375px):** confirmado que (a) o menu inferior do
+Portal do Servidor voltou a ter 5 itens (Início | Pagamentos | Requerimentos | Dependentes |
+Meus Dados); (b) `/servidor/extrato` e `/servidor/relatorios` retornam "Not Found" (rotas
+removidas, não só desvinculadas do menu); (c) `/servidor/pagamentos` mostra "Histórico de
+Comprovações" com as 4 competências conhecidas, cada uma com documentos e status corretos, sem
+sobreposição visual mesmo com o badge de retroativo mais longo; (d) clicar numa competência com
+comprovante abre o `ServidorComprovanteDetail` correto; (e) o card "Comprovante de Rendimentos"
+dentro de Pagamentos abre a tela, que agora tem o texto voltado ao usuário e um link "Voltar
+para Pagamentos"; (f) o Módulo de Relatórios administrativo (`/admin/relatorios/...`) continua
+funcionando sem nenhuma mudança, inclusive `/admin/relatorios/extrato/$matricula` que reaproveita
+a mesma `getExtratoServidor`. `npx tsc --noEmit` e `npm run build` limpos (só os 2 erros
+pré-existentes).
+
+### 3.9 Beneficiários / Contratos — reaproveitamento de `/admin/servidores`, sem tela nova
+
+**Contexto:** o plano (item 2.1.5 / matriz 2.10) previa uma visão "Beneficiários / Contratos"
+com Processo SEI, Titular, Dependentes, Operadora, Valor do plano/auxílio, Status
+(Ativo/Inativo, filtro único) e Contato. A tela `/admin/servidores` (já existente, fora do
+Módulo de Relatórios) **já cobria quase tudo isso** — construir uma segunda tela duplicaria
+dados e lógica de filtro sem necessidade, exatamente o tipo de fragmentação que o plano pediu
+para evitar (matriz 2.2: "Pró-Saúde dos Ativos"/"Pró-Saúde dos Inativos" → consolidar em um
+filtro único, não duplicar telas).
+
+**Decisão:** não criar uma tela nova. `/admin/servidores` passa a ser, também, a "Beneficiários
+/ Contratos" do Módulo de Relatórios — a Visão Geral (§3.2) linka direto para ela.
+
+**Arquivos:** `src/routes/admin.servidores.index.tsx` (coluna **Contato** adicionada — telefone
++ e-mail; comentário adicionado explicando o duplo papel da tela); `src/routes/admin.relatorios.index.tsx`
+(novo card "Beneficiários / Contratos" linkando para `/admin/servidores`, removido da lista "Em
+construção").
+
+- O filtro de status já existente (`Todos os status` / Ativos / Inativos / Pendentes / Requer
+  Atenção / Suspensos) já cumpre o papel de "Todos \| Ativos \| Inativos" pedido pela matriz —
+  de forma até mais granular, sem ser duas telas separadas.
+- Nenhuma lógica de filtro, busca ou paginação foi duplicada ou reescrita — só a coluna Contato
+  foi adicionada à tabela já existente.
+
+**Testado manualmente no navegador:** confirmado que `/admin/relatorios` mostra o card
+"Beneficiários / Contratos" (fora da lista "Em construção") e que ele abre `/admin/servidores`
+com a nova coluna "Contato" (telefone + e-mail) visível na tabela, junto dos filtros e da busca
+já existentes, sem nenhuma regressão nas colunas anteriores. `npx tsc --noEmit` e
+`npm run build` limpos (só os 2 erros pré-existentes).
+
+> **Correção de UX (§3.10):** a coluna "Contato" foi **removida** logo em seguida — alta
+> densidade horizontal da tabela e telefone/e-mail não precisam ocupar espaço permanente na
+> listagem. Ver §3.10 para o desenho final (telefone/e-mail continuam disponíveis na ficha
+> individual e devem entrar na futura exportação) e para o breadcrumb de contexto adicionado.
+
+### 3.10 Ajuste de UX — remoção da coluna Contato + breadcrumb de contexto
+
+**Contexto:** aprovação conceitual da §3.9 (reaproveitar `/admin/servidores`, não duplicar
+tela), com dois ajustes: (1) a coluna Contato adicionada em §3.9 foi removida — telefone/e-mail
+continuam existindo (na ficha individual e, futuramente, na exportação), só não ocupam coluna
+fixa na listagem; (2) o acesso vindo do card "Beneficiários / Contratos" ganhou um breadcrumb de
+contexto ("Relatórios > Beneficiários / Contratos"), sem duplicar componente, dados ou lógica —
+só um parâmetro de busca (`?origem=relatorios`) que a mesma tela lê para decidir se mostra essa
+linha ou não.
+
+**Arquivos:** `src/routes/admin.servidores.index.tsx` (coluna Contato removida da tabela;
+`Route.validateSearch` novo — `{ origem?: "relatorios" }`; breadcrumb condicional no topo da
+página, renderizado só quando `search.origem === "relatorios"`); `src/routes/admin.relatorios.index.tsx`
+(o `Link` para `/admin/servidores` passa `search={{ origem: "relatorios" }}`; texto do card
+ajustado, sem mencionar mais "contato" como coluna).
+
+- **Colunas principais da tabela**, na ordem final: Processo SEI, Servidor, Operadora/
+  Associação, Dep., Valor Plano, Auxílio Previsto, Situação, Ações — exatamente as 7 pedidas,
+  nenhuma a mais.
+- **Telefone/e-mail** seguem disponíveis em `/admin/servidores/$id` (já existiam antes desta
+  etapa, nada mudou lá) — a futura exportação da visão (mock, ainda não implementada em nenhuma
+  tela do módulo) deve incluí-los quando for construída; registrado como pendência (seção 5).
+- **Busca/filtros**: não foi adicionado filtro ou campo de busca por telefone/e-mail — a busca
+  existente (nome, CPF, processo SEI) já cobre a necessidade real observada; adicionar contato à
+  busca ficaria como especulação sem uso identificado.
+- **Padrão de breadcrumb via query param** (`Route.validateSearch` + `Route.useSearch()`) é o
+  mesmo já usado em `servidor.pagamentos.enviar.tsx` (`competencia`/`beneficiario`) — reaproveita
+  uma convenção já estabelecida no protótipo, não inventa uma nova. O acesso pelo menu
+  "Servidores" nunca passa `origem`, então o breadcrumb nunca aparece nesse caminho — só quando
+  o próprio Módulo de Relatórios é a origem da navegação.
+
+**Testado manualmente no navegador, os dois caminhos de entrada:** (a) `/admin/servidores`
+direto (menu "Servidores") — tabela sem coluna Contato, sem breadcrumb, 7 colunas principais
+intactas; (b) `/admin/relatorios` → card "Beneficiários / Contratos" — mesma tabela, mesmos
+dados, mas com o breadcrumb "Relatórios > Beneficiários / Contratos" no topo (o "Relatórios" é
+um link de volta funcional, confirmado). `npx tsc --noEmit` e `npm run build` limpos (só os 2
+erros pré-existentes).
+
+### 3.11 Visões Gerenciais (v1 — simplificada demais, ver correção em §3.12)
+
+> **Esta versão foi corrigida na §3.12 seguinte**, incluindo a reversão do campo
+> `dataNascimento` fictício descrito abaixo. Texto mantido como registro histórico do que foi
+> tentado e por quê — não reflete o estado atual da tela.
+
+**Contexto:** último item da arquitetura do módulo (plano, seção 2.1 item 6), deliberadamente
+por último na ordem de implementação (2.9) por depender da etapa "Base de dados necessária"
+(data de nascimento + dataset histórico), até agora não feita.
+
+- Tela com gráfico de barras (Operadora, Faixa Etária) + indicador de teto, sem tabela
+  consolidada.
+- **Faixa etária calculada sobre um campo `dataNascimento` fictício**, adicionado
+  especificamente para preencher esse indicador — decisão revertida na §3.12 por instrução
+  explícita ("não fabricar dado só para preencher indicador").
+
+### 3.12 Correção — Visões Gerenciais tabulares, sem dado fictício (revisada em §3.13)
+
+> **Duas afirmações abaixo foram corrigidas na §3.13 seguinte:** (1) `dataNascimento` **não**
+> ficou de fora — o problema era de modelagem (`ServidorListItem` não carregava o campo), não de
+> ausência do dado no domínio (ele já existe nos fluxos de cadastro/requerimento,
+> `servidorAtual`/`Dependente`); o campo voltou, desta vez como dado cadastral legítimo. (2)
+> "Ativos/Inativos" usando `status` (`StatusKey`) estava semanticamente errado — nesta visão
+> gerencial, "Inativo" significa **aposentado**, não "cadastro inativo no sistema". Ver §3.13
+> para o desenho corrigido; texto abaixo mantido como registro histórico.
+
+**Contexto:** a v1 (§3.11) ficou simplificada demais (só gráfico + contagem) e se afastou da
+visão tabular/consolidada esperada pela GERDAB; pior, fabricou um campo (`dataNascimento`)
+inexistente no cadastro real só para calcular faixa etária. Esta correção: (1) reverte o dado
+fictício; (2) substitui os gráficos de barra por tabelas consolidadas como visão principal; (3)
+traz Ativos/Inativos para dentro da consolidação por operadora e como indicador próprio; (4)
+mantém o teto só como indicador complementar (quantidade + percentual), sem inventar série.
+
+**Arquivos:** `src/lib/mock-data.ts` (`dataNascimento` e `calcularIdade()` **removidos** de
+`ServidorListItem`/`servidoresList` — revertido por completo, com comentário explicando a
+reversão); `src/lib/visoes-gerenciais.ts` (reescrito: `getConsolidadoPorOperadora`,
+`getResumoVinculos`, `getSituacaoTeto` — sem nenhuma função de faixa etária, já que não há dado
+real para isso); `src/routes/admin.relatorios.gerencial.tsx` (reescrito).
+
+- **Consolidado por operadora/seguradora** — tabela principal (não gráfico), colunas: Operadora/
+  Seguradora, Nº titulares, Nº dependentes, Total de beneficiários, Ativos, Inativos, % da base
+  — mais uma linha de Total. Todos os números são reais, direto de `servidoresList`
+  (`dependentes` já existia como campo numérico por servidor; `status` já existia).
+- **Ativos/Inativos** deixou de ser um detalhe dentro da célula de Situação — agora é (a) uma
+  coluna própria dentro da tabela de operadoras e (b) um indicador de topo da página
+  (`getResumoVinculos()`), usando o mesmo critério em uma única fonte (`status === 'ativo'` =
+  Ativo; qualquer outro status = Inativo — mesma simplificação binária já usada em
+  Beneficiários/Contratos, §3.9/§3.10, para não reproduzir a fragmentação do SISPRO).
+- **Faixa etária**: **nenhum número calculado.** A seção existe na tela, mas só com uma
+  explicação de que o cadastro real de servidores não tem data de nascimento hoje — registrado
+  como pendência de dados (seção 5), não preenchido com dado inventado. Quando o campo existir
+  de verdade, a mesma estrutura de tabela (Titulares, Dependentes, Total, % da base) pode ser
+  aplicada sem redesenho.
+- **Teto familiar**: indicador complementar (quantidade + percentual da base, mais a lista dos
+  servidores no teto/acima) — fotografia do momento atual, nunca uma série. "Evolução de
+  Servidores no Teto" ao longo de competências permanece pendência (seção 5) — não fabricada.
+- Nenhum motor de cálculo paralelo: `dependentes` (campo já existente), `status` (já existente) e
+  `regrasProSaude.tetoFamiliar`/`valorPlano` (já existentes) são a única fonte — `visoes-gerenciais.ts`
+  só agrega, nunca recalcula essas regras de negócio.
+
+**Testado manualmente no navegador:** confirmado que a tabela por operadora fecha
+matematicamente (somas de titulares/dependentes/ativos/inativos por operadora batendo com os
+indicadores de topo: 7 titulares, 3 ativos, 4 inativos, percentuais 28,6%/28,6%/28,6%/14,3%
+somando 100,0%); confirmado que "Por faixa etária" mostra a explicação de pendência de dados, em
+vez de qualquer número; confirmado que "Servidores no teto" mostra 1 de 7 (14,3%), Fernanda Lima
+corretamente listada (R$ 5.120,00 ≥ R$ 4.000,00). `npx tsc --noEmit` e `npm run build` limpos (só
+os 2 erros pré-existentes).
+
+### 3.13 Correção — faixa etária real (dado cadastral, não fictício) e situação funcional × status operacional (revisada em §3.14)
+
+> **A ideia de "situação funcional" (Ativo × Aposentado, derivada de `cargo`) foi corrigida na
+> §3.14 seguinte** — fundir pensionista com aposentado/inativo estava errado; o campo correto já
+> existe no requerimento de primeira inclusão ("Situação do beneficiário titular", 5 categorias).
+> `SituacaoFuncional`/`getSituacaoFuncional()` descritos abaixo foram **removidos**. Texto
+> mantido como registro histórico; a faixa etária (`dataNascimento`, `calcularIdade()`) descrita
+> aqui continua válida e não foi alterada na §3.14.
+
+**Contexto:** a §3.12 errou em dois pontos, corrigidos aqui por instrução explícita:
+
+1. **Data de nascimento já é coletada** nos fluxos reais de cadastro/requerimento
+   (`servidorAtual.dataNascimento`, `Dependente.dataNascimento`, ambos já existentes em
+   `mock-data.ts`) — o problema nunca foi "esse dado não existe no domínio", e sim que
+   `ServidorListItem` (a base ampla usada por `/admin/servidores` e por este módulo) não
+   carregava esse campo. A correção certa era de **modelagem**, não "registrar como pendência e
+   seguir sem o número".
+2. **"Ativo/Inativo" estava com o significado errado.** Nesta visão gerencial, "Inativo"
+   significa **servidor aposentado** — não "cadastro inativo no sistema" (`StatusKey`, que é o
+   status operacional exibido em Beneficiários/Contratos: Ativo no Sistema, Suspenso, Requer
+   Atenção, Pendente de Validação etc.). Usar `status` para Ativo/Inativo funcional nesta tela
+   estava semanticamente incorreto.
+
+**Arquivos:**
+- `src/lib/mock-data.ts` — `dataNascimento` **de volta** em `ServidorListItem` e nos 7 registros
+  de `servidoresList`, agora documentado como campo cadastral legítimo (mesma classe de
+  `cpf`/`telefone`/`email`), não como dado fabricado só para um indicador. `calcularIdade()`
+  reintroduzida (recomputada sob demanda, **idade nunca persistida**). Novo tipo
+  `SituacaoFuncional` (`"ativo" | "aposentado"`) e função `getSituacaoFuncional()` — **derivada
+  do campo `cargo` já existente** ("Pensionista Temporário"/"Pensionista Vitalício" identificam
+  aposentado), não é um dado novo/fabricado, é leitura de um campo que já estava no cadastro.
+- `src/lib/visoes-gerenciais.ts` — reescrito: `getConsolidadoPorOperadora` e
+  `getResumoVinculos` passam a usar `getSituacaoFuncional()` (nunca mais `status`) para
+  Ativos/Inativos; nova `getConsolidadoPorFaixaEtaria()` (+ `FAIXAS_ETARIAS` exportado) usando
+  `calcularIdade(s.dataNascimento)` — dado real, cálculo real.
+- `src/routes/admin.relatorios.gerencial.tsx` — reescrito: tabela de faixa etária adicionada;
+  rótulos trocados para "Ativos (em atividade)" / "Aposentados/Inativos", com nota explícita na
+  tela separando situação funcional de status de cadastro.
+
+**Faixas etárias** (coerentes com as regras já existentes do Pró-Saúde para dependentes — ver
+`Dependente.parentesco`, `form-options.ts`: "menor de 21", "maior de 21 e menor de 24"): 0 a 20,
+21 a 23, 24 a 29, 30 a 39, 40 a 49, 50 a 59, 60 ou mais.
+
+**Limitação de dados registrada, não escondida:** a coluna "Dependentes" da tabela de faixa
+etária mostra "—", não zero — `servidoresList` guarda dependentes só como uma **contagem** por
+titular (`dependentes: number`), sem registro individual de data de nascimento nesta base
+(diferente do cenário do Módulo de Cadastro, onde `Dependente` tem `dataNascimento` próprio).
+"Total" e "% da base" desta tabela contam só titulares. Quando `servidoresList` passar a ter
+dependentes como registros individuais, a mesma estrutura de tabela absorve isso sem redesenho.
+
+**Separação de conceitos (registrada explicitamente, conforme pedido):**
+- **Situação funcional** (`getSituacaoFuncional`): Ativo (em atividade) × Aposentado/Inativo —
+  usada nas Visões Gerenciais (tabela por operadora e indicador de topo).
+- **Status operacional do cadastro** (`ServidorListItem.status`, `StatusKey`): Ativo no Sistema,
+  Suspenso, Requer Atenção, Pendente de Validação etc. — conceito **separado**, continua sendo o
+  que aparece em Beneficiários/Contratos (`/admin/servidores`); não é usado nas Visões
+  Gerenciais.
+- As duas dimensões podem coexistir sem contradição: um servidor pode estar "Ativo no Sistema"
+  (cadastro em dia) e, ao mesmo tempo, "Aposentado" (situação funcional) — ex.: Roberto Santos e
+  Patrícia Costa neste seed.
+
+**Testado manualmente no navegador:** confirmado que a tabela por operadora agora fecha com
+Ativos=5/Aposentados=2 (Roberto Santos e Patrícia Costa — os dois "Pensionista..." — corretamente
+contados como aposentados; os demais 5 como ativos), consistente com os indicadores de topo;
+confirmado que a tabela de faixa etária soma 7 titulares com percentuais corretos (21–23: 1;
+24–29: 1; 30–39: 1; 40–49: 1; 60+: 3); confirmado que a nota separando situação funcional de
+status operacional aparece na tela. `npx tsc --noEmit` e `npm run build` limpos (só os 2 erros
+pré-existentes).
+
+### 3.14 Correção — Situação do Beneficiário Titular (5 categorias reais, sem fundir pensionista com aposentado)
+
+**Contexto:** a §3.13 introduziu uma "situação funcional" binária (Ativo × Aposentado) derivada
+de `cargo` conter "Pensionista". Isso estava errado por instrução explícita: **pensionista não é
+aposentado** — é um tipo de titular do benefício semanticamente distinto. O campo correto já
+existe no requerimento de primeira inclusão: "Situação do beneficiário titular"
+(`SITUACOES_TITULAR`, `form-options.ts`, já usado em `src/routes/primeiro-acesso.tsx`), com 5
+categorias: Servidor efetivo ativo, Servidor inativo, Servidor comissionado, Titular de pensão
+vitalícia, Titular de pensão temporária.
+
+**Dois conceitos separados, explicitamente (conforme pedido):**
+- **Status no Pró-Saúde**: Ativo / Inativo — é `ServidorListItem.status` (`StatusKey`), o status
+  **operacional do cadastro** no sistema (cadastro em dia × vínculo encerrado por exclusão).
+  Exibido em Beneficiários/Contratos e na ficha do servidor.
+- **Situação do beneficiário titular**: as 5 categorias acima — é a classificação funcional real
+  do titular, mesmo campo já coletado no requerimento de primeira inclusão. Usada nas Visões
+  Gerenciais para qualquer indicador de "população funcional".
+- As duas dimensões são **independentes** — exemplo real neste seed: Maria Oliveira tem
+  `status: 'ativo'` (Status Pró-Saúde: Ativo) e `situacaoBeneficiarioTitular: 'Servidor
+  inativo'` (Situação do titular: Servidor efetivo inativo) ao mesmo tempo, demonstrando
+  exatamente o exemplo pedido ("Status Pró-Saúde: Ativo" + "Situação do titular: Servidor
+  efetivo inativo" não são contraditórios).
+
+**Arquivos:**
+- `src/lib/mock-data.ts` — `SituacaoFuncional`/`getSituacaoFuncional()` **removidos** (fundiam
+  pensionista com aposentado, sem regra validada). Novo campo `situacaoBeneficiarioTitular` em
+  `ServidorListItem`, tipado a partir de `SITUACOES_TITULAR` (`form-options.ts`) — **reaproveita
+  o campo/vocabulário já existente**, não cria um novo. Populado nos 7 registros de
+  `servidoresList`: os 2 "Pensionista..." mapeados para suas categorias reais (Roberto Santos →
+  "Titular de pensão temporária", Patrícia Costa → "Titular de pensão vitalícia"); os demais como
+  "Servidor efetivo ativo", exceto Maria Oliveira, ajustada para "Servidor inativo" para
+  demonstrar a independência das duas dimensões (ver exemplo acima) — nenhum dado novo
+  fabricado, só uma categoria diferente do mesmo vocabulário já reaproveitado. Doc-comment do
+  campo `status` atualizado explicando a separação.
+- `src/lib/visoes-gerenciais.ts` — reescrito: `getConsolidadoPorOperadora` não calcula mais
+  Ativos/Inativos (removidos da tabela por operadora, já que colapsar as 5 categorias por
+  operadora exigiria uma regra de cruzamento não validada); nova
+  `getConsolidadoPorSituacaoTitular()` — tabela própria com as 5 categorias, contagem real,
+  nenhuma fundida.
+- `src/routes/admin.relatorios.gerencial.tsx` — reescrito: nova tabela "Consolidado por situação
+  do beneficiário titular" (5 linhas); indicadores de topo simplificados para Titulares e No
+  teto (removidos os cards "Ativos"/"Aposentados" que usavam o binário errado).
+- `src/routes/admin.servidores.$id.tsx` — badge de status da ficha do servidor trocado de
+  "Ativo no Sistema" para **"Ativo"** (via `label` do `StatusBadge`, sem alterar
+  `statusLabels` global, que continua servindo outros contextos do protótipo). "Inativo"
+  permanece o rótulo já correto para vínculo encerrado por fluxo de exclusão — sem mudança.
+
+**Testado manualmente no navegador:** confirmado que a tabela "Consolidado por situação do
+beneficiário titular" mostra as 5 categorias (Servidor efetivo ativo: 4, Servidor inativo: 1,
+Servidor comissionado: 0, Titular de pensão vitalícia: 1, Titular de pensão temporária: 1,
+somando 7); confirmado que a ficha do servidor (`/admin/servidores/12345678`) mostra o badge
+"Ativo" (não mais "Ativo no Sistema"). `npx tsc --noEmit` e `npm run build` limpos (só os 2
+erros pré-existentes).
+
+### 3.15 Correção — "Histórico de Pagamentos" renomeado para "Histórico de Comprovações"
+
+**Contexto:** o sistema não tem confirmação de que o auxílio foi efetivamente pago em folha —
+só evidência de comprovação apresentada e analisada. "Histórico de Pagamentos", "Pagas"/"Não
+pagas"/"Total pago" e "Situação do pagamento" afirmavam, na prática, mais do que os dados
+sustentam. Correção puramente semântica/de apresentação — **o motor de análise dos comprovantes
+não foi alterado**.
+
+**Arquivos:**
+- `src/lib/fechamento-pagamento.ts` — `getHistoricoPagamentos`/`LinhaHistoricoPagamentos`/
+  `FiltroHistoricoPagamentos` renomeados para `getHistoricoComprovacoes`/
+  `LinhaHistoricoComprovacoes`/`FiltroHistoricoComprovacoes`; campos `pagas`/`naoPagas`/
+  `totalPago` renomeados para `comprovadas`/`naoComprovadas`/`valorAprovado`. A fonte de dados
+  (`getExtratoServidor`, `LinhaExtrato.houvePagamento`) não mudou — só o nome exposto por esta
+  camada de apresentação.
+- `src/routes/admin.relatorios.extrato.index.tsx` — título "Histórico de Comprovações";
+  descrição e filtro "Situação da comprovação" (opções Comprovado/Não comprovado/Em análise, em
+  vez de Pago/Não pago); tabela: Matrícula \| Servidor \| Competências \| Comprovadas \| Não
+  comprovadas \| Em análise \| Valor aprovado \| Ação.
+- `src/routes/admin.relatorios.extrato.$matricula.tsx` (drill-down individual, preservado sem
+  mudança de lógica) — "Total pago no período" → "Valor aprovado no período"; coluna "Houve
+  pagamento?" → "Comprovação aprovada?"; texto introdutório reescrito para não afirmar pagamento
+  em folha; breadcrumb e link "Voltar" atualizados para "Histórico de Comprovações".
+- `src/routes/admin.relatorios.index.tsx` — card da Visão Geral atualizado (nome e descrição).
+
+**Estrutura final da tabela consolidada**: Matrícula \| Servidor \| Competências \| Comprovadas \|
+Não comprovadas \| Em análise \| Valor aprovado \| Ação — exatamente a pedida. "Valor aprovado"
+continua somando só competências com comprovação efetivamente aprovada pelo fluxo de análise
+(`houvePagamento` — nome interno mantido por não alterar o motor de análise), nunca um valor
+"aprovado mas não pago".
+
+**Testado manualmente no navegador:** confirmado que `/admin/relatorios/extrato` mostra "Histórico
+de Comprovações" com as colunas renomeadas (Comprovadas/Não comprovadas/Valor aprovado) e o
+filtro "Situação da comprovação"; confirmado que o drill-down individual
+(`/admin/relatorios/extrato/50001`) mostra "Valor aprovado no período" e "Comprovação aprovada?",
+sem nenhuma menção a pagamento em folha; confirmado que o card na Visão Geral reflete o novo
+nome. `npx tsc --noEmit` e `npm run build` limpos (só os 2 erros pré-existentes).
+
+### 3.16 Correção final — padronização integral do vocabulário de Situação do Beneficiário Titular
+
+**Contexto:** a §3.14 introduziu `situacaoBeneficiarioTitular` reaproveitando `SITUACOES_TITULAR`,
+mas a própria constante (`form-options.ts`) tinha um valor divergente do resto do domínio —
+`"Servidor inativo"`, e não `"Servidor efetivo inativo"` — o que fazia o vocabulário parecer uma
+variação paralela em vez de exatamente as 5 categorias oficiais. Corrigido para que **todo** o
+protótipo (requerimento de primeira inclusão, seeds de `servidoresList`, Visões Gerenciais) use
+literalmente as mesmas 5 strings, sem nenhuma variação.
+
+**Fonte única de verdade confirmada**: `SITUACOES_TITULAR` (`src/lib/form-options.ts`) — agora:
+Servidor efetivo ativo, **Servidor efetivo inativo**, Servidor comissionado, Titular de pensão
+vitalícia, Titular de pensão temporária. `src/routes/primeiro-acesso.tsx` já consumia esse array
+via `.map()` para montar o `<select>` (nunca uma lista paralela hardcoded) — só a checagem
+`isInativo` comparava contra a string antiga (`"Servidor inativo"`), corrigida para
+`"Servidor efetivo inativo"`. `ServidorListItem.situacaoBeneficiarioTitular`
+(`mock-data.ts`) já era tipado a partir do mesmo array (`(typeof SITUACOES_TITULAR)[number]`) —
+nenhuma mudança de tipo necessária, só o valor do seed da Maria Oliveira, ajustado de
+`"Servidor inativo"` para `"Servidor efetivo inativo"`.
+
+**Arquivos:** `src/lib/form-options.ts` (valor da constante corrigido + comentário reforçando
+que é fonte única de verdade); `src/routes/primeiro-acesso.tsx` (`isInativo` corrigido);
+`src/lib/mock-data.ts` (seed da Maria Oliveira corrigido).
+
+**Revisão de nomenclatura antiga/derivação incorreta — nada restante:**
+- Busca por `"Servidor inativo"` no código-fonte não retorna mais nenhuma ocorrência (só
+  `"Servidor efetivo inativo"`, a forma correta).
+- `SituacaoFuncional`/`getSituacaoFuncional()` (o binário Ativo/Aposentado que fundia
+  pensionista com aposentado) já não existem desde a §3.14 — confirmado, não foram
+  reintroduzidos nesta correção.
+- Visões Gerenciais, ficha administrativa do servidor e seeds usam exclusivamente
+  `SITUACOES_TITULAR`/`situacaoBeneficiarioTitular` para situação do titular, e
+  `ServidorListItem.status`/`StatusKey` exclusivamente para Status Pró-Saúde (Ativo/Inativo) —
+  nenhum cruzamento indevido entre os dois encontrado.
+
+**Testado manualmente no navegador:** confirmado que `/admin/relatorios/gerencial` mostra
+"Servidor efetivo inativo" (não mais "Servidor inativo") na tabela de situação do titular;
+confirmado que `/primeiro-acesso` (fluxo "Solicitação inicial de inclusão") mostra as mesmas 5
+opções, com "Servidor efetivo inativo" no mesmo lugar — vocabulário idêntico nos dois pontos.
+`npx tsc --noEmit` e `npm run build` limpos (só os 2 erros pré-existentes).
+
+### 3.17 Exportação real (PDF/XLSX) — camada compartilhada + relatório-piloto (Consolidado por Operadora/Seguradora)
+
+**Contexto:** pedido explícito do usuário — todo relatório administrativo efetivamente
+implementado deve poder ser exportado em PDF e XLSX reais (não mock), refletindo os filtros
+aplicados na tela (nunca só a página visual). Antes de propagar para os demais relatórios, o
+usuário pediu um único relatório-piloto para validar tipografia/cabeçalho/tabela/rodapé/Excel:
+**Visões Gerenciais → Consolidado por Operadora/Seguradora**. Os demais relatórios listados
+abaixo **aguardam aprovação do template** antes de receber a mesma exportação.
+
+**Identidade documental de referência**: `relatorio-de-seguradoras.pdf`/`.xlsx` (SISPRO),
+fornecidos pelo usuário — usados só para a **forma** do documento (cabeçalho institucional,
+título centralizado, tabela com cabeçalho destacado, paginação, estrutura do Excel), nunca para
+copiar a interface visual do SISPRO nem suas colunas de negócio. As colunas exportadas são
+sempre as do modelo de dados novo do Pró-Saúde (ex.: `Situação do Beneficiário Titular` com as 5
+categorias reais, nunca o "Quantidade Ativos/Quantidade Inativos" do legado).
+
+**Arquitetura (camada comum, reaproveitada por todos os relatórios):**
+- `src/lib/relatorio-export.ts` — tipos (`RelatorioExportSpec<T>`, `ColunaExport<T>`,
+  `LinhaTotalExport`), formatação de valor (`formatarValorExport`) e o único ponto que toca o
+  DOM para disparar download (`baixarBlob`). Cada tela monta um `RelatorioExportSpec` a partir
+  dos dados **que já calcula para a própria tabela** (mesmo array de linhas exibido, sem
+  paginação) — nenhuma consulta/classificação/agregação nova só para exportar.
+- `src/lib/relatorio-export-pdf.ts` — motor único de PDF (jsPDF + jspdf-autotable):
+  cabeçalho institucional (`GOVERNO DO DISTRITO FEDERAL` / `SECRETARIA DE SEGURANÇA PÚBLICA` /
+  `DEPARTAMENTO DE TRÂNSITO DO DISTRITO FEDERAL` + linha "PRÓ-SAÚDE — <origem>"), título
+  centralizado, competência/filtros abaixo do título, tabela com cabeçalho repetido em toda
+  página (`showHead: "everyPage"`), rodapé paginado (`Pró-Saúde` + `página/total`), paisagem
+  automática quando há mais de 5 colunas (`decidirOrientacao`).
+- `src/lib/relatorio-export-xlsx.ts` — motor único de XLSX (ExcelJS): mesmo cabeçalho
+  institucional/título/filtros nas primeiras linhas (mescladas, centralizadas), linha de
+  cabeçalho da tabela com preenchimento cinza, larguras de coluna por `ColunaExport.width`,
+  formatos nativos de número/moeda/percentual (não texto), cabeçalho **congelado**
+  (`sheet.views` com `state: "frozen"`) e **autofiltro** cobrindo cabeçalho + linhas de dados
+  (nunca a linha de Total). Nenhuma coluna técnica/ID interno — só as colunas de `ColunaExport`.
+- `src/components/ExportarRelatorio.tsx` — ação única de UI ("Exportar ▾" com PDF/Excel como
+  itens do menu, nunca dois botões separados), com estado de carregamento
+  ("Gerando PDF…"/"Gerando Excel…"). Os módulos pesados (jsPDF/autoTable/ExcelJS) são importados
+  dinamicamente dentro dos handlers de clique (`import()`), para não inflar o bundle de cada
+  tela que só usa o componente — confirmado no build: o chunk de `admin.relatorios.gerencial`
+  caiu de ~2,77 MB para ~21 KB depois dessa mudança, com `relatorio-export-pdf`/
+  `relatorio-export-xlsx` como chunks lazy próprios (664 KB / 2,08 MB, carregados só ao clicar).
+
+**Bugs reais encontrados e corrigidos durante a validação do piloto** (via geração real de
+arquivos, não só leitura de código):
+- Nome de aba do Excel não pode conter `* ? : \ / [ ]` — o título "Consolidado por Operadora /
+  Seguradora" quebrava a geração (erro do ExcelJS: caractere inválido no nome da aba). Corrigido
+  com `nomeAbaValido()`, que sanitiza o título antes de usar como nome de aba.
+- Autofiltro (`sheet.autoFilter`) cobria só a linha de cabeçalho (`A9:E9`), sem nenhuma linha de
+  dado — o filtro aparecia no Excel mas não tinha o que filtrar. Corrigido para cobrir cabeçalho
+  + todas as linhas de dados (nunca a linha de Total, que fica fora do filtro).
+
+**Relatório-piloto implementado**: `admin.relatorios.gerencial.tsx`, tabela "Consolidado por
+Operadora / Seguradora" — colunas exportadas: Operadora/Seguradora, Nº Titulares, Nº
+Dependentes, Total de Beneficiários, % da Base (mais linha de Total) — exatamente as mesmas já
+validadas na tela, sem `Quantidade Ativos/Quantidade Inativos` do SISPRO. Sem filtro nesta tela
+hoje (`filtrosAplicados: []`); nome de arquivo `pro-saude_visao_operadoras_2026-09.{pdf,xlsx}`.
+
+**Testado (geração real de arquivo, não só inspeção de código)**: PDF e XLSX gerados e
+inspecionados byte a byte (`pdftotext`/leitura de PDF e `openpyxl` para o XLSX) — cabeçalho
+institucional correto, título/filtros corretos, tabela com os 5 registros + Total, valores e
+percentuais batendo com a tela; XLSX com aba nomeada corretamente, 6 linhas de mesclagem no
+cabeçalho, cabeçalho da tabela com preenchimento cinza, formatos `#,##0`/`0.0%` nativos (não
+texto), larguras de coluna aplicadas, cabeçalho congelado em `A10`, autofiltro em `A9:E13`
+(cabeçalho + 4 linhas de dado, Total de fora). Testado também o clique real dos dois botões
+("PDF"/"Excel (.xlsx)") na tela, sem erros de execução. `npx tsc --noEmit` e `npm run build`
+limpos (só os 2 erros pré-existentes).
+
+**Pendente de aprovação do usuário antes de propagar**: tipografia, cabeçalho, espaçamento,
+tabela e rodapé do PDF; estrutura do XLSX. Só depois da aprovação o mesmo padrão (mesma
+`RelatorioExportSpec`, mesmo `ExportarRelatorio`) deve ser aplicado a: Fechamento de Pagamento
+(Adimplentes, Inadimplentes, Consolidado), Histórico de Comprovações, Documentação e Pendências,
+Beneficiários/Contratos, e os demais blocos de Visões Gerenciais (Situação do Beneficiário
+Titular, Faixa Etária). Ressarcimentos/Retroativos e o Comprovante de Rendimentos do Portal do
+Servidor **não** recebem esta exportação administrativa (o primeiro por estar fora de escopo
+nesta rodada; o segundo por ser documento individual do servidor, tratado separadamente — ver
+§3.5).
+
+### 3.18 Revisão de template (v2) + confirmação de fuso horário + propagação a todos os relatórios administrativos
+
+**Contexto:** após aprovação funcional do piloto (§3.17), o usuário pediu uma última revisão de
+template antes de propagar — 8 ajustes pontuais, sem alterar a arquitetura compartilhada — e só
+então autorizou a propagação para os demais relatórios administrativos.
+
+**Ajustes de template aplicados (v1 → v2 do PDF/XLSX, arquitetura inalterada):**
+1. Hierarquia visual do PDF reorganizada para aproximar a organização documental do SISPRO
+   (cabeçalho institucional → título → parâmetros → tabela) sem copiar o visual antigo:
+   `desenharCabecalhoInstitucional()` agora desenha as 3 linhas institucionais em negrito (11pt),
+   a linha "Pró-Saúde — <origem>" (9pt normal) e um filete cinza de separação antes do título.
+2. **Bug real corrigido**: a linha de Total exibia `100` em vez de `100,0%` porque
+   `formatarValorExport` era chamado sem o parâmetro `tipo` para os valores de `linhaTotal` (caía
+   no branch numérico genérico). Corrigido passando `spec.colunas[i+1]?.tipo` explicitamente.
+3. Novo bloco "Parâmetros do relatório" abaixo do título — `Competência: ...` quando aplicável,
+   `Filtros: Todos` quando nenhum filtro está ativo (nunca uma lista vazia), ou a lista dos
+   filtros realmente aplicados (`textoFiltros()`), e `Gerado em: <data/hora>`.
+4. **Fuso horário confirmado explicitamente**: `formatarDataHoraGeracao()` passa
+   `timeZone: "America/Sao_Paulo"` ao `toLocaleString`, garantindo horário de Brasília
+   independentemente do timezone do servidor/navegador que gera o documento — verificado com
+   `TZ=UTC node -e "..."` mostrando a conversão correta (08:00 UTC → 05:00 exibido) antes de
+   autorizar a propagação, por pedido explícito do usuário.
+5. Rodapé do PDF padronizado: `Pró-Saúde` à esquerda, `Página X de Y` à direita, em todas as
+   páginas (`desenharRodape()`).
+6. Cabeçalho da tabela confirmado repetindo em toda nova página (`showHead: "everyPage"`,
+   já existente desde o piloto, sem alteração).
+7. XLSX recebeu os mesmos metadados do PDF (título, competência/filtros, data/hora de geração)
+   nas linhas iniciais mescladas, preservando autofiltro, congelamento de cabeçalho, larguras de
+   coluna e tipos numéricos nativos já validados no piloto.
+8. Nenhum logo/imagem inventado — o documento usa só texto/tabela; nenhum asset gráfico oficial
+   do Pró-Saúde existe no projeto até o momento, então nenhuma imagem foi adicionada.
+
+PDF aprovado como **template padrão de exportação** após esta revisão.
+
+**Propagação — mesma arquitetura (`RelatorioExportSpec` + `ExportarRelatorio`), colunas e
+filtros próprios de cada visão de origem (nenhuma tela forçada a ter a mesma tabela):**
+
+| Relatório | Arquivo | Especificações de exportação | Filtros refletidos |
+|---|---|---|---|
+| Fechamento de Pagamento — Adimplentes | `admin.relatorios.pagamentos.tsx` | `specAdimplentes` — Matrícula, Nome, Situação do Vínculo, Competência de Referência, Valor Aprovado | Vínculo (Ativos/Inativos) |
+| Fechamento de Pagamento — Inadimplentes | idem | `specInadimplentes` — Matrícula, Nome, Valor Relacionado à Competência, Situação, Motivo, Observação NURFI (nunca reduzido a 2 campos) | Vínculo |
+| Fechamento de Pagamento — Requer Análise | idem | `specRequerAnalise` — Matrícula, Servidor, Competência, Pendência/Motivo, Tempo Aguardando | Vínculo |
+| Histórico de Comprovações | `admin.relatorios.extrato.index.tsx` | `specExport` — Matrícula, Servidor, Competências, **Comprovadas**, **Não Comprovadas**, **Em Análise** (nunca "Pagas/Não pagas"), Valor Aprovado | Ano, Competência, Situação, Vínculo, Busca |
+| Documentação e Pendências | `admin.relatorios.documentacao.tsx` | `specExport` — Beneficiário/Dependente, Documento, Status, Prazo/Vencimento, Origem, Última Solicitação, Solicitado Por, Qtd. Solicitações | Status |
+| Beneficiários/Contratos | `admin.servidores.index.tsx` | `specExport` — Processo SEI, Servidor, Operadora/Associação, Dependentes, Valor Plano, Auxílio Previsto, Situação | Busca, Status, Associação, Operadora, Situação financeira, Só com pendência |
+| Visões Gerenciais — Situação do Beneficiário Titular | `admin.relatorios.gerencial.tsx` | `specSituacaoTitular` — Situação do Beneficiário Titular, Nº Titulares, % da Base | — |
+| Visões Gerenciais — Faixa Etária | idem | `specFaixaEtaria` — Faixa Etária, Titulares, % da Base (deliberadamente **sem** as colunas "Dependentes"/"Total" da UI, que hoje são placeholder `—` sem dado calculável real) | — |
+
+Também nesta rodada, o botão mock **"Exportar lista (.xlsx)"** do menu de ações de
+`admin.servidores.index.tsx` (`AcaoMenu`) foi **removido**, substituído pelo botão real de
+exportação no cabeçalho da tela — evitando duas ações de exportação divergentes na mesma tela
+(uma real, uma mock).
+
+**Testado (regressão em navegador, uma tela por vez)**: clique real em "Exportar → PDF" e
+"Exportar → Excel (.xlsx)" nas 8 especificações acima (incluindo o caso de 0 registros na aba
+Inadimplentes de uma competência sem inadimplentes, confirmando que exportação de dataset vazio
+não quebra), com um listener de `error`/`unhandledrejection` instalado na página confirmando
+ausência de exceções em todos os casos. `npx tsc --noEmit` e `npm run build` limpos (só os 2
+erros pré-existentes, não relacionados) após a propagação completa.
+
+**Fora desta propagação, propositalmente**: Ressarcimentos/Retroativos (ainda sem tela/
+levantamento específico — ver §4) e Comprovante de Rendimentos do Portal do Servidor (documento
+individual do servidor, não um relatório administrativo — ver §3.5).
+
+**Aguardando validação final do usuário antes de commit** — nenhum commit foi feito nesta rodada
+de propagação.
 
 ## 4. Fora de escopo (decisão explícita, registrada desde já)
 
-- **Ressarcimentos/retroativos com motor de cálculo** (causa, competência de origem, teto,
-  diferença devida) — pedido explícito do usuário; a própria ata indica que esse fluxo precisa
-  de uma reunião específica com exemplos reais antes de ser prototipado.
+- **Ressarcimentos/retroativos** — motor de cálculo, casos especiais **e a própria tela
+  administrativa dedicada** (correção v3: nem uma tela só de status é construída nesta rodada).
+  O Extrato do Servidor (quando implementado) exibirá os registros retroativos já existentes no
+  Módulo de Pagamento como parte do histórico normal, sem tela própria. Pedido explícito do
+  usuário; a própria ata indica que o fluxo completo precisa de uma reunião específica com
+  exemplos reais antes de ser prototipado.
 - Integração real com SEI (links diretos, blocos de assinatura, abertura de processo),
   integração com GOV.BR (assinatura) e integração com WhatsApp — todas citadas na ata como
   dependentes de definição institucional/técnica ainda não fechada.
@@ -752,18 +1684,86 @@ autorização explícita → commit).
   migração, comparação/correção de dependentes do legado, valor médio por seguradora).
 - Atualização cadastral periódica com bloqueio de ações — periodicidade e regras ainda "a
   definir" segundo a própria ata; entrará como uma etapa mais leve (confirmação simples, sem
-  bloqueio automático completo) quando for a vez da Etapa R9.
+  bloqueio automático completo).
+- Exportação real de arquivo (Excel/PDF) do relatório para o NURFI — mock em toda a Parte 2,
+  como em outras ações simuladas do protótipo.
 
 ## 5. Pendências
 
-- **Tela do SISPRO** (sistema onde a GERDAB analisa relatórios hoje) — o usuário vai enviar como
-  referência visual adicional; pode influenciar o layout do dashboard operacional (Etapa R1) e
-  do relatório geral (Etapa R2).
+- **Faixa etária dos dependentes** (Visões Gerenciais, §3.13) — resolvida para titulares
+  (`dataNascimento` real, cálculo real); dependentes continuam só como contagem por titular em
+  `servidoresList`, sem data de nascimento individual — a coluna "Dependentes" da tabela de
+  faixa etária mostra "—", não um número calculado. Resolver quando `servidoresList` passar a
+  registrar dependentes como itens individuais (como já acontece no cenário do Módulo de
+  Cadastro, `Dependente.dataNascimento`).
+- **Agregação macro de Situação do Beneficiário Titular por operadora** (Visões Gerenciais,
+  §3.14) — hoje as duas tabelas (por operadora e por situação do titular) são independentes; se
+  a GERDAB precisar cruzar as duas dimensões (ex.: quantos "Servidor efetivo ativo" tem cada
+  operadora), isso é uma extensão futura, não fabricada nesta rodada por não haver pedido
+  explícito nem regra validada de como apresentar esse cruzamento.
+- **`servidorAtual` (ficha do Módulo de Cadastro) não expõe "Situação do beneficiário titular"
+  como campo próprio** — só `ServidorListItem`/`servidoresList` (base usada pelo Módulo de
+  Relatórios) ganhou esse campo. `servidorAtual` é um objeto de formato diferente, usado só na
+  ficha administrativa individual; unificar os dois cadastros não fazia parte deste pedido.
+- **Evolução de Servidores no Teto ao longo de competências** (Visões Gerenciais, §3.12/§3.14) — não
+  implementada porque exigiria um histórico mês a mês de `valorPlano` que não existe; só a
+  fotografia atual (quantidade + percentual) foi entregue. Criar esse histórico é um passo
+  futuro, não fabricado nesta rodada.
+- **"Valor médio por operadora"** (Visões Gerenciais) — calculável a partir do agregado já
+  existente (`valorPlano` por titular), mas omitido da tela por decisão da stakeholder (baixa
+  relevância atual); ativar se essa avaliação mudar.
+- **Exportação (PDF/.xlsx) de todos os relatórios do módulo** — pedido explícito do usuário
+  (§3.10): todo relatório construído neste módulo deve poder ser exportado como PDF ou .xlsx.
+  Nenhuma exportação real foi implementada em nenhuma etapa até aqui (Fechamento, Extrato/
+  Histórico, Documentação, Beneficiários/Contratos) — todas continuam mock/simuladas, seguindo o
+  mesmo tratamento de outras ações simuladas do protótipo. Quando a exportação real for
+  priorizada, a de Beneficiários/Contratos deve incluir telefone/e-mail mesmo não sendo coluna
+  da tabela em tela.
+- **Notificação em massa** na Documentação e Pendências (§3.4) — mencionada na arquitetura do
+  plano, não implementada ainda; não há função pronta a reaproveitar, criar uma nova ficaria
+  para quando for explicitamente priorizado.
+- **Critérios técnicos de classificação Adimplente/Inadimplente/Requer análise**
+  (`fechamento-pagamento.ts`) — mapeamento tecnicamente coerente com os dados existentes, mas
+  ainda não validado como regra de negócio pela stakeholder; só a estrutura de 3 grupos na UI
+  está aprovada.
+- **Se "Requer análise" deve bloquear o fechamento da competência** — implementado como
+  recomendação do plano (`podeFecharCompetencia()`), não como regra já confirmada.
+  - Se a stakeholder confirmar um critério diferente, ajustar só `fechamento-pagamento.ts`
+    (`statusRequerAnalise`/`statusAdimplente`/`statusInadimplente` e a checagem de "sem
+    comprovante") — a tela (`admin.relatorios.pagamentos.tsx`) não precisa mudar.
+- **Vocabulário fechado de "Situação"** na aba Inadimplentes — hoje só "Suspender" é produzido
+  automaticamente; confirmar com a GERDAB se há outros valores usados na prática.
+- **Significado da coluna "QT"** — tratada como sequencial de exibição, não indicador (ver 3.1).
+- **"Competência de pagamento"** distinta de "competência de referência" — hoje exibe o mesmo
+  valor; confirmar se a distinção existe na prática antes de criar um campo novo.
+- **Formato/colunas exatas do relatório entregue ao NURFI** além dos campos já implementados
+  (Matrícula, Nome, Valor, Situação, Motivo, Observação) — não definido, nem inventado.
+- **Finalidade exata do "Relatório IRPF"** do SISPRO — a futura consolidação em "Documentação e
+  Pendências" é interpretação atual, não substituição definitivamente validada.
 - Identificador de conferência (CPF vs. matrícula) resolvido só para a ASSETRAN nesta rodada —
   ver ressalva na seção 2.1.
-- Definição de "inadimplente" no vocabulário do protótipo (necessária para a Etapa R7).
-- Periodicidade da confirmação cadastral (necessária para a Etapa R9).
+- Periodicidade da confirmação cadastral (etapa ainda não implementada).
+- Expandir `beneficiariosPagamento` para múltiplos servidores/grupos familiares — necessário
+  para o Fechamento de Pagamento (e as Visões Gerenciais, quando implementadas) refletirem a
+  escala real da GERDAB; hoje o cenário tem só 1 servidor titular (ver 3.1).
 - **Modelo `.xlsx` definitivo da planilha de associações + validação automática por OCR na
   conferência** (seção 2.3) — planejado para uma rodada futura; até lá, a lista de campos
   exibida na tela (5 campos essenciais) é só uma simplificação da comunicação ao usuário, e a
   validação da conferência continua sendo simulada (`dadosSimulados` fixo), não real.
+
+## 6. Backlog de refinamento (rodada posterior)
+
+Ajustes visuais/funcionais menores identificados durante a implementação, mas conscientemente
+adiados para uma rodada de refinamento — a estrutura funcional atual foi validada pelo usuário
+como adequada; estes são polimentos, não bloqueadores.
+
+- **Aviso técnico sobre a massa reduzida de dados** (`admin.relatorios.pagamentos.tsx`, banner
+  "O cenário de dados do Módulo de Pagamento hoje cobre 1 grupo familiar...") — retirar da
+  interface final voltada ao usuário. A informação continua registrada apenas na documentação
+  (seção 3.1 acima e seção 5, "Expandir `beneficiariosPagamento`...") — o código/UI não deve
+  expor esse tipo de nota técnica ao usuário final.
+- **Campos ainda não definidos, apresentados como "(a validar)"** (ex.: coluna "Competência de
+  pagamento" na aba Adimplentes, "QT (a validar)" na aba Inadimplentes) — devem ser **ocultados**
+  da interface final enquanto não confirmados com a stakeholder, em vez de exibidos com um rótulo
+  "(a validar)" visível ao usuário. Ajustar quando essas colunas forem confirmadas ou descartadas
+  (seção 5, pendências correspondentes).

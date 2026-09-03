@@ -35,6 +35,9 @@ export function ServidorLayout() {
         </Link>
       )}
 
+      {/* 5 itens — "Relatórios" foi removido do menu (ver docs/MODULO_RELATORIOS.md, correção
+          arquitetural): gerava redundância e prejudicava o layout mobile. Meu Extrato e
+          Comprovante de Rendimentos agora vivem dentro da área de Pagamentos. */}
       <nav className="fixed bottom-0 left-0 right-0 sm:left-auto sm:right-auto sm:max-w-md sm:mx-auto bg-card border-t border-border">
         <div className="grid grid-cols-5">
           <NavTab to="/servidor/inicio" icon={<Home className="h-5 w-5" />} label="Início" />

@@ -1,10 +1,18 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { servidoresList, formatCurrency, type SituacaoFinanceira } from "@/lib/mock-data";
+import { servidoresList, formatCurrency, statusLabels, type ServidorListItem, type SituacaoFinanceira } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Search, Settings, ChevronDown, Download, BellRing, Copy, Check } from "lucide-react";
+import { Search, Settings, ChevronDown, BellRing, Copy, Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
+import { ExportarRelatorio } from "@/components/ExportarRelatorio";
+import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/admin/servidores/")({
+  // `origem: "relatorios"` é passado só pelo link do card "Beneficiários / Contratos" em
+  // `/admin/relatorios` — mostra um breadcrumb de contexto, sem duplicar tela/dados/lógica. O
+  // acesso normal pelo menu "Servidores" não passa esse parâmetro e a tela fica como sempre foi.
+  validateSearch: (search: Record<string, unknown>): { origem?: "relatorios" } => ({
+    origem: search.origem === "relatorios" ? "relatorios" : undefined,
+  }),
   component: Servidores,
 });
 
@@ -38,12 +46,6 @@ function AcaoMenu() {
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-elevated z-20 overflow-hidden">
-          <button
-            onClick={() => setOpen(false)}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted text-left"
-          >
-            <Download className="h-4 w-4 text-muted-foreground" /> Exportar lista (.xlsx)
-          </button>
           <button
             onClick={() => setOpen(false)}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted text-left"
@@ -115,8 +117,22 @@ function ProcessoSEICell({ numero }: { numero: string }) {
   );
 }
 
+/**
+ * Esta tela também é a "Beneficiários / Contratos" do Módulo de Relatórios (ver plano/matriz
+ * de tratamento do SISPRO, docs/MODULO_RELATORIOS.md §3.9/§3.10): em vez de construir uma tela
+ * nova duplicando dados e lógica, o Módulo de Relatórios só passa a linkar para cá — com
+ * `?origem=relatorios` mostrando o breadcrumb "Relatórios > Beneficiários / Contratos" (ver
+ * `Route.validateSearch` acima); o acesso normal pelo menu "Servidores" não passa esse
+ * parâmetro e a tela fica exatamente como sempre foi. O filtro de "Status" abaixo já cobre
+ * Ativos/Inativos/Pendentes/etc. numa única visão — substituindo o que seriam duas telas
+ * separadas no SISPRO ("Pró-Saúde dos Ativos"/"Pró-Saúde dos Inativos"). Telefone/e-mail
+ * **não** são coluna da tabela principal (ajuste de UX — alta densidade horizontal já existia);
+ * continuam disponíveis na ficha individual (`/admin/servidores/$id`) e devem entrar na futura
+ * exportação desta visão (ver §3.10).
+ */
 function Servidores() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroAssociacao, setFiltroAssociacao] = useState("");
@@ -165,8 +181,46 @@ function Servidores() {
       ? exibindo
       : TOTAL_REAL;
 
+  // Exportação (PDF/XLSX) — mesmas `filtrados` já exibidas na tabela (todos os filtros acima
+  // já aplicados), colunas iguais às da tabela visível (sem Contato, removido por decisão de
+  // UX — ver docs/MODULO_RELATORIOS.md §3.10). Nenhuma consulta nova.
+  const filtrosAplicados = [
+    busca.trim() && `Busca: "${busca.trim()}"`,
+    filtroStatus && `Status: ${statusLabels[filtroStatus as keyof typeof statusLabels] ?? filtroStatus}`,
+    filtroAssociacao && `Associação: ${filtroAssociacao}`,
+    filtroOperadora && `Operadora: ${filtroOperadora}`,
+    filtroSituacaoFinanceira && `Situação financeira: ${filtroSituacaoFinanceira === "adimplente" ? "Adimplente" : "Inadimplente"}`,
+    somentePendencia && "Só com pendência",
+  ].filter((f): f is string => Boolean(f));
+
+  const specExport: RelatorioExportSpec<ServidorListItem> = {
+    titulo: "Beneficiários / Contratos",
+    origem: "Relatórios",
+    filtrosAplicados,
+    colunas: [
+      { header: "Processo SEI", valor: (s) => s.processoSEI, tipo: "texto", width: 20 },
+      { header: "Servidor", valor: (s) => s.nome, tipo: "texto", width: 24 },
+      { header: "Operadora/Associação", valor: (s) => (s.associacao !== "—" ? s.associacao : s.operadora ?? "—"), tipo: "texto", width: 18 },
+      { header: "Dependentes", valor: (s) => s.dependentes, tipo: "numero" },
+      { header: "Valor Plano", valor: (s) => s.valorPlano, tipo: "moeda" },
+      { header: "Auxílio Previsto", valor: (s) => s.valorAuxilio, tipo: "moeda" },
+      { header: "Situação", valor: (s) => statusLabels[s.status], tipo: "texto" },
+    ],
+    linhas: filtrados,
+    nomeArquivoBase: "pro-saude_beneficiarios_contratos",
+  };
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
+      {search.origem === "relatorios" && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Link to="/admin/relatorios" className="hover:text-primary hover:underline">
+            Relatórios
+          </Link>
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-foreground font-medium">Beneficiários / Contratos</span>
+        </p>
+      )}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Servidores</h1>
@@ -181,6 +235,7 @@ function Servidores() {
           >
             Carga Inicial
           </Link>
+          <ExportarRelatorio spec={specExport} />
           <AcaoMenu />
         </div>
       </header>
