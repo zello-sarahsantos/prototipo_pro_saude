@@ -1035,6 +1035,12 @@ disponível) e a tabela com as 4 competências, total R$ 0,00 (honesto — nenhu
 cenário seed chegou a "aprovado" sem ressalva). `npx tsc --noEmit` e `npm run build` limpos (só
 os 2 erros pré-existentes).
 
+> **Correção posterior (§3.19):** "Valor pago" virou "Valor do Auxílio Recebido" (campo
+> `valorPago` renomeado para `valorRecebido`) e a tela ganhou exportação real em PDF/XLSX,
+> reaproveitando a camada compartilhada dos relatórios administrativos. A limitação de dados já
+> conhecida ("aprovado" usado como proxy de "recebido", sem confirmação de repasse efetivo em
+> folha) passou a ser explicitamente sinalizada na tela — ver §3.19 para os detalhes.
+
 ### 3.6 Correção arquitetural — separação de perfis Portal do Servidor × Módulo de Relatórios GERDAB
 
 **Contexto:** as etapas 3.3 e 3.5 introduziram, na Visão Geral administrativa, links que
@@ -1665,6 +1671,72 @@ individual do servidor, não um relatório administrativo — ver §3.5).
 
 **Aguardando validação final do usuário antes de commit** — nenhum commit foi feito nesta rodada
 de propagação.
+
+### 3.19 Exportação real (PDF/XLSX) do Comprovante de Rendimentos — Portal do Servidor
+
+**Contexto:** pedido explícito do usuário — o Comprovante de Rendimentos (§3.5) não é só tela de
+consulta: o servidor precisa gerar um documento formal dos valores de auxílio recebidos, para uso
+na declaração de Imposto de Renda. Reaproveita integralmente a camada compartilhada de exportação
+já criada para os relatórios administrativos (§3.17/§3.18) — **nenhum segundo motor de PDF/XLSX
+foi criado**. Esta exportação é exclusiva do Portal do Servidor e **não gera nenhum relatório
+administrativo equivalente**.
+
+**Pequena generalização da camada compartilhada (não duplicação):** `RelatorioExportSpec` ganhou
+3 campos genéricos, reaproveitáveis por qualquer relatório futuro que precise deles, e já
+consumidos pelos dois motores (`relatorio-export-pdf.ts`/`relatorio-export-xlsx.ts`):
+- `rotuloCompetencia?: string` — rótulo customizável para o campo `competencia` (aqui,
+  "Ano-calendário" em vez do "Competência" padrão dos relatórios mensais).
+- `identificacao?: { label: string; valor: string }[]` — bloco de identificação exibido entre o
+  título e os parâmetros (aqui, Nome/Matrícula/CPF do titular), inexistente nos relatórios
+  administrativos agregados.
+- `ocultarLinhaFiltrosSeVazia?: boolean` — omite a linha "Filtros: Todos" quando não há filtros
+  reais e a spec não os usa (documento individual, onde "filtros" não é um conceito aplicável) —
+  se houver filtros de fato aplicados, a linha aparece normalmente independente da flag.
+
+**Arquivos:** `src/routes/servidor.comprovante-rendimentos.tsx` (spec de exportação + botão
+`ExportarRelatorio`); `src/lib/fechamento-pagamento.ts` (renomeação de `valorPago` para
+`valorRecebido` em `ComprovanteRendimentos`, sem alterar o cálculo).
+
+**Conteúdo do documento exportado:** identificação institucional (mesmo cabeçalho dos demais
+relatórios) → título "Comprovante de Rendimentos — Pró-Saúde" → Nome/Matrícula/CPF → linha
+"Ano-calendário: <ano>" (sem linha de filtros, por não fazer sentido num documento individual) →
+"Gerado em: <data/hora em America/Sao_Paulo>" → tabela Mês/Competência × Valor do Auxílio
+Recebido → linha "Total recebido no ano" → rodapé "Pró-Saúde" / paginação, mesmo padrão dos
+demais relatórios. Reage imediatamente à troca do seletor de Ano-calendário: `comprovante`/
+`specExport` são recalculados a cada renderização a partir do estado `ano` (nenhum cache/memo
+desatualizado), então a exportação sempre reflete o ano selecionado no momento do clique.
+
+**Nomenclatura corrigida:** "Valor pago" (tela e exportação) virou **"Valor do Auxílio
+Recebido"** — o campo `valorPago` de `ComprovanteRendimentos.linhas` foi renomeado para
+`valorRecebido` (única outra referência era esta própria tela).
+
+**Limitação de dados sinalizada, não resolvida (por pedido explícito do usuário — "não invente
+essa equivalência"):** o valor exibido/exportado como "recebido" vem de
+`detalhe.classificacao === "adimplente"` (comprovante **aprovado** pela GERDAB na competência) —
+o protótipo **não tem** nenhum dado de confirmação de repasse efetivo em folha/conta, separado da
+aprovação. É a mesma limitação já registrada para o Histórico de Comprovações (§3.15/§3.16:
+"o sistema não confirma que o auxílio foi efetivamente pago em folha"). "Aprovado" é usado aqui
+como melhor proxy disponível para "recebido" — não uma confirmação real de repasse. Uma nota
+explicando essa limitação foi adicionada **só na tela** (nunca no documento exportado, para não
+comprometer a leitura de um documento formal): "Os valores acima refletem comprovantes aprovados
+pela GERDAB nesta competência. Este protótipo ainda não confirma o repasse efetivo em folha/conta
+separadamente da aprovação." Resolver isso de verdade (ex.: um evento real de "repasse
+processado", vindo de um sistema de folha) é trabalho futuro, fora desta rodada.
+
+**Testado (geração real de arquivo, via script Node espelhando exatamente os motores atuais):**
+PDF e XLSX gerados com um ano-calendário de 12 competências (incluindo um mês sem recebimento,
+para confirmar `R$ 0,00`/`—` sem quebrar o total) e inspecionados byte a byte — PDF com
+identificação/ano-calendário corretos e **sem** a linha "Filtros: Todos" (confirmando
+`ocultarLinhaFiltrosSeVazia`); XLSX com nome de aba truncado corretamente (título tem mais de 31
+caracteres), autofiltro cobrindo cabeçalho + 12 linhas de dado (excluindo a linha de Total),
+cabeçalho congelado, formato de moeda nativo, e sem a linha de filtros nas células mescladas.
+Testado também o clique real dos botões "PDF"/"Excel (.xlsx)" na tela (`/servidor/comprovante-
+rendimentos`), sem erros de execução. Layout mobile conferido via captura de tela (375×812): o
+botão "Exportar" quebra para uma nova linha do cartão sem sobrepor outros elementos. `npx tsc
+--noEmit` e `npm run build` limpos (só os 2 erros pré-existentes).
+
+**Aguardando validação visual do usuário antes de commit** — nenhum commit foi feito nesta
+implementação.
 
 ## 4. Fora de escopo (decisão explícita, registrada desde já)
 
