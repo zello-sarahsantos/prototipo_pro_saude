@@ -37,6 +37,7 @@ import {
   getObservacaoNurfi,
 } from "./prosaude-storage";
 import { getCamposDoBeneficiario, statusDoBeneficiarioNoDocumento } from "./comprovante-status";
+import { getRegistrosAssociacaoAprovadosNaCompetencia } from "./planilhas-associacao";
 
 /** Competências que fazem sentido para um Fechamento — a atual (ainda em andamento, fechamento
  *  bloqueado por natureza) e as já fechadas para envio (candidatas reais a fechamento GERDAB). */
@@ -60,9 +61,35 @@ const statusRequerAnalise: StatusComprovante[] = [
 const statusAdimplente: StatusComprovante[] = ["aprovado", "aprovado_com_ressalva", "retroativo_aprovado"];
 const statusInadimplente: StatusComprovante[] = ["recusado", "retroativo_recusado"];
 
+/**
+ * Origem da comprovação que originou este registro — "individual" é o fluxo de sempre
+ * (Comprovante/AcaoComprovante do próprio servidor); "associacao" é uma planilha mensal de
+ * associação aprovada pela GERDAB (`planilhas-associacao.ts`). Campo interno, recomputado (nunca
+ * persistido) — não vira coluna nova na tabela nem na exportação NURFI nesta rodada (decisão
+ * P7); serve só para o detalhe/drill-down do registro identificar a origem.
+ */
+export type OrigemComprovacao = "individual" | "associacao";
+
+/** Presente só quando `origem === "associacao"` — rastreabilidade completa
+ *  associação → competência → planilha → decisão (decisão P7). */
+export interface OrigemAssociacaoDetalhe {
+  associacao: string;
+  competencia: string;
+  planilhaId: string;
+  statusPlanilha: string;
+}
+
 export interface RegistroFechamento {
   beneficiarioId: string;
+  /** Mantido por compatibilidade com quem ainda depende de matrícula (ficha do servidor,
+   *  Histórico de Comprovações) — nunca removido do modelo, mesmo a coluna apresentada no
+   *  Relatório de Pagamento tendo trocado para CPF (decisão P3). Ausente para registros de
+   *  origem "associacao" (planilha), que não têm matrícula por natureza — é exatamente por
+   *  isso que o Relatório de Pagamento precisou passar a exibir CPF, não matrícula. */
   matricula?: string;
+  /** Identificador comum às duas origens (individual e associação) — usado como coluna "CPF"
+   *  no Relatório de Pagamento (decisão P3). */
+  cpf?: string;
   nome: string;
   situacaoVinculo: BeneficiarioPagamento["situacao"];
   competencia: string;
@@ -80,6 +107,10 @@ export interface RegistroFechamento {
   statusComprovante?: StatusComprovante;
   /** Data da última ação registrada no comprovante — base para "Tempo aguardando". */
   ultimaAcaoEm?: string;
+  /** P5/P7 — fonte de comprovação explícita: nunca um `Comprovante` sintético, só um marcador de
+   *  origem sobre o mesmo `RegistroFechamento[]` único. */
+  origem: OrigemComprovacao;
+  origemAssociacao?: OrigemAssociacaoDetalhe;
 }
 
 function ultimoValor(comprovante: Comprovante, beneficiarioId: string): number | undefined {
@@ -199,19 +230,58 @@ function classificarTitularNaCompetencia(
 /**
  * Classifica cada servidor titular para uma competência (visão do Fechamento de Pagamento —
  * itera titulares, ver `classificarTitularNaCompetencia` para o núcleo reaproveitado).
+ *
+ * P5 — Fonte de comprovação explícita: esta continua sendo a **única** função de consolidação do
+ * Fechamento (nunca duplicada). Ela concatena duas fontes normalizadas para o mesmo formato
+ * `RegistroFechamento[]`:
+ *  1. **individual** — o que já existia: cada titular de `beneficiariosPagamento`, classificado
+ *     por `classificarTitularNaCompetencia` a partir de `Comprovante`/`AcaoComprovante` (lógica
+ *     desta função **inalterada**);
+ *  2. **associacao** — titulares vindos de planilhas de associação já **aprovadas** pela GERDAB
+ *     na mesma competência (`getRegistrosAssociacaoAprovadosNaCompetencia`,
+ *     `planilhas-associacao.ts`), sempre classificados como Adimplente (uma planilha só chega a
+ *     "aprovada" depois de a GERDAB validar 100% dos registros — nunca produz Inadimplente/
+ *     Requer análise nesta rodada). Nenhum `Comprovante` sintético é criado para isso.
  */
 export function getRegistrosFechamento(competencia: string): RegistroFechamento[] {
   const beneficiarios = getBeneficiariosPagamentoAtual();
   const titulares = beneficiarios.filter((b) => b.parentesco === "Titular");
 
-  return titulares.map((titular): RegistroFechamento => ({
+  const registrosIndividuais: RegistroFechamento[] = titulares.map((titular) => ({
     beneficiarioId: titular.id,
     matricula: titular.matricula,
+    cpf: titular.cpf,
     nome: titular.nome,
     situacaoVinculo: titular.situacao,
     competencia,
+    origem: "individual",
     ...classificarTitularNaCompetencia(titular, competencia, beneficiarios),
   }));
+
+  const registrosAssociacao: RegistroFechamento[] = getRegistrosAssociacaoAprovadosNaCompetencia(competencia).map(
+    (r) => ({
+      beneficiarioId: `associacao:${r.cpfTitular}:${r.competencia}`,
+      cpf: r.cpfTitular,
+      nome: r.nomeTitular,
+      // Não há, nesta rodada, um conceito de vínculo funcional (ativo/inativo/pendente de
+      // documentação) para quem vem de planilha de associação — "ativo" é o valor neutro mais
+      // coerente para o filtro Todos|Ativos|Inativos da tela não quebrar; registrado como
+      // simplificação técnica, não como regra de negócio (ver relatório de implementação).
+      situacaoVinculo: "ativo",
+      competencia: r.competencia,
+      classificacao: "adimplente",
+      valor: r.valor,
+      origem: "associacao",
+      origemAssociacao: {
+        associacao: r.associacao,
+        competencia: r.competencia,
+        planilhaId: r.planilhaId,
+        statusPlanilha: r.statusPlanilha,
+      },
+    }),
+  );
+
+  return [...registrosIndividuais, ...registrosAssociacao];
 }
 
 export interface ResumoFechamento {

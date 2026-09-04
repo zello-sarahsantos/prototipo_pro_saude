@@ -13,8 +13,19 @@ import {
   Eye
 } from "lucide-react";
 import { Field, inputCls } from "@/components/Stepper";
-import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency } from "@/lib/mock-data";
+import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
+import {
+  registrosPlanilhaExemplo,
+  registrosValidosExemplo,
+  getPlanilhaAssociacao,
+  listarPlanilhasPorAssociacao,
+  enviarPlanilhaAssociacao,
+  statusAtualPlanilha,
+  versaoVigente,
+  COLUNAS_MODELO_PLANILHA,
+  type RegistroPlanilhaAssociacao,
+} from "@/lib/planilhas-associacao";
 
 export const Route = createFileRoute("/associacao/upload")({
   component: UploadPlanilha,
@@ -25,35 +36,34 @@ export const Route = createFileRoute("/associacao/upload")({
 // Pró-Saúde, o resultado prático é o mesmo — a pessoa não é elegível ao ressarcimento. Um
 // dependente com vínculo fora das regras nem estaria cadastrado, então tratar os dois casos
 // como categorias separadas não agregava. Ver docs/MODULO_RELATORIOS.md.
-type ValidationStatus = "válido" | "atenção" | "não_elegível";
-
-interface RegistroPlanilha {
-  servidor: string;
-  /** CPF do servidor titular — chave de conferência com o cadastro. Associações não têm
-   *  acesso à matrícula do DETRAN, então a matrícula deixou de ser usada aqui (pedido da
-   *  stakeholder). */
-  cpfTitular: string;
-  beneficiario: string;
-  cpf: string;
-  vinculo: string;
-  valor: number;
-  status: ValidationStatus;
-  motivo?: string;
-}
+type ValidationStatus = RegistroPlanilhaAssociacao["status"];
 
 function UploadPlanilha() {
   const [step, setStep] = useState<"upload" | "conferencia" | "sucesso">("upload");
-  const [competencia, setCompetencia] = useState("05/2026");
+  const [competencia, setCompetencia] = useState("2026-05");
+  const [associacao, setAssociacao] = useState("Assefaz");
+  const [baixandoModelo, setBaixandoModelo] = useState(false);
 
-  const dadosSimulados: RegistroPlanilha[] = [
-    { servidor: "João da Silva", cpfTitular: "123.456.789-00", beneficiario: "João da Silva", cpf: "123.***.***-00", vinculo: "Titular", valor: 1200, status: "válido" },
-    { servidor: "João da Silva", cpfTitular: "123.456.789-00", beneficiario: "Ana da Silva", cpf: "234.***.***-11", vinculo: "Cônjuge", valor: 890, status: "válido" },
-    { servidor: "Maria Oliveira", cpfTitular: "345.678.901-22", beneficiario: "Maria Oliveira", cpf: "345.***.***-22", vinculo: "Titular", valor: 1800, status: "válido" },
-    { servidor: "Maria Oliveira", cpfTitular: "345.678.901-22", beneficiario: "José Oliveira", cpf: "", vinculo: "Pai", valor: 1100, status: "não_elegível", motivo: "Vínculo não previsto pelo Pró-Saúde" },
-    { servidor: "Ricardo Mendes", cpfTitular: "456.789.012-33", beneficiario: "", cpf: "456.789.012-33", vinculo: "Titular", valor: 950, status: "atenção", motivo: "Nome do beneficiário não informado" },
-    { servidor: "Ricardo Mendes", cpfTitular: "456.789.012-33", beneficiario: "Beatriz Mendes", cpf: "567.***.***-44", vinculo: "Mãe", valor: 950, status: "não_elegível", motivo: "Vínculo não previsto pelo Pró-Saúde" },
-    { servidor: "Fernando Diniz", cpfTitular: "111.222.333-44", beneficiario: "Fernando Diniz", cpf: "111.***.***-44", vinculo: "Titular", valor: 900, status: "não_elegível", motivo: "CPF do titular e do beneficiário não encontrados no cadastro do Pró-Saúde" },
-  ];
+  // Estado real da competência selecionada para esta associação — nunca mockado: reflete o que
+  // já foi persistido em `prosaude-storage.ts` (P6). Determina se um novo envio é permitido:
+  // liberado quando não existe planilha ainda, ou quando a vigente está "Correção Solicitada"
+  // (reenvio); bloqueado quando já está "Em Análise", "Aprovada" ou "Negada" — "Negar" é sempre
+  // terminal, mesmo precedente já usado no fluxo de comprovante individual ("Recusar é sempre
+  // terminal; apenas Solicitar Correção permite reenvio", docs/MODULO_PAGAMENTO.md §3.15).
+  const planilhaExistente = getPlanilhaAssociacao(associacao, competencia);
+  const statusExistente = planilhaExistente ? statusAtualPlanilha(planilhaExistente) : undefined;
+  const ehReenvio = statusExistente === "correcao_solicitada";
+  const podeEnviarNestaCompetencia = !planilhaExistente || ehReenvio;
+  const justificativaCorrecao = ehReenvio ? versaoVigente(planilhaExistente!).decisao?.justificativa : undefined;
+
+  // Mesmo conteúdo de exemplo já validado no protótipo (3 válidos, 1 atenção, 3 não elegíveis),
+  // agora centralizado em `planilhas-associacao.ts` — a leitura real do arquivo `.xlsx`/`.csv`
+  // continua não implementada nesta rodada (persistência do fluxo é real; parsing, não). Como
+  // este conjunto fixo nunca chega sozinho a 100% válido (é usado justamente para demonstrar o
+  // bloqueio da HU01), um reenvio pós-correção usa só o subconjunto já válido — representando a
+  // planilha já corrigida pela associação — para que o fluxo de reenvio (P6) seja demonstrável de
+  // ponta a ponta, sem inventar conteúdo novo (é o mesmo subconjunto já existente no protótipo).
+  const dadosSimulados = ehReenvio ? registrosValidosExemplo : registrosPlanilhaExemplo;
 
   const totalRegistros = dadosSimulados.length;
   const validos = dadosSimulados.filter(d => d.status === "válido").length;
@@ -61,8 +71,32 @@ function UploadPlanilha() {
   const naoElegiveis = dadosSimulados.filter(d => d.status === "não_elegível").length;
   const registrosComPendencia = totalRegistros - validos;
   const podeEnviar = registrosComPendencia === 0;
-  const valorTotal = dadosSimulados.reduce((acc, curr) => acc + curr.valor, 0);
   const valorConsiderado = dadosSimulados.filter(d => d.status === "válido").reduce((acc, curr) => acc + curr.valor, 0);
+
+  const historicoAssociacao = listarPlanilhasPorAssociacao(associacao);
+
+  function handleEnviar() {
+    const registrosValidos = dadosSimulados.filter((d) => d.status === "válido");
+    enviarPlanilhaAssociacao(associacao, competencia, registrosValidos);
+    setStep("sucesso");
+  }
+
+  // Modelo em branco (docs/modelo_envio_mensal_associacoes.xlsx) — gerado em código a partir da
+  // mesma fonte única de colunas usada pela reconstrução da GERDAB (`planilha-arquivo-versao.ts`),
+  // eliminando a divergência entre "o que o modelo anuncia" e "o que a GERDAB baixa depois".
+  async function handleBaixarModelo() {
+    setBaixandoModelo(true);
+    try {
+      const [{ buildModeloEnvioBlob }, { baixarBlob }] = await Promise.all([
+        import("@/lib/planilha-modelo"),
+        import("@/lib/relatorio-export"),
+      ]);
+      const blob = await buildModeloEnvioBlob();
+      baixarBlob(blob, "modelo_envio_mensal_associacoes.xlsx");
+    } finally {
+      setBaixandoModelo(false);
+    }
+  }
 
   if (step === "sucesso") {
     return (
@@ -82,7 +116,7 @@ function UploadPlanilha() {
         <p className="max-w-md text-slate-600 leading-relaxed">
           A planilha foi enviada para conferência da GERDAB. Os registros sinalizados com atenção ou não elegíveis poderão ser revisados pela equipe responsável.
         </p>
-        <button 
+        <button
           onClick={() => setStep("upload")}
           className="bg-primary text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-dark transition shadow-md"
         >
@@ -106,6 +140,47 @@ function UploadPlanilha() {
       {step === "upload" && (
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
+            {/* Estado real da competência selecionada — nunca mockado (P6). */}
+            {statusExistente && (
+              <div className="bg-card rounded-xl border border-border shadow-card p-4 flex items-start gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">
+                      {competencia.split("-").reverse().join("/")} • {associacao}
+                    </span>
+                    <PlanilhaStatusBadge status={statusExistente} />
+                  </div>
+                  {statusExistente === "em_analise" && (
+                    <p className="text-xs text-muted-foreground">
+                      Esta competência já foi enviada e está em análise pela GERDAB. Aguarde a decisão antes de um novo envio.
+                    </p>
+                  )}
+                  {statusExistente === "aprovada" && (
+                    <p className="text-xs text-muted-foreground">
+                      Esta competência já foi aprovada pela GERDAB.
+                    </p>
+                  )}
+                  {statusExistente === "negada" && (
+                    <p className="text-xs text-muted-foreground">
+                      Esta competência foi negada pela GERDAB
+                      {versaoVigente(planilhaExistente!).decisao?.justificativa &&
+                        ` — "${versaoVigente(planilhaExistente!).decisao?.justificativa}"`}.
+                    </p>
+                  )}
+                  {ehReenvio && (
+                    <div className="pendency-banner mt-1">
+                      <Info className="h-4 w-4 shrink-0" />
+                      <span>
+                        <strong>GERDAB solicitou correção:</strong> {justificativaCorrecao}
+                        <br />
+                        Corrija o arquivo e reenvie abaixo — o novo envio volta para "Em Análise".
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-100">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -115,10 +190,17 @@ function UploadPlanilha() {
               <div className="p-6 space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Competência" required>
-                    <input className={inputCls} type="month" value="2026-05" onChange={e => setCompetencia(e.target.value)} />
+                    <input className={inputCls} type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} />
                   </Field>
+                  {/* Regra de acesso a formalizar em produção (não implementada nesta rodada, registrada
+                      aqui explicitamente): a associação deve ser determinada pelo usuário autenticado,
+                      nunca escolhida livremente — ASSETRAN só acessa envio/histórico/decisões da
+                      ASSETRAN, ASSEFAZ só os da ASSEFAZ, sem nenhuma associação enxergar a outra. Este
+                      <select> é só um recurso de navegação/demonstração entre cenários do protótipo, não
+                      representa o comportamento definitivo de produção — não remover nesta rodada, mas
+                      nunca tratar como especificação de acesso real. */}
                   <Field label="Associação" required>
-                    <select className={inputCls}>
+                    <select className={inputCls} value={associacao} onChange={e => setAssociacao(e.target.value)}>
                       <option>Assefaz</option>
                       <option>Assetran</option>
                     </select>
@@ -148,12 +230,18 @@ function UploadPlanilha() {
                   </div>
                 </div>
 
-                <button 
+                <button
                   onClick={() => setStep("conferencia")}
-                  className="w-full bg-primary text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-dark transition shadow-lg shadow-primary/20"
+                  disabled={!podeEnviarNestaCompetencia}
+                  className="w-full bg-primary text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-dark transition shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                 >
-                  <Eye className="h-4 w-4" /> Pré-visualizar dados
+                  <Eye className="h-4 w-4" /> {ehReenvio ? "Pré-visualizar dados (reenvio)" : "Pré-visualizar dados"}
                 </button>
+                {!podeEnviarNestaCompetencia && (
+                  <p className="text-xs text-slate-500 text-center -mt-3">
+                    Selecione outra competência para enviar uma nova planilha.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -169,24 +257,27 @@ function UploadPlanilha() {
                       <th className="text-left py-3 font-semibold text-slate-500">Data</th>
                       <th className="text-left py-3 font-semibold text-slate-500">Registros</th>
                       <th className="text-left py-3 font-semibold text-slate-500">Status</th>
-                      <th className="text-right py-3 font-semibold text-slate-500">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    <tr>
-                      <td className="py-3 font-medium">04/2026</td>
-                      <td className="py-3 text-slate-500">10/04/2026</td>
-                      <td className="py-3">152</td>
-                      <td className="py-3"><StatusBadge status="aprovado" /></td>
-                      <td className="py-3 text-right"><button className="text-primary hover:underline font-medium">Detalhes</button></td>
-                    </tr>
-                    <tr>
-                      <td className="py-3 font-medium">03/2026</td>
-                      <td className="py-3 text-slate-500">08/03/2026</td>
-                      <td className="py-3">148</td>
-                      <td className="py-3"><StatusBadge status="aprovado" /></td>
-                      <td className="py-3 text-right"><button className="text-primary hover:underline font-medium">Detalhes</button></td>
-                    </tr>
+                    {historicoAssociacao.map((p) => {
+                      const v = versaoVigente(p);
+                      return (
+                        <tr key={p.id}>
+                          <td className="py-3 font-medium">{p.competencia.split("-").reverse().join("/")}</td>
+                          <td className="py-3 text-slate-500">{new Date(v.enviadoEm).toLocaleDateString("pt-BR")}</td>
+                          <td className="py-3">{v.registros.length}</td>
+                          <td className="py-3"><PlanilhaStatusBadge status={statusAtualPlanilha(p)} /></td>
+                        </tr>
+                      );
+                    })}
+                    {historicoAssociacao.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-slate-400">
+                          Nenhum envio registrado ainda para {associacao}.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -199,23 +290,21 @@ function UploadPlanilha() {
                 <Download className="h-5 w-5" /> Modelo de Planilha
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Envie uma planilha só com os campos essenciais para a conferência, sem colunas
-                desnecessárias.
+                Modelo oficial aprovado — mesma estrutura que a GERDAB usa para conferir e baixar
+                cada versão do seu envio.
               </p>
-              <button className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 border border-slate-700">
-                <Download className="h-4 w-4" /> Baixar Modelo (.xlsx)
+              <button
+                onClick={handleBaixarModelo}
+                disabled={baixandoModelo}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 border border-slate-700 disabled:opacity-60"
+              >
+                <Download className="h-4 w-4" /> {baixandoModelo ? "Gerando modelo…" : "Baixar Modelo (.xlsx)"}
               </button>
 
               <div className="pt-4 border-t border-slate-800">
                 <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-3">Campos esperados na planilha</p>
                 <div className="grid grid-cols-1 gap-1.5 text-[10px] text-slate-300">
-                  {[
-                    "Nome do Beneficiário",
-                    "Titular",
-                    "CPFs (Titular e Beneficiário)",
-                    "Valor",
-                    "Vínculo",
-                  ].map(col => (
+                  {COLUNAS_MODELO_PLANILHA.map(col => (
                     <div key={col} className="flex items-center gap-2">
                       <div className="h-1 w-1 bg-primary rounded-full" />
                       {col}
@@ -227,10 +316,10 @@ function UploadPlanilha() {
               <div className="pt-4 border-t border-slate-800 flex gap-2 text-[11px] text-slate-400 leading-relaxed">
                 <Info className="h-3.5 w-3.5 text-primary-light shrink-0 mt-0.5" />
                 <p>
-                  Em breve, um modelo <strong className="text-slate-300">.xlsx</strong> oficial vai documentar esse
-                  padrão em detalhe, e a conferência passará a validar os campos automaticamente por{" "}
-                  <strong className="text-slate-300">OCR</strong>. Por enquanto, a estrutura acima é o que já
-                  esperamos de cada envio.
+                  A Competência não é uma coluna do arquivo — ela é selecionada obrigatoriamente ao lado, e
+                  identifica o envio junto com a Associação. A conferência automática dos campos por{" "}
+                  <strong className="text-slate-300">OCR</strong> continua não implementada nesta rodada —
+                  a estrutura acima é o que já esperamos de cada envio.
                 </p>
               </div>
             </div>
@@ -281,7 +370,7 @@ function UploadPlanilha() {
                       <th className="px-6 py-3 font-semibold uppercase tracking-wider text-[10px]">Servidor (Titular)</th>
                       <th className="px-6 py-3 font-semibold uppercase tracking-wider text-[10px]">Beneficiário</th>
                       <th className="px-6 py-3 font-semibold uppercase tracking-wider text-[10px]">Vínculo</th>
-                      <th className="px-6 py-3 font-semibold uppercase tracking-wider text-[10px]">Valor</th>
+                      <th className="px-6 py-3 font-semibold uppercase tracking-wider text-[10px]">Valor Mensal Individual (R$)</th>
                       <th className="px-6 py-3 font-semibold uppercase tracking-wider text-[10px]">Situação</th>
                     </tr>
                   </thead>
@@ -322,7 +411,7 @@ function UploadPlanilha() {
               </button>
               <div className="text-right">
                 <button
-                  onClick={() => setStep("sucesso")}
+                  onClick={handleEnviar}
                   disabled={!podeEnviar}
                   className="bg-primary text-white px-8 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-primary-dark shadow-lg shadow-primary/20 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:hover:bg-primary ml-auto"
                 >
