@@ -10,10 +10,12 @@ import {
   XCircle,
   ArrowRight,
   RotateCcw,
-  Eye
+  Eye,
+  X,
+  Loader2,
 } from "lucide-react";
 import { Field, inputCls } from "@/components/Stepper";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency, formatCompetencia } from "@/lib/mock-data";
 import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
 import {
   registrosPlanilhaExemplo,
@@ -22,9 +24,12 @@ import {
   listarPlanilhasPorAssociacao,
   enviarPlanilhaAssociacao,
   statusAtualPlanilha,
+  statusPlanilhaLabels,
   versaoVigente,
   COLUNAS_MODELO_PLANILHA,
   type RegistroPlanilhaAssociacao,
+  type PlanilhaAssociacao,
+  type VersaoPlanilhaAssociacao,
 } from "@/lib/planilhas-associacao";
 
 export const Route = createFileRoute("/associacao/upload")({
@@ -43,6 +48,9 @@ function UploadPlanilha() {
   const [competencia, setCompetencia] = useState("2026-05");
   const [associacao, setAssociacao] = useState("Assefaz");
   const [baixandoModelo, setBaixandoModelo] = useState(false);
+  // Planilha (competência) aberta no modal "Histórico de versões" — deriva tudo do próprio
+  // objeto já carregado (nunca uma entidade paralela de histórico).
+  const [detalheAberto, setDetalheAberto] = useState<PlanilhaAssociacao | null>(null);
 
   // Estado real da competência selecionada para esta associação — nunca mockado: reflete o que
   // já foi persistido em `prosaude-storage.ts` (P6). Determina se um novo envio é permitido:
@@ -79,6 +87,17 @@ function UploadPlanilha() {
     const registrosValidos = dadosSimulados.filter((d) => d.status === "válido");
     enviarPlanilhaAssociacao(associacao, competencia, registrosValidos);
     setStep("sucesso");
+  }
+
+  // Abre o fluxo de upload já existente (formulário acima), pré-vinculado à mesma associação e
+  // competência da linha do histórico — sem pedir para o usuário selecionar de novo. O banner de
+  // "GERDAB solicitou correção" (já existente, linhas abaixo) é 100% derivado desse mesmo estado
+  // (`ehReenvio`/`justificativaCorrecao`), então já aparece automaticamente com a justificativa
+  // como contexto assim que a competência muda — nenhuma lógica nova precisa duplicar isso.
+  function handleCorrigirEReenviar(p: PlanilhaAssociacao) {
+    setAssociacao(p.associacao);
+    setCompetencia(p.competencia);
+    setDetalheAberto(null);
   }
 
   // Modelo em branco (docs/modelo_envio_mensal_associacoes.xlsx) — gerado em código a partir da
@@ -254,26 +273,56 @@ function UploadPlanilha() {
                   <thead>
                     <tr className="border-b border-slate-100">
                       <th className="text-left py-3 font-semibold text-slate-500">Competência</th>
-                      <th className="text-left py-3 font-semibold text-slate-500">Data</th>
-                      <th className="text-left py-3 font-semibold text-slate-500">Registros</th>
-                      <th className="text-left py-3 font-semibold text-slate-500">Status</th>
+                      <th className="text-left py-3 font-semibold text-slate-500">Versão atual</th>
+                      <th className="text-left py-3 font-semibold text-slate-500">Data do envio</th>
+                      <th className="text-left py-3 font-semibold text-slate-500">Status atual</th>
+                      <th className="text-left py-3 font-semibold text-slate-500">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {historicoAssociacao.map((p) => {
                       const v = versaoVigente(p);
+                      const status = statusAtualPlanilha(p);
+                      const pendente = status === "correcao_solicitada";
                       return (
-                        <tr key={p.id}>
+                        <tr key={p.id} className={pendente ? "bg-amber-50/60" : undefined}>
                           <td className="py-3 font-medium">{p.competencia.split("-").reverse().join("/")}</td>
+                          <td className="py-3 text-slate-500">V{v.versao}</td>
                           <td className="py-3 text-slate-500">{new Date(v.enviadoEm).toLocaleDateString("pt-BR")}</td>
-                          <td className="py-3">{v.registros.length}</td>
-                          <td className="py-3"><PlanilhaStatusBadge status={statusAtualPlanilha(p)} /></td>
+                          <td className="py-3">
+                            <div className="space-y-1">
+                              <PlanilhaStatusBadge status={status} />
+                              {pendente && (
+                                <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">
+                                  Aguardando novo envio
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => setDetalheAberto(p)}
+                                className="text-xs border border-slate-200 rounded-md px-2.5 py-1.5 hover:bg-slate-50 inline-flex items-center gap-1.5"
+                              >
+                                <Eye className="h-3.5 w-3.5" /> {status === "negada" ? "Ver justificativa" : "Ver detalhes"}
+                              </button>
+                              {pendente && (
+                                <button
+                                  onClick={() => handleCorrigirEReenviar(p)}
+                                  className="text-xs bg-primary text-white rounded-md px-2.5 py-1.5 hover:bg-primary-dark inline-flex items-center gap-1.5"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" /> Corrigir e reenviar
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
                     {historicoAssociacao.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="py-6 text-center text-slate-400">
+                        <td colSpan={5} className="py-6 text-center text-slate-400">
                           Nenhum envio registrado ainda para {associacao}.
                         </td>
                       </tr>
@@ -427,6 +476,14 @@ function UploadPlanilha() {
           </div>
         </div>
       )}
+
+      {detalheAberto && (
+        <HistoricoVersoesModal
+          planilha={detalheAberto}
+          onFechar={() => setDetalheAberto(null)}
+          onCorrigirEReenviar={() => handleCorrigirEReenviar(detalheAberto)}
+        />
+      )}
     </div>
   );
 }
@@ -463,6 +520,141 @@ function BadgeStatus({ status, motivo }: { status: ValidationStatus, motivo?: st
         {config[status].label}
       </span>
       {motivo && <p className="text-[10px] text-slate-500 italic max-w-[150px]">{motivo}</p>}
+    </div>
+  );
+}
+
+/**
+ * Histórico simples de versões de uma competência, visto pela própria Associação — derivado
+ * inteiramente de `PlanilhaAssociacao.versoes` (nunca uma entidade paralela de histórico).
+ * Mesmo padrão visual do modal de análise da GERDAB (`AnalisePlanilhaModal.tsx`) e do fluxo de
+ * substituição/reenvio de comprovante do Portal do Servidor (`ServidorComprovanteDetail.tsx`):
+ * justificativa em caixa `bg-muted/50`, ação "Corrigir e reenviar" só quando há correção
+ * pendente, download por versão reaproveitando `buildArquivoVersaoBlob` (mesma função que a
+ * GERDAB usa — nunca uma segunda lógica de geração de arquivo).
+ */
+function HistoricoVersoesModal({
+  planilha,
+  onFechar,
+  onCorrigirEReenviar,
+}: {
+  planilha: PlanilhaAssociacao;
+  onFechar: () => void;
+  onCorrigirEReenviar: () => void;
+}) {
+  const [baixandoVersao, setBaixandoVersao] = useState<number | null>(null);
+  const status = statusAtualPlanilha(planilha);
+  const pendente = status === "correcao_solicitada";
+
+  async function baixarVersao(v: VersaoPlanilhaAssociacao) {
+    setBaixandoVersao(v.versao);
+    try {
+      const [{ buildArquivoVersaoBlob }, { baixarBlob }] = await Promise.all([
+        import("@/lib/planilha-arquivo-versao"),
+        import("@/lib/relatorio-export"),
+      ]);
+      const blob = await buildArquivoVersaoBlob(planilha, v);
+      baixarBlob(blob, `pro-saude_planilha_${planilha.associacao}_${planilha.competencia}_v${v.versao}.xlsx`);
+    } finally {
+      setBaixandoVersao(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-foreground/30 flex items-center justify-center p-4 z-50">
+      <div className="bg-card rounded-2xl shadow-elevated max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card">
+          <div>
+            <h2 className="font-semibold">
+              {planilha.associacao} — {formatCompetencia(planilha.competencia)}
+            </h2>
+            <p className="text-xs text-muted-foreground">Histórico de versões desta competência</p>
+          </div>
+          <button onClick={onFechar} className="p-1 hover:bg-muted rounded-md">
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="p-6 space-y-5">
+          <div className="flex items-center gap-3">
+            <PlanilhaStatusBadge status={status} />
+            <span className="text-xs text-muted-foreground">
+              Versão {versaoVigente(planilha).versao} de {planilha.versoes.length}
+            </span>
+          </div>
+
+          {pendente && (
+            <div className="pendency-banner">
+              <Info className="h-4 w-4 shrink-0" />
+              <span>
+                Existe uma ação pendente nesta competência — a GERDAB solicitou correção na versão
+                vigente. Corrija a planilha e reenvie para que ela volte a "Em Análise".
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Versões enviadas
+            </p>
+            <ul className="space-y-2">
+              {planilha.versoes.map((v) => (
+                <li key={v.versao} className="bg-muted/40 rounded-lg px-3 py-2.5 text-xs space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">
+                        Versão {v.versao} — enviada em {new Date(v.enviadoEm).toLocaleString("pt-BR")}
+                      </p>
+                      <p className="text-muted-foreground">{v.registros.length} registro(s)</p>
+                    </div>
+                    <button
+                      onClick={() => baixarVersao(v)}
+                      disabled={baixandoVersao !== null}
+                      title={`Baixar planilha enviada (versão ${v.versao})`}
+                      className="shrink-0 text-muted-foreground hover:text-primary disabled:opacity-50"
+                    >
+                      {baixandoVersao === v.versao ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  {v.decisao ? (
+                    <div className="bg-background/60 rounded-md p-2 space-y-1">
+                      <p>
+                        <strong>{statusPlanilhaLabels[v.decisao.status]}</strong> em{" "}
+                        {new Date(v.decisao.decididoEm).toLocaleString("pt-BR")} por {v.decisao.decididoPor}
+                      </p>
+                      {v.decisao.justificativa && (
+                        <p>
+                          <strong>Justificativa da GERDAB:</strong> "{v.decisao.justificativa}"
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground italic">Aguardando decisão da GERDAB.</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">
+          {pendente && (
+            <button
+              onClick={onCorrigirEReenviar}
+              className="text-sm bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary-light flex items-center gap-1.5 font-medium"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Corrigir e reenviar
+            </button>
+          )}
+          <button onClick={onFechar} className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted">
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
