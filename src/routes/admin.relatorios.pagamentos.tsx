@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { CheckCircle2, XCircle, HelpCircle, Lock, Unlock, ExternalLink } from "lucide-react";
+import { CheckCircle2, XCircle, HelpCircle, Lock, Unlock, ExternalLink, Info, X, Building2 } from "lucide-react";
 import { getAdminRole } from "@/components/AdminLayout";
 import { formatCurrency } from "@/lib/mock-data";
 import {
@@ -21,6 +21,8 @@ import {
 } from "@/lib/prosaude-storage";
 import { ExportarRelatorio } from "@/components/ExportarRelatorio";
 import type { RelatorioExportSpec } from "@/lib/relatorio-export";
+import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
+import type { StatusPlanilhaAssociacao } from "@/lib/planilhas-associacao";
 
 export const Route = createFileRoute("/admin/relatorios/pagamentos")({
   component: FechamentoDePagamento,
@@ -69,6 +71,9 @@ function FechamentoDePagamento() {
   const [filtroVinculo, setFiltroVinculo] = useState<FiltroVinculo>("todos");
   const [obsRascunho, setObsRascunho] = useState<Record<string, string>>({});
   const [, forceUpdate] = useState(0);
+  // Detalhe de origem da comprovação (P7) — só relevante para registros vindos de planilha de
+  // associação aprovada; nunca vira coluna nova na tabela nem na exportação NURFI.
+  const [origemDetalhe, setOrigemDetalhe] = useState<RegistroFechamento | null>(null);
 
   const registros = useMemo(() => getRegistrosFechamento(competencia), [competencia]);
   const resumo = useMemo(() => getResumoFechamento(competencia), [competencia]);
@@ -97,7 +102,7 @@ function FechamentoDePagamento() {
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
+        { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
         { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
         { header: "Situação do Vínculo", valor: (r) => situacaoVinculoLabel[r.situacaoVinculo] ?? r.situacaoVinculo, tipo: "texto" },
         { header: "Competência de Referência", valor: () => competenciaLabel, tipo: "texto" },
@@ -116,7 +121,7 @@ function FechamentoDePagamento() {
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
+        { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
         { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
         { header: "Valor Relacionado à Competência", valor: (r) => r.valor, tipo: "moeda" },
         { header: "Situação", valor: (r) => r.situacao ?? "—", tipo: "texto" },
@@ -141,7 +146,7 @@ function FechamentoDePagamento() {
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
+        { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
         { header: "Servidor", valor: (r) => r.nome, tipo: "texto", width: 26 },
         { header: "Competência", valor: (r) => formatCompetencia(r.competencia), tipo: "texto" },
         {
@@ -315,7 +320,7 @@ function FechamentoDePagamento() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-2">Matrícula</th>
+                <th className="text-left px-4 py-2">CPF</th>
                 <th className="text-left px-4 py-2">Nome</th>
                 <th className="text-left px-4 py-2">Situação do vínculo</th>
                 <th className="text-left px-4 py-2">Competência de referência</th>
@@ -330,7 +335,7 @@ function FechamentoDePagamento() {
             <tbody>
               {registrosFiltrados.map((r) => (
                 <tr key={r.beneficiarioId} className="border-t border-border">
-                  <td className="px-4 py-2">{r.matricula ?? "—"}</td>
+                  <td className="px-4 py-2">{r.cpf ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
                   <td className="px-4 py-2">
                     <BadgeVinculo situacao={r.situacaoVinculo} />
@@ -339,7 +344,18 @@ function FechamentoDePagamento() {
                   <td className="px-4 py-2 text-muted-foreground">{formatCompetencia(r.competencia)}</td>
                   <td className="px-4 py-2 text-right font-medium">{formatCurrency(r.valor)}</td>
                   <td className="px-4 py-2">
-                    <CheckCircle2 className="h-4 w-4 text-status-aprovado-fg" />
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-status-aprovado-fg" />
+                      {r.origem === "associacao" && (
+                        <button
+                          onClick={() => setOrigemDetalhe(r)}
+                          title="Ver origem da comprovação"
+                          className="text-muted-foreground hover:text-primary"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -358,7 +374,7 @@ function FechamentoDePagamento() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-2">Matrícula</th>
+                <th className="text-left px-4 py-2">CPF</th>
                 <th className="text-left px-4 py-2">Nome</th>
                 <th className="text-right px-4 py-2">
                   Valor relacionado à competência <span className="text-[10px] font-normal">(a validar)</span>
@@ -372,7 +388,7 @@ function FechamentoDePagamento() {
             <tbody>
               {registrosFiltrados.map((r, i) => (
                 <tr key={r.beneficiarioId} className="border-t border-border align-top">
-                  <td className="px-4 py-2">{r.matricula ?? "—"}</td>
+                  <td className="px-4 py-2">{r.cpf ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
                   <td className="px-4 py-2 text-right">{formatCurrency(r.valor)}</td>
                   <td className="px-4 py-2">
@@ -415,7 +431,7 @@ function FechamentoDePagamento() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-2">Matrícula</th>
+                <th className="text-left px-4 py-2">CPF</th>
                 <th className="text-left px-4 py-2">Servidor</th>
                 <th className="text-left px-4 py-2">Competência</th>
                 <th className="text-left px-4 py-2">Pendência/Motivo</th>
@@ -427,7 +443,7 @@ function FechamentoDePagamento() {
             <tbody>
               {registrosFiltrados.map((r) => (
                 <tr key={r.beneficiarioId} className="border-t border-border">
-                  <td className="px-4 py-2">{r.matricula ?? "—"}</td>
+                  <td className="px-4 py-2">{r.cpf ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
                   <td className="px-4 py-2">{formatCompetencia(r.competencia)}</td>
                   <td className="px-4 py-2 flex items-center gap-1.5">
@@ -459,6 +475,54 @@ function FechamentoDePagamento() {
           </table>
         )}
       </section>
+
+      {/* Detalhe de origem da comprovação (P7) — drill-down, nunca coluna nova na tabela nem na
+          exportação NURFI. Só aberto para registros com origem "associacao". */}
+      {origemDetalhe?.origemAssociacao && (
+        <div className="fixed inset-0 bg-foreground/30 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl shadow-elevated max-w-md w-full">
+            <header className="px-6 py-4 border-b border-border flex justify-between items-center">
+              <div>
+                <h2 className="font-semibold flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground" /> Origem da Comprovação
+                </h2>
+                <p className="text-xs text-muted-foreground">{origemDetalhe.nome}</p>
+              </div>
+              <button onClick={() => setOrigemDetalhe(null)} className="p-1 hover:bg-muted rounded-md">
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+            <dl className="p-6 space-y-3 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">Associação</dt>
+                <dd className="font-medium">{origemDetalhe.origemAssociacao.associacao}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Competência</dt>
+                <dd className="font-medium">{formatCompetencia(origemDetalhe.origemAssociacao.competencia)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Planilha / envio de origem</dt>
+                <dd className="font-medium font-mono text-xs">{origemDetalhe.origemAssociacao.planilhaId}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Status da análise da planilha</dt>
+                <dd className="mt-1">
+                  <PlanilhaStatusBadge status={origemDetalhe.origemAssociacao.statusPlanilha as StatusPlanilhaAssociacao} />
+                </dd>
+              </div>
+            </dl>
+            <footer className="px-6 py-4 border-t border-border flex justify-end">
+              <button
+                onClick={() => setOrigemDetalhe(null)}
+                className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted"
+              >
+                Fechar
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

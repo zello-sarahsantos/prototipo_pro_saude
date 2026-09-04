@@ -19,6 +19,7 @@ export const PROSAUDE_STORAGE_KEYS = {
   observacoesGerdab: "prosaude_observacoes_gerdab",
   fechamentosPagamento: "prosaude_fechamentos_pagamento",
   observacoesNurfi: "prosaude_observacoes_nurfi",
+  planilhasAssociacao: "prosaude_planilhas_associacao",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -496,4 +497,79 @@ export function removeObservacaoGerdab(id: string) {
     PROSAUDE_STORAGE_KEYS.observacoesGerdab,
     JSON.stringify(atuais.filter((o) => o.id !== id)),
   );
+}
+
+/**
+ * Planilhas mensais enviadas pelas associações/operadoras — nova evolução do fluxo de upload
+ * (`associacao.upload.tsx`) + análise/conciliação pela GERDAB (`admin.comprovantes.tsx`, aba
+ * "Planilhas - Associações"). Camada de persistência crua (CRUD), na mesma convenção já usada
+ * para `ObservacaoGerdab` acima — a lógica de negócio (decidir aprovação, normalizar registros
+ * para o Fechamento de Pagamento etc.) vive em `planilhas-associacao.ts`, que consome estas
+ * funções, exatamente como `pendencias-documentais.ts` consome `loadObservacoesGerdab`.
+ *
+ * Uma "planilha" aqui é, na prática, o par (Associação, Competência) — nunca sobrescrita: cada
+ * novo envio (inicial ou reenvio após "Correção Solicitada") gera uma nova entrada em `versoes`,
+ * preservando as anteriores (decisão P6 — "não sobrescreva silenciosamente a tentativa anterior").
+ */
+export type StatusPlanilhaAssociacao = "em_analise" | "aprovada" | "correcao_solicitada" | "negada";
+
+export interface RegistroPlanilhaAssociacao {
+  servidor: string;
+  cpfTitular: string;
+  beneficiario: string;
+  cpf: string;
+  vinculo: string;
+  /** Rótulo no arquivo/tela: "Valor Mensal Individual (R$)" — substitui qualquer nomenclatura
+   *  genérica de "Valor" no domínio da planilha da associação (modelo oficial aprovado). */
+  valor: number;
+  /** Novo campo (modelo oficial aprovado) — preservado entre envio, correção, reenvio e
+   *  histórico/download de cada versão, exatamente como os demais campos da planilha. */
+  operadora: string;
+  /** Novo campo (modelo oficial aprovado) — data em formato ISO (`AAAA-MM-DD`). Preservada por
+   *  versão, mesmo tratamento de `operadora`. Não é a competência do envio (essa é
+   *  Associação+Competência, identificando o envio como um todo — nunca uma coluna por linha). */
+  dataPagamento: string;
+  status: "válido" | "atenção" | "não_elegível";
+  motivo?: string;
+}
+
+/** Decisão da GERDAB sobre uma versão específica de envio — ausente enquanto a versão ainda
+ *  está "Em Análise". */
+export interface DecisaoPlanilhaAssociacao {
+  status: Exclude<StatusPlanilhaAssociacao, "em_analise">;
+  decididoEm: string;
+  decididoPor: string;
+  /** Obrigatória para "correcao_solicitada" e "negada" (decisão P2); ausente para "aprovada". */
+  justificativa?: string;
+}
+
+export interface VersaoPlanilhaAssociacao {
+  versao: number;
+  enviadoEm: string;
+  registros: RegistroPlanilhaAssociacao[];
+  decisao?: DecisaoPlanilhaAssociacao;
+}
+
+export interface PlanilhaAssociacao {
+  id: string;
+  associacao: string;
+  competencia: string;
+  /** Sempre em ordem cronológica — a última é a vigente. Nunca removida/reescrita. */
+  versoes: VersaoPlanilhaAssociacao[];
+}
+
+export function loadPlanilhasAssociacao(): PlanilhaAssociacao[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.planilhasAssociacao);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as PlanilhaAssociacao[];
+  } catch {
+    return [];
+  }
+}
+
+export function savePlanilhasAssociacao(planilhas: PlanilhaAssociacao[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.planilhasAssociacao, JSON.stringify(planilhas));
 }

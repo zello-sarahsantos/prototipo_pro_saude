@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   Eye,
@@ -12,8 +12,11 @@ import {
   FilePlus,
   FileSignature,
   Clock,
+  FileSpreadsheet,
 } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
+import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
+import { AnalisePlanilhaModal } from "@/components/AnalisePlanilhaModal";
 import { DocPreview } from "@/components/DocPreview";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { DivergenciaAprovacaoModal } from "@/components/DivergenciaAprovacaoModal";
@@ -45,12 +48,19 @@ import {
   getListaStatusBeneficiario,
 } from "@/lib/comprovante-status";
 import { estaDentroDoPrazoRelatorio } from "@/lib/prazo-competencia";
+import {
+  listarPlanilhasAssociacao,
+  garantirPlanilhaExemplo,
+  statusAtualPlanilha,
+  versaoVigente,
+  type PlanilhaAssociacao,
+} from "@/lib/planilhas-associacao";
 
 export const Route = createFileRoute("/admin/comprovantes")({
   component: Comprovantes,
 });
 
-type Tab = "comprovantes" | "retroativos" | "historico";
+type Tab = "comprovantes" | "retroativos" | "historico" | "planilhas";
 
 const statusPorTab: Record<Tab, StatusComprovante[]> = {
   comprovantes: ["em_analise"],
@@ -72,6 +82,10 @@ const statusPorTab: Record<Tab, StatusComprovante[]> = {
     "retroativo_recusado",
     "correcao_solicitada",
   ],
+  // "Planilhas - Associações" não filtra `StatusComprovante` — tem seu próprio vocabulário de
+  // status (`StatusPlanilhaAssociacao`) e sua própria listagem, renderizada à parte (ver
+  // `tab === "planilhas"` abaixo). Presente aqui só para satisfazer o tipo `Record<Tab, ...>`.
+  planilhas: [],
 };
 
 // Status em que há ação disponível — Analista e Gerência têm exatamente as mesmas ações
@@ -120,6 +134,16 @@ function Comprovantes() {
   const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [refreshKey]);
   const cur = todos.find((c) => c.id === openId) ?? null;
   const filtrados = todos.filter((c) => statusPorTab[tab].includes(c.status));
+
+  // Aba "Planilhas - Associações" — garante o exemplo permanente (mesmo padrão de
+  // `garantirExemploDocumentoEmAnalise`, idempotente) e lê as planilhas já persistidas.
+  useEffect(() => {
+    garantirPlanilhaExemplo();
+    setRefreshKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const planilhas = useMemo(() => listarPlanilhasAssociacao(), [refreshKey]);
+  const [planilhaAberta, setPlanilhaAberta] = useState<PlanilhaAssociacao | null>(null);
 
   function refresh() {
     setRefreshKey((k) => k + 1);
@@ -340,6 +364,7 @@ function Comprovantes() {
             ["comprovantes", "Comprovantes"],
             ["retroativos", "Retroativos"],
             ["historico", "Histórico"],
+            ["planilhas", "Planilhas - Associações"],
           ] as [Tab, string][]
         ).map(([value, label]) => (
           <button
@@ -354,45 +379,114 @@ function Comprovantes() {
         ))}
       </div>
 
-      <div className="space-y-3">
-        {filtrados.map((c) => (
-          <article key={c.id} className="bg-card rounded-xl border border-border shadow-card p-5">
-            <header className="flex justify-between items-start mb-3 gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold truncate">{c.arquivos.map((a) => a.nome).join(", ")}</p>
-                <p className="text-sm text-muted-foreground">
-                  {c.beneficiarioIds.map(nomeBeneficiario).join(", ")} • {formatCompetencia(c.competencia)}
-                  {c.isRetroativo && " • Retroativo"}
+      {tab !== "planilhas" && (
+        <div className="space-y-3">
+          {filtrados.map((c) => (
+            <article key={c.id} className="bg-card rounded-xl border border-border shadow-card p-5">
+              <header className="flex justify-between items-start mb-3 gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{c.arquivos.map((a) => a.nome).join(", ")}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {c.beneficiarioIds.map(nomeBeneficiario).join(", ")} • {formatCompetencia(c.competencia)}
+                    {c.isRetroativo && " • Retroativo"}
+                  </p>
+                  {c.operadoraDivergenteCadastro && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-warning mt-1">
+                      <AlertTriangle className="h-3 w-3" /> Operadora divergente do cadastro
+                    </span>
+                  )}
+                </div>
+                <ComprovanteStatusBadge status={c.status} />
+              </header>
+
+              {c.status === "retroativo_devolvido" && (
+                <p className="text-xs text-muted-foreground italic mb-2 flex items-center gap-1.5">
+                  <Undo2 className="h-3.5 w-3.5" /> Registro legado — devolução da antiga 2ª alçada.
                 </p>
-                {c.operadoraDivergenteCadastro && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-warning mt-1">
-                    <AlertTriangle className="h-3 w-3" /> Operadora divergente do cadastro
-                  </span>
-                )}
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
+                <button
+                  onClick={() => setOpenId(c.id)}
+                  className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted flex items-center gap-1.5"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Visualizar
+                </button>
               </div>
-              <ComprovanteStatusBadge status={c.status} />
-            </header>
+            </article>
+          ))}
+          {filtrados.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhum comprovante nesta aba.</p>
+          )}
+        </div>
+      )}
 
-            {c.status === "retroativo_devolvido" && (
-              <p className="text-xs text-muted-foreground italic mb-2 flex items-center gap-1.5">
-                <Undo2 className="h-3.5 w-3.5" /> Registro legado — devolução da antiga 2ª alçada.
-              </p>
-            )}
+      {tab === "planilhas" && (
+        <div className="bg-card rounded-xl border border-border shadow-card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="text-left px-4 py-3">Associação</th>
+                <th className="text-left px-4 py-3">Competência</th>
+                <th className="text-left px-4 py-3">Data de Envio</th>
+                <th className="text-center px-4 py-3">Qtd. Registros</th>
+                <th className="text-left px-4 py-3">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {planilhas.map((p) => {
+                const versao = versaoVigente(p);
+                return (
+                  <tr key={p.id} className="border-t border-border">
+                    <td className="px-4 py-2 font-medium">{p.associacao}</td>
+                    <td className="px-4 py-2">{formatCompetencia(p.competencia)}</td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {new Date(versao.enviadoEm).toLocaleDateString("pt-BR")}
+                      {p.versoes.length > 1 && (
+                        <span className="text-xs"> (versão {versao.versao})</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-center">{versao.registros.length}</td>
+                    <td className="px-4 py-2">
+                      <PlanilhaStatusBadge status={statusAtualPlanilha(p)} />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => setPlanilhaAberta(p)}
+                        className="inline-flex items-center gap-1.5 text-sm border border-border rounded-md px-3 py-1.5 hover:bg-muted"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> {statusAtualPlanilha(p) === "em_analise" ? "Analisar" : "Ver"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {planilhas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <FileSpreadsheet className="h-4 w-4" /> Nenhuma planilha de associação recebida ainda.
+                    </span>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-            <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
-              <button
-                onClick={() => setOpenId(c.id)}
-                className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted flex items-center gap-1.5"
-              >
-                <Eye className="h-3.5 w-3.5" /> Visualizar
-              </button>
-            </div>
-          </article>
-        ))}
-        {filtrados.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">Nenhum comprovante nesta aba.</p>
-        )}
-      </div>
+      {planilhaAberta && (
+        <AnalisePlanilhaModal
+          planilha={planilhaAberta}
+          decididoPorNome={autor}
+          onFechar={() => setPlanilhaAberta(null)}
+          onDecidido={() => {
+            refresh();
+            setPlanilhaAberta(null);
+          }}
+        />
+      )}
 
       {/* Modal principal — visualização + ações por beneficiário */}
       {cur && (
