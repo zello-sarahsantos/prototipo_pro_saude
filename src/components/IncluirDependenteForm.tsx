@@ -54,9 +54,13 @@ export type IncluirDependenteValue = {
 export function IncluirDependenteForm({
   submitLabel = "Enviar Requerimento",
   onSubmit,
+  cancelTo,
 }: {
   submitLabel?: string;
   onSubmit: (value: IncluirDependenteValue) => void;
+  /** Destino do botão "Cancelar" na primeira etapa — quando ausente, mantém o padrão atual de
+   *  `StepNav` (Portal do Servidor). A Associação passa a ficha do beneficiário. */
+  cancelTo?: string;
 }) {
   const [step, setStep] = useState(0);
   const [parentesco, setParentesco] = useState<TipoDependente>("Cônjuge");
@@ -412,6 +416,7 @@ export function IncluirDependenteForm({
         onNext={handleNext}
         nextLabel={step === steps.length - 1 ? submitLabel : "Próximo"}
         isLast={step === steps.length - 1}
+        cancelTo={cancelTo}
       />
     </div>
   );
