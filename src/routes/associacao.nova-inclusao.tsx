@@ -12,10 +12,14 @@ export const Route = createFileRoute("/associacao/nova-inclusao")({
 // tinha um formulário próprio, simplificado e com campos diferentes dos do requerimento
 // padrão. `associacaoFixa="Assetran"` troca a seleção de Operadora/Administradora por um
 // campo fixo "Associação: Assetran" (a associação já É o vínculo do beneficiário, não faz
-// sentido perguntar) e dispensa o envio de comprovantes pessoais no passo de documentos (a
-// ASSETRAN é quem envia a comprovação, coletivamente, depois). O upload do "Requerimento de
-// Inclusão Assinado (Titular)" — o requerimento físico já assinado e digitalizado — continua
-// aparecendo, vindo do próprio `isAssociacao` do componente compartilhado.
+// sentido perguntar).
+//
+// Correção de divergência: a etapa "Docs" NÃO dispensa mais a documentação padrão do titular
+// (documento da entidade/contrato do plano, identificação, último contracheque etc.) nem a
+// dos dependentes (via `DocumentosDependenteUploads`, já reaproveitada sem alteração) — o
+// Requerimento de Inclusão Assinado (Titular), vindo do `isAssociacao` do componente
+// compartilhado, é um documento ADICIONAL exclusivo deste fluxo, nunca um substituto da
+// documentação já exigida na primeira inclusão.
 function NovaInclusaoAssetran() {
   const navigate = useNavigate();
   const [done, setDone] = useState(false);
