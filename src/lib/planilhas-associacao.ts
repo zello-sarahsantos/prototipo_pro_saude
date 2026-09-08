@@ -237,10 +237,23 @@ export function garantirPlanilhaExemplo() {
   enviarPlanilhaAssociacao(ASSOCIACAO_EXEMPLO, competenciaAtual, registrosValidosExemplo);
 }
 
+/** Uma linha da composição do grupo familiar consolidado — mesma linha da planilha da
+ *  associação, só reexposta (nunca recalculada) para alimentar o drill-down do Fechamento de
+ *  Pagamento (`fechamento-pagamento.ts`). */
+export interface ComposicaoAssociacaoIntegrante {
+  beneficiario: string;
+  cpf: string;
+  vinculo: string;
+  valor: number;
+}
+
 /**
  * Um titular (grupo familiar) consolidado a partir de uma planilha de associação aprovada,
  * pronto para virar mais um `RegistroFechamento` — nunca um `Comprovante` sintético (P5). Valor
  * soma todas as linhas do grupo (titular + dependentes) daquele CPF na versão aprovada.
+ * `composicao` preserva as linhas individuais que formam essa soma, para o drill-down do
+ * Fechamento — nunca uma segunda apuração, é a mesma leitura de `versao.registros` já feita
+ * abaixo, só sem descartar o detalhe por integrante.
  */
 export interface RegistroAssociacaoConsolidado {
   cpfTitular: string;
@@ -250,6 +263,7 @@ export interface RegistroAssociacaoConsolidado {
   competencia: string;
   planilhaId: string;
   statusPlanilha: StatusPlanilhaAssociacao;
+  composicao: ComposicaoAssociacaoIntegrante[];
 }
 
 /**
@@ -266,13 +280,20 @@ export function getRegistrosAssociacaoAprovadosNaCompetencia(competencia: string
   for (const planilha of planilhas) {
     if (statusAtualPlanilha(planilha) !== "aprovada") continue;
     const versao = versaoVigente(planilha);
-    const porTitular = new Map<string, { nome: string; valor: number }>();
+    const porTitular = new Map<string, { nome: string; valor: number; composicao: ComposicaoAssociacaoIntegrante[] }>();
     for (const registro of versao.registros) {
       if (registro.status !== "válido") continue; // defensivo — só deveriam existir válidos aqui
-      const atual = porTitular.get(registro.cpfTitular) ?? { nome: registro.servidor, valor: 0 };
-      porTitular.set(registro.cpfTitular, { nome: atual.nome, valor: atual.valor + registro.valor });
+      const atual = porTitular.get(registro.cpfTitular) ?? { nome: registro.servidor, valor: 0, composicao: [] };
+      atual.valor += registro.valor;
+      atual.composicao.push({
+        beneficiario: registro.beneficiario,
+        cpf: registro.cpf,
+        vinculo: registro.vinculo,
+        valor: registro.valor,
+      });
+      porTitular.set(registro.cpfTitular, atual);
     }
-    for (const [cpfTitular, { nome, valor }] of porTitular) {
+    for (const [cpfTitular, { nome, valor, composicao }] of porTitular) {
       resultado.push({
         cpfTitular,
         nomeTitular: nome,
@@ -281,6 +302,7 @@ export function getRegistrosAssociacaoAprovadosNaCompetencia(competencia: string
         competencia,
         planilhaId: planilha.id,
         statusPlanilha: "aprovada",
+        composicao,
       });
     }
   }

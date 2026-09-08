@@ -22,6 +22,7 @@
  */
 import {
   beneficiariosPagamento as beneficiariosSeed,
+  calcularReembolso,
   competenciaAtual,
   competenciasFechadas,
   formatCompetencia,
@@ -79,6 +80,24 @@ export interface OrigemAssociacaoDetalhe {
   statusPlanilha: string;
 }
 
+/**
+ * Uma linha da composição do grupo familiar de um titular — usada só para o drill-down
+ * ("Detalhes") do Fechamento de Pagamento e para a exportação analítica (uma linha por
+ * integrante). Nunca uma segunda apuração: é o mesmo detalhe que já existia internamente em
+ * `classificarTitularNaCompetencia`/`getRegistrosAssociacaoAprovadosNaCompetencia`, só reexposto
+ * em vez de descartado depois de somado.
+ */
+export interface IntegranteGrupoFechamento {
+  beneficiarioId?: string;
+  nome: string;
+  /** Ausente quando a origem é "individual" e o próprio modelo do Módulo de Pagamento não
+   *  registra CPF de dependente (`BeneficiarioPagamento.cpf` só existe no Titular) — nunca
+   *  inventado; a origem "associacao" sempre tem CPF por linha (modelo da planilha). */
+  cpf?: string;
+  parentesco: string;
+  valor: number;
+}
+
 export interface RegistroFechamento {
   beneficiarioId: string;
   /** Mantido por compatibilidade com quem ainda depende de matrícula (ficha do servidor,
@@ -92,11 +111,24 @@ export interface RegistroFechamento {
   cpf?: string;
   nome: string;
   situacaoVinculo: BeneficiarioPagamento["situacao"];
+  /** Operadora do plano (origem "individual", `BeneficiarioPagamento.operadora`) ou nome da
+   *  associação (origem "associacao", `origemAssociacao.associacao`) — nunca cruza com o
+   *  Módulo de Cadastro (`servidoresList`); vem sempre de dentro do próprio registro de origem. */
+  operadoraOuAssociacao: string;
   competencia: string;
   classificacao: ClassificacaoFechamento;
   /** Origem do dado que gerou a classificação — para rastreabilidade (seção 2.5). */
   comprovanteId?: string;
+  /** Valor total do plano do grupo familiar (soma de `composicaoGrupo`) — nunca o valor de
+   *  ressarcimento (ver `valorRessarcir`). */
   valor: number;
+  /** Ressarcimento do grupo familiar — `calcularReembolso(valor)` (teto + percentual já
+   *  existentes, `mock-data.ts`), aplicado UMA VEZ sobre o total do grupo, nunca por integrante
+   *  nem por cima de um valor que já passou por este cálculo. */
+  valorRessarcir: number;
+  /** Composição do grupo familiar (titular + dependentes) que forma `valor` — drill-down da
+   *  tela e base da exportação analítica (uma linha por integrante). */
+  composicaoGrupo: IntegranteGrupoFechamento[];
   /** Só presente quando `classificacao === 'inadimplente'`. */
   situacao?: string;
   /** Só presente quando `classificacao === 'inadimplente'`. Reaproveitado do sistema quando
@@ -132,7 +164,7 @@ function ultimaAcao(comprovante: Comprovante, beneficiarioId?: string) {
 
 type ClassificacaoDetalhe = Pick<
   RegistroFechamento,
-  "classificacao" | "comprovanteId" | "valor" | "situacao" | "motivo" | "statusComprovante" | "ultimaAcaoEm"
+  "classificacao" | "comprovanteId" | "valor" | "situacao" | "motivo" | "statusComprovante" | "ultimaAcaoEm" | "composicaoGrupo"
 >;
 
 /**
@@ -159,6 +191,12 @@ function classificarTitularNaCompetencia(
   // do grupo (fatura técnica multi-beneficiário) ou o próprio titular isoladamente.
   const docsGrupo = comprovantes.filter((c) => c.beneficiarioIds.some((id) => grupo.some((b) => b.id === id)));
 
+  // Composição "sem comprovante" — nenhum valor extraído ainda existe para o grupo; usa o
+  // valor já cadastrado de cada integrante (mesmo fallback que `titular.valorCadastrado` já
+  // usava sozinho, agora explícito por integrante em vez de só a soma).
+  const composicaoSemComprovante = (): IntegranteGrupoFechamento[] =>
+    grupo.map((b) => ({ beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: b.valorCadastrado }));
+
   if (docsGrupo.length === 0) {
     const dispensado = grupo.every((b) => dispensadosIds.has(b.id));
     return {
@@ -168,6 +206,7 @@ function classificarTitularNaCompetencia(
       motivo: dispensado
         ? "Servidor optou por não apresentar comprovante nesta competência (dispensa registrada)."
         : "Não apresentou comprovante de pagamento nesta competência.",
+      composicaoGrupo: composicaoSemComprovante(),
     };
   }
 
@@ -183,10 +222,16 @@ function classificarTitularNaCompetencia(
   const algumInadimplente = statusPorBeneficiario.find((s) => statusInadimplente.includes(s.status));
   const todosAdimplentes = statusPorBeneficiario.every((s) => statusAdimplente.includes(s.status));
 
-  const valorTotal = statusPorBeneficiario.reduce(
-    (soma, s) => soma + (ultimoValor(s.comprovante, s.beneficiarioId) ?? 0),
-    0,
-  );
+  // Composição do grupo — um integrante por linha, valor extraído do comprovante quando
+  // disponível, com o mesmo fallback (`valorCadastrado`) já usado antes só na soma. O total do
+  // grupo (`valorTotal`) é sempre a soma desta mesma composição — nunca dois números que possam
+  // divergir entre a tela e o drill-down.
+  const composicaoGrupo: IntegranteGrupoFechamento[] = grupo.map((b) => {
+    const entrada = statusPorBeneficiario.find((s) => s.beneficiarioId === b.id);
+    const valorIndividual = entrada ? ultimoValor(entrada.comprovante, b.id) ?? b.valorCadastrado : b.valorCadastrado;
+    return { beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: valorIndividual };
+  });
+  const valorTotal = composicaoGrupo.reduce((soma, i) => soma + i.valor, 0);
 
   if (algumRequerAnalise) {
     const ref = algumRequerAnalise;
@@ -197,6 +242,7 @@ function classificarTitularNaCompetencia(
       valor: valorTotal || titular.valorCadastrado,
       statusComprovante: ref.status,
       ultimaAcaoEm: acao?.data,
+      composicaoGrupo,
     };
   }
 
@@ -209,6 +255,7 @@ function classificarTitularNaCompetencia(
       valor: valorTotal || titular.valorCadastrado,
       situacao: "Suspender",
       motivo: acao?.motivo ?? "Documento recusado na análise.",
+      composicaoGrupo,
     };
   }
 
@@ -218,13 +265,14 @@ function classificarTitularNaCompetencia(
       classificacao: "adimplente",
       comprovanteId: primeiro?.comprovante.id,
       valor: valorTotal || titular.valorCadastrado,
+      composicaoGrupo,
     };
   }
 
   // Sobra defensiva — não deve ocorrer com os status hoje mapeados, mas evita perder um
   // registro silenciosamente se um novo `StatusComprovante` for adicionado no futuro sem
   // atualizar as listas acima.
-  return { classificacao: "requer_analise", valor: titular.valorCadastrado };
+  return { classificacao: "requer_analise", valor: titular.valorCadastrado, composicaoGrupo };
 }
 
 /**
@@ -247,16 +295,25 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
   const beneficiarios = getBeneficiariosPagamentoAtual();
   const titulares = beneficiarios.filter((b) => b.parentesco === "Titular");
 
-  const registrosIndividuais: RegistroFechamento[] = titulares.map((titular) => ({
-    beneficiarioId: titular.id,
-    matricula: titular.matricula,
-    cpf: titular.cpf,
-    nome: titular.nome,
-    situacaoVinculo: titular.situacao,
-    competencia,
-    origem: "individual",
-    ...classificarTitularNaCompetencia(titular, competencia, beneficiarios),
-  }));
+  const registrosIndividuais: RegistroFechamento[] = titulares.map((titular) => {
+    const detalhe = classificarTitularNaCompetencia(titular, competencia, beneficiarios);
+    return {
+      beneficiarioId: titular.id,
+      matricula: titular.matricula,
+      cpf: titular.cpf,
+      nome: titular.nome,
+      situacaoVinculo: titular.situacao,
+      // Vem direto de `BeneficiarioPagamento.operadora` — mesmo registro de origem, nunca um
+      // cruzamento com `servidoresList`/Módulo de Cadastro (datasets intencionalmente isolados).
+      operadoraOuAssociacao: titular.operadora,
+      competencia,
+      origem: "individual",
+      ...detalhe,
+      // `calcularReembolso` (teto + percentual já existentes, `mock-data.ts`) aplicado uma única
+      // vez sobre o total do grupo (`detalhe.valor`) — nunca por integrante.
+      valorRessarcir: calcularReembolso(detalhe.valor),
+    };
+  });
 
   const registrosAssociacao: RegistroFechamento[] = getRegistrosAssociacaoAprovadosNaCompetencia(competencia).map(
     (r) => ({
@@ -268,9 +325,12 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
       // coerente para o filtro Todos|Ativos|Inativos da tela não quebrar; registrado como
       // simplificação técnica, não como regra de negócio (ver relatório de implementação).
       situacaoVinculo: "ativo",
+      operadoraOuAssociacao: r.associacao,
       competencia: r.competencia,
       classificacao: "adimplente",
       valor: r.valor,
+      valorRessarcir: calcularReembolso(r.valor),
+      composicaoGrupo: r.composicao.map((c) => ({ nome: c.beneficiario, cpf: c.cpf, parentesco: c.vinculo, valor: c.valor })),
       origem: "associacao",
       origemAssociacao: {
         associacao: r.associacao,

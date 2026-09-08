@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { CheckCircle2, XCircle, HelpCircle, Lock, Unlock, ExternalLink, Info, X, Building2 } from "lucide-react";
+import { XCircle, HelpCircle, Lock, Unlock, ExternalLink, X, Building2, ListTree } from "lucide-react";
 import { getAdminRole } from "@/components/AdminLayout";
 import { formatCurrency } from "@/lib/mock-data";
 import {
@@ -12,6 +12,7 @@ import {
   statusComprovanteLabels,
   type ClassificacaoFechamento,
   type RegistroFechamento,
+  type IntegranteGrupoFechamento,
 } from "@/lib/fechamento-pagamento";
 import {
   getFechamentoPagamento,
@@ -71,9 +72,10 @@ function FechamentoDePagamento() {
   const [filtroVinculo, setFiltroVinculo] = useState<FiltroVinculo>("todos");
   const [obsRascunho, setObsRascunho] = useState<Record<string, string>>({});
   const [, forceUpdate] = useState(0);
-  // Detalhe de origem da comprovação (P7) — só relevante para registros vindos de planilha de
-  // associação aprovada; nunca vira coluna nova na tabela nem na exportação NURFI.
-  const [origemDetalhe, setOrigemDetalhe] = useState<RegistroFechamento | null>(null);
+  // Drill-down da composição do grupo familiar ("Detalhes") — reaproveita `composicaoGrupo`, já
+  // calculado por `getRegistrosFechamento`; nenhuma segunda apuração aqui. Também mostra a
+  // origem da comprovação (P7) quando aplicável, unificando o que antes eram dois popovers.
+  const [detalheGrupo, setDetalheGrupo] = useState<RegistroFechamento | null>(null);
 
   const registros = useMemo(() => getRegistrosFechamento(competencia), [competencia]);
   const resumo = useMemo(() => getResumoFechamento(competencia), [competencia]);
@@ -95,23 +97,46 @@ function FechamentoDePagamento() {
   const filtrosAplicados = filtroVinculo !== "todos" ? [`Vínculo: ${filtroVinculo === "ativo" ? "Ativos" : "Inativos"}`] : [];
   const competenciaLabel = formatCompetencia(competencia);
 
-  const specAdimplentes: RelatorioExportSpec<RegistroFechamento> = useMemo(
+  // Exportação de Adimplentes é analítica — uma linha por integrante do grupo familiar (titular
+  // e dependentes em linhas separadas e consecutivas), nunca uma segunda aba/estrutura: mesma
+  // `RelatorioExportSpec` usada por PDF e XLSX, só alimentada por uma linha "achatada" que junta
+  // o registro do titular com cada integrante de `composicaoGrupo` (já calculado, nunca
+  // recalculado aqui). Valor Total do Grupo/Valor a Ressarcir se repetem propositalmente em
+  // todas as linhas do mesmo titular, para cada linha exportada ser autocontida.
+  const adimplentesFiltrados = registros.filter(
+    (r) => r.classificacao === "adimplente" && (filtroVinculo === "todos" || r.situacaoVinculo === filtroVinculo),
+  );
+  const linhasAnaliticasAdimplentes = useMemo(
+    () =>
+      adimplentesFiltrados.flatMap((registro) =>
+        registro.composicaoGrupo.map((integrante) => ({ registro, integrante })),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [registros, filtroVinculo],
+  );
+
+  const specAdimplentes: RelatorioExportSpec<{ registro: RegistroFechamento; integrante: IntegranteGrupoFechamento }> = useMemo(
     () => ({
       titulo: "Fechamento de Pagamento — Adimplentes",
       origem: "Fechamento de Pagamento",
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
-        { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
-        { header: "Situação do Vínculo", valor: (r) => situacaoVinculoLabel[r.situacaoVinculo] ?? r.situacaoVinculo, tipo: "texto" },
-        { header: "Competência de Referência", valor: () => competenciaLabel, tipo: "texto" },
-        { header: "Valor Aprovado", valor: (r) => r.valor, tipo: "moeda" },
+        { header: "CPF Titular", valor: (l) => l.registro.cpf ?? "—", tipo: "texto" },
+        { header: "Titular", valor: (l) => l.registro.nome, tipo: "texto", width: 24 },
+        { header: "CPF Beneficiário", valor: (l) => l.integrante.cpf ?? "—", tipo: "texto" },
+        { header: "Beneficiário", valor: (l) => l.integrante.nome, tipo: "texto", width: 24 },
+        { header: "Parentesco", valor: (l) => l.integrante.parentesco, tipo: "texto" },
+        { header: "Operadora/Associação", valor: (l) => l.registro.operadoraOuAssociacao, tipo: "texto", width: 18 },
+        { header: "Competência", valor: (l) => formatCompetencia(l.registro.competencia), tipo: "texto" },
+        { header: "Valor Individual", valor: (l) => l.integrante.valor, tipo: "moeda" },
+        { header: "Valor Total do Grupo Familiar", valor: (l) => l.registro.valor, tipo: "moeda" },
+        { header: "Valor a Ressarcir do Grupo Familiar", valor: (l) => l.registro.valorRessarcir, tipo: "moeda" },
       ],
-      linhas: registros.filter((r) => r.classificacao === "adimplente" && (filtroVinculo === "todos" || r.situacaoVinculo === filtroVinculo)),
+      linhas: linhasAnaliticasAdimplentes,
       nomeArquivoBase: `pro-saude_fechamento_pagamento_adimplentes_${competencia}`,
     }),
-    [registros, filtroVinculo, competencia, competenciaLabel, filtrosAplicados],
+    [linhasAnaliticasAdimplentes, competencia, competenciaLabel, filtrosAplicados],
   );
 
   const specInadimplentes: RelatorioExportSpec<RegistroFechamento> = useMemo(
@@ -123,7 +148,7 @@ function FechamentoDePagamento() {
       colunas: [
         { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
         { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
-        { header: "Valor Relacionado à Competência", valor: (r) => r.valor, tipo: "moeda" },
+        { header: "Valor do Plano", valor: (r) => r.valor, tipo: "moeda" },
         { header: "Situação", valor: (r) => r.situacao ?? "—", tipo: "texto" },
         { header: "Motivo", valor: (r) => r.motivo ?? "—", tipo: "texto", width: 34 },
         {
@@ -162,8 +187,6 @@ function FechamentoDePagamento() {
     }),
     [registros, filtroVinculo, competencia, competenciaLabel, filtrosAplicados],
   );
-
-  const specAtual = tab === "adimplente" ? specAdimplentes : tab === "inadimplente" ? specInadimplentes : specRequerAnalise;
 
   function irParaAba(c: ClassificacaoFechamento) {
     setTab(c);
@@ -295,7 +318,9 @@ function FechamentoDePagamento() {
             </button>
           ))}
         </div>
-        <ExportarRelatorio spec={specAtual} />
+        {tab === "adimplente" && <ExportarRelatorio spec={specAdimplentes} />}
+        {tab === "inadimplente" && <ExportarRelatorio spec={specInadimplentes} />}
+        {tab === "requer_analise" && <ExportarRelatorio spec={specRequerAnalise} />}
       </div>
 
       {/* Filtro Todos | Ativos | Inativos */}
@@ -323,12 +348,10 @@ function FechamentoDePagamento() {
                 <th className="text-left px-4 py-2">CPF</th>
                 <th className="text-left px-4 py-2">Nome</th>
                 <th className="text-left px-4 py-2">Situação do vínculo</th>
-                <th className="text-left px-4 py-2">Competência de referência</th>
-                <th className="text-left px-4 py-2">
-                  Competência de pagamento{" "}
-                  <span className="text-[10px] font-normal">(a validar)</span>
-                </th>
-                <th className="text-right px-4 py-2">Valor aprovado</th>
+                <th className="text-left px-4 py-2">Operadora/Associação</th>
+                <th className="text-left px-4 py-2">Competência</th>
+                <th className="text-right px-4 py-2">Valor Total do Plano</th>
+                <th className="text-right px-4 py-2">Valor a Ressarcir</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -340,28 +363,24 @@ function FechamentoDePagamento() {
                   <td className="px-4 py-2">
                     <BadgeVinculo situacao={r.situacaoVinculo} />
                   </td>
+                  <td className="px-4 py-2">{r.operadoraOuAssociacao}</td>
                   <td className="px-4 py-2">{formatCompetencia(r.competencia)}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{formatCompetencia(r.competencia)}</td>
                   <td className="px-4 py-2 text-right font-medium">{formatCurrency(r.valor)}</td>
+                  <td className="px-4 py-2 text-right font-medium">{formatCurrency(r.valorRessarcir)}</td>
                   <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-status-aprovado-fg" />
-                      {r.origem === "associacao" && (
-                        <button
-                          onClick={() => setOrigemDetalhe(r)}
-                          title="Ver origem da comprovação"
-                          className="text-muted-foreground hover:text-primary"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => setDetalheGrupo(r)}
+                      title="Ver composição do grupo familiar"
+                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                    >
+                      <ListTree className="h-3.5 w-3.5" /> Detalhes
+                    </button>
                   </td>
                 </tr>
               ))}
               {registrosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
                     Nenhum registro adimplente para este filtro.
                   </td>
                 </tr>
@@ -376,17 +395,14 @@ function FechamentoDePagamento() {
               <tr>
                 <th className="text-left px-4 py-2">CPF</th>
                 <th className="text-left px-4 py-2">Nome</th>
-                <th className="text-right px-4 py-2">
-                  Valor relacionado à competência <span className="text-[10px] font-normal">(a validar)</span>
-                </th>
+                <th className="text-right px-4 py-2">Valor do Plano</th>
                 <th className="text-left px-4 py-2">Situação</th>
                 <th className="text-left px-4 py-2">Motivo</th>
                 <th className="text-left px-4 py-2">Observação NURFI</th>
-                <th className="text-center px-4 py-2">QT (a validar)</th>
               </tr>
             </thead>
             <tbody>
-              {registrosFiltrados.map((r, i) => (
+              {registrosFiltrados.map((r) => (
                 <tr key={r.beneficiarioId} className="border-t border-border align-top">
                   <td className="px-4 py-2">{r.cpf ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
@@ -413,12 +429,11 @@ function FechamentoDePagamento() {
                       className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background"
                     />
                   </td>
-                  <td className="px-4 py-2 text-center text-muted-foreground">{i + 1}</td>
                 </tr>
               ))}
               {registrosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
                     Nenhum registro inadimplente para este filtro.
                   </td>
                 </tr>
@@ -435,7 +450,6 @@ function FechamentoDePagamento() {
                 <th className="text-left px-4 py-2">Servidor</th>
                 <th className="text-left px-4 py-2">Competência</th>
                 <th className="text-left px-4 py-2">Pendência/Motivo</th>
-                <th className="text-left px-4 py-2">Status</th>
                 <th className="text-left px-4 py-2">Tempo aguardando</th>
                 <th className="px-4 py-2">Ação</th>
               </tr>
@@ -450,7 +464,6 @@ function FechamentoDePagamento() {
                     <HelpCircle className="h-3.5 w-3.5 text-status-pendente-fg" />
                     {r.statusComprovante ? statusComprovanteLabels[r.statusComprovante] : "—"}
                   </td>
-                  <td className="px-4 py-2">{r.statusComprovante ? statusComprovanteLabels[r.statusComprovante] : "—"}</td>
                   <td className="px-4 py-2">{tempoAguardando(r.ultimaAcaoEm)}</td>
                   <td className="px-4 py-2">
                     <a
@@ -464,7 +477,7 @@ function FechamentoDePagamento() {
               ))}
               {registrosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <XCircle className="h-4 w-4" /> Nenhum registro requerendo análise nesta competência.
                     </span>
@@ -476,45 +489,82 @@ function FechamentoDePagamento() {
         )}
       </section>
 
-      {/* Detalhe de origem da comprovação (P7) — drill-down, nunca coluna nova na tabela nem na
-          exportação NURFI. Só aberto para registros com origem "associacao". */}
-      {origemDetalhe?.origemAssociacao && (
+      {/* Detalhes — drill-down da composição do grupo familiar (Titular/Cônjuge/Filho, valor
+          individual) que forma o "Valor Total do Plano" da linha — reaproveita `composicaoGrupo`,
+          já calculado por `getRegistrosFechamento`, nunca uma segunda apuração. Quando a origem é
+          "associacao" (planilha aprovada), inclui também a rastreabilidade da origem (P7) —
+          nunca coluna nova na tabela nem na exportação NURFI, só disponível aqui. */}
+      {detalheGrupo && (
         <div className="fixed inset-0 bg-foreground/30 flex items-center justify-center p-4 z-50">
-          <div className="bg-card rounded-2xl shadow-elevated max-w-md w-full">
-            <header className="px-6 py-4 border-b border-border flex justify-between items-center">
+          <div className="bg-card rounded-2xl shadow-elevated max-w-lg w-full max-h-[85vh] overflow-y-auto">
+            <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card">
               <div>
-                <h2 className="font-semibold flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground" /> Origem da Comprovação
-                </h2>
-                <p className="text-xs text-muted-foreground">{origemDetalhe.nome}</p>
+                <h2 className="font-semibold">Composição do Grupo Familiar</h2>
+                <p className="text-xs text-muted-foreground">
+                  {detalheGrupo.nome} • {formatCompetencia(detalheGrupo.competencia)}
+                </p>
               </div>
-              <button onClick={() => setOrigemDetalhe(null)} className="p-1 hover:bg-muted rounded-md">
+              <button onClick={() => setDetalheGrupo(null)} className="p-1 hover:bg-muted rounded-md">
                 <X className="h-4 w-4" />
               </button>
             </header>
-            <dl className="p-6 space-y-3 text-sm">
-              <div>
-                <dt className="text-xs text-muted-foreground">Associação</dt>
-                <dd className="font-medium">{origemDetalhe.origemAssociacao.associacao}</dd>
+            <div className="p-6 space-y-4">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr>
+                    <th className="text-left py-1.5">Beneficiário</th>
+                    <th className="text-left py-1.5">Parentesco</th>
+                    <th className="text-right py-1.5">Valor Individual</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {detalheGrupo.composicaoGrupo.map((integrante, i) => (
+                    <tr key={integrante.beneficiarioId ?? i}>
+                      <td className="py-1.5">{integrante.nome}</td>
+                      <td className="py-1.5">{integrante.parentesco}</td>
+                      <td className="py-1.5 text-right">{formatCurrency(integrante.valor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="border-t border-border pt-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Valor Total do Plano</span>
+                  <span className="font-medium">{formatCurrency(detalheGrupo.valor)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Valor a Ressarcir</span>
+                  <span className="font-medium">{formatCurrency(detalheGrupo.valorRessarcir)}</span>
+                </div>
               </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Competência</dt>
-                <dd className="font-medium">{formatCompetencia(origemDetalhe.origemAssociacao.competencia)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Planilha / envio de origem</dt>
-                <dd className="font-medium font-mono text-xs">{origemDetalhe.origemAssociacao.planilhaId}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Status da análise da planilha</dt>
-                <dd className="mt-1">
-                  <PlanilhaStatusBadge status={origemDetalhe.origemAssociacao.statusPlanilha as StatusPlanilhaAssociacao} />
-                </dd>
-              </div>
-            </dl>
-            <footer className="px-6 py-4 border-t border-border flex justify-end">
+
+              {detalheGrupo.origemAssociacao && (
+                <div className="border-t border-border pt-3 space-y-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5" /> Origem da Comprovação
+                  </h3>
+                  <dl className="space-y-2 text-sm">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Associação</dt>
+                      <dd className="font-medium">{detalheGrupo.origemAssociacao.associacao}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Planilha / envio de origem</dt>
+                      <dd className="font-medium font-mono text-xs">{detalheGrupo.origemAssociacao.planilhaId}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Status da análise da planilha</dt>
+                      <dd className="mt-1">
+                        <PlanilhaStatusBadge status={detalheGrupo.origemAssociacao.statusPlanilha as StatusPlanilhaAssociacao} />
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
+            </div>
+            <footer className="px-6 py-4 border-t border-border flex justify-end sticky bottom-0 bg-card">
               <button
-                onClick={() => setOrigemDetalhe(null)}
+                onClick={() => setDetalheGrupo(null)}
                 className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted"
               >
                 Fechar
