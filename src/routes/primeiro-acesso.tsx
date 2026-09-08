@@ -246,8 +246,10 @@ export function FlowInclusao({
   isAssociacao?: boolean;
   /** Quando informado (ex: "Assetran"), o passo "Plano" deixa de pedir Operadora/Administradora
    *  em dropdown — a associação já É a operadora/vínculo do beneficiário, então o campo vira
-   *  um valor fixo, só exibido. Também dispensa o envio de comprovantes pessoais no passo
-   *  "Docs" (a associação é quem envia a comprovação, coletivamente, depois). */
+   *  um valor fixo, só exibido. NÃO dispensa a documentação padrão do titular/dependentes no
+   *  passo "Docs" — correção de divergência: essa etapa continua reaproveitando integralmente
+   *  a mesma lógica do fluxo padrão de primeira inclusão; o Requerimento de Inclusão Assinado
+   *  (exigido só quando `isAssociacao`) é um documento ADICIONAL, nunca um substituto. */
   associacaoFixa?: string;
 }) {
   const [step, setStep] = useState(0);
@@ -1046,35 +1048,37 @@ export function FlowInclusao({
                 </>
               )}
 
-              {associacaoFixa || plano.operadora === "ASSEFAZ / OUTRO CONVÊNIO" ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-[11px] text-blue-800">
-                  <p className="font-semibold mb-1">Inclusão pela associação{associacaoFixa ? ` (${associacaoFixa.toUpperCase()})` : " (ASSEFAZ / OUTROS)"}:</p>
-                  <p>Não é necessário o envio de comprovantes neste momento. A associação será a responsável pelo envio das documentações junto à GERDAB.</p>
-                </div>
-              ) : (
-                <>
-                  <p className="text-xs font-bold text-muted-foreground uppercase">Documentos do Titular</p>
-                  {isPensionista && (
-                    <Field label="Publicação de Pensão Vitalícia (ou documento equivalente)" required>
-                      <UploadBox />
-                    </Field>
-                  )}
-                  <Field label="Documento da entidade contratada / contrato do plano" required>
-                    <UploadBox />
-                    <div className="mt-2 bg-muted/50 rounded-lg p-3 text-[10px] text-muted-foreground space-y-1">
-                      <p className="font-semibold text-foreground mb-1 italic">O documento deve conter:</p>
-                      <ul className="list-disc ml-4 grid grid-cols-1 gap-0.5">
-                        <li>Condição de beneficiário titular; Indicação dos dependentes;</li>
-                        <li>Tipos de cobertura; Prazo de validade/vigência;</li>
-                        <li>Valores mensais individualizados;</li>
-                        <li>Cópia do contrato ou declaração equivalente.</li>
-                      </ul>
-                    </div>
-                  </Field>
-                  <Field label="Documento de identificação do titular" required><UploadBox /></Field>
-                  <Field label="Último contracheque" required><UploadBox /></Field>
-                </>
+              {/* Fonte única da documentação obrigatória do titular — sempre exigida, qualquer
+                  que seja a Operadora/Associação selecionada no passo "Plano". Correção de uma
+                  segunda divergência: a opção "ASSEFAZ / OUTRO CONVÊNIO" chegou a dispensar
+                  esta documentação (achando que a associação enviaria a comprovação depois,
+                  coletivamente) — mas nesta entrega só o fluxo intermediado pela ASSETRAN
+                  (`associacaoFixa`, tela dedicada `/associacao/nova-inclusao`) tem esse
+                  tratamento coletivo, e mesmo lá o Requerimento de Inclusão Assinado (acima) é
+                  um documento ADICIONAL, nunca um substituto. A Primeira Inclusão feita
+                  diretamente pelo servidor — inclusive escolhendo ASSEFAZ/OUTRO CONVÊNIO como
+                  operadora — sempre exige a documentação normal abaixo; não existe (e não deve
+                  ser criado) nenhum fluxo especial de dispensa para essa opção. */}
+              <p className="text-xs font-bold text-muted-foreground uppercase">Documentos do Titular</p>
+              {isPensionista && (
+                <Field label="Publicação de Pensão Vitalícia (ou documento equivalente)" required>
+                  <UploadBox />
+                </Field>
               )}
+              <Field label="Documento da entidade contratada / contrato do plano" required>
+                <UploadBox />
+                <div className="mt-2 bg-muted/50 rounded-lg p-3 text-[10px] text-muted-foreground space-y-1">
+                  <p className="font-semibold text-foreground mb-1 italic">O documento deve conter:</p>
+                  <ul className="list-disc ml-4 grid grid-cols-1 gap-0.5">
+                    <li>Condição de beneficiário titular; Indicação dos dependentes;</li>
+                    <li>Tipos de cobertura; Prazo de validade/vigência;</li>
+                    <li>Valores mensais individualizados;</li>
+                    <li>Cópia do contrato ou declaração equivalente.</li>
+                  </ul>
+                </div>
+              </Field>
+              <Field label="Documento de identificação do titular" required><UploadBox /></Field>
+              <Field label="Último contracheque" required><UploadBox /></Field>
             </div>
 
             {/* Documentos específicos para dependentes (réplica com destaque visual) */}
