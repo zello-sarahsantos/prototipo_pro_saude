@@ -35,6 +35,9 @@ import { Route as ServidorRequerimentoNovoRouteImport } from './routes/servidor.
 import { Route as ServidorRequerimentoIncluirDependenteRouteImport } from './routes/servidor.requerimento.incluir-dependente'
 import { Route as ServidorRequerimentoExclusaoRouteImport } from './routes/servidor.requerimento.exclusao'
 import { Route as ServidorPagamentosEnviarRouteImport } from './routes/servidor.pagamentos.enviar'
+import { Route as AssociacaoRequerimentoNovoPlanoRouteImport } from './routes/associacao.requerimento.novo-plano'
+import { Route as AssociacaoRequerimentoIncluirDependenteRouteImport } from './routes/associacao.requerimento.incluir-dependente'
+import { Route as AssociacaoRequerimentoExclusaoRouteImport } from './routes/associacao.requerimento.exclusao'
 import { Route as AssociacaoGerenciamentoIdRouteImport } from './routes/associacao.gerenciamento.$id'
 import { Route as AdminServidoresIdRouteImport } from './routes/admin.servidores.$id'
 import { Route as AdminRelatoriosPagamentosRouteImport } from './routes/admin.relatorios.pagamentos'
@@ -180,6 +183,24 @@ const ServidorPagamentosEnviarRoute =
     path: '/pagamentos/enviar',
     getParentRoute: () => ServidorRoute,
   } as any)
+const AssociacaoRequerimentoNovoPlanoRoute =
+  AssociacaoRequerimentoNovoPlanoRouteImport.update({
+    id: '/requerimento/novo-plano',
+    path: '/requerimento/novo-plano',
+    getParentRoute: () => AssociacaoRoute,
+  } as any)
+const AssociacaoRequerimentoIncluirDependenteRoute =
+  AssociacaoRequerimentoIncluirDependenteRouteImport.update({
+    id: '/requerimento/incluir-dependente',
+    path: '/requerimento/incluir-dependente',
+    getParentRoute: () => AssociacaoRoute,
+  } as any)
+const AssociacaoRequerimentoExclusaoRoute =
+  AssociacaoRequerimentoExclusaoRouteImport.update({
+    id: '/requerimento/exclusao',
+    path: '/requerimento/exclusao',
+    getParentRoute: () => AssociacaoRoute,
+  } as any)
 const AssociacaoGerenciamentoIdRoute =
   AssociacaoGerenciamentoIdRouteImport.update({
     id: '/gerenciamento/$id',
@@ -245,6 +266,9 @@ export interface FileRoutesByFullPath {
   '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
+  '/associacao/requerimento/exclusao': typeof AssociacaoRequerimentoExclusaoRoute
+  '/associacao/requerimento/incluir-dependente': typeof AssociacaoRequerimentoIncluirDependenteRoute
+  '/associacao/requerimento/novo-plano': typeof AssociacaoRequerimentoNovoPlanoRoute
   '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
   '/servidor/requerimento/exclusao': typeof ServidorRequerimentoExclusaoRoute
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
@@ -280,6 +304,9 @@ export interface FileRoutesByTo {
   '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
+  '/associacao/requerimento/exclusao': typeof AssociacaoRequerimentoExclusaoRoute
+  '/associacao/requerimento/incluir-dependente': typeof AssociacaoRequerimentoIncluirDependenteRoute
+  '/associacao/requerimento/novo-plano': typeof AssociacaoRequerimentoNovoPlanoRoute
   '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
   '/servidor/requerimento/exclusao': typeof ServidorRequerimentoExclusaoRoute
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
@@ -316,6 +343,9 @@ export interface FileRoutesById {
   '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
+  '/associacao/requerimento/exclusao': typeof AssociacaoRequerimentoExclusaoRoute
+  '/associacao/requerimento/incluir-dependente': typeof AssociacaoRequerimentoIncluirDependenteRoute
+  '/associacao/requerimento/novo-plano': typeof AssociacaoRequerimentoNovoPlanoRoute
   '/servidor/pagamentos/enviar': typeof ServidorPagamentosEnviarRoute
   '/servidor/requerimento/exclusao': typeof ServidorRequerimentoExclusaoRoute
   '/servidor/requerimento/incluir-dependente': typeof ServidorRequerimentoIncluirDependenteRoute
@@ -353,6 +383,9 @@ export interface FileRouteTypes {
     | '/admin/relatorios/pagamentos'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
+    | '/associacao/requerimento/exclusao'
+    | '/associacao/requerimento/incluir-dependente'
+    | '/associacao/requerimento/novo-plano'
     | '/servidor/pagamentos/enviar'
     | '/servidor/requerimento/exclusao'
     | '/servidor/requerimento/incluir-dependente'
@@ -388,6 +421,9 @@ export interface FileRouteTypes {
     | '/admin/relatorios/pagamentos'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
+    | '/associacao/requerimento/exclusao'
+    | '/associacao/requerimento/incluir-dependente'
+    | '/associacao/requerimento/novo-plano'
     | '/servidor/pagamentos/enviar'
     | '/servidor/requerimento/exclusao'
     | '/servidor/requerimento/incluir-dependente'
@@ -423,6 +459,9 @@ export interface FileRouteTypes {
     | '/admin/relatorios/pagamentos'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
+    | '/associacao/requerimento/exclusao'
+    | '/associacao/requerimento/incluir-dependente'
+    | '/associacao/requerimento/novo-plano'
     | '/servidor/pagamentos/enviar'
     | '/servidor/requerimento/exclusao'
     | '/servidor/requerimento/incluir-dependente'
@@ -629,6 +668,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServidorPagamentosEnviarRouteImport
       parentRoute: typeof ServidorRoute
     }
+    '/associacao/requerimento/novo-plano': {
+      id: '/associacao/requerimento/novo-plano'
+      path: '/requerimento/novo-plano'
+      fullPath: '/associacao/requerimento/novo-plano'
+      preLoaderRoute: typeof AssociacaoRequerimentoNovoPlanoRouteImport
+      parentRoute: typeof AssociacaoRoute
+    }
+    '/associacao/requerimento/incluir-dependente': {
+      id: '/associacao/requerimento/incluir-dependente'
+      path: '/requerimento/incluir-dependente'
+      fullPath: '/associacao/requerimento/incluir-dependente'
+      preLoaderRoute: typeof AssociacaoRequerimentoIncluirDependenteRouteImport
+      parentRoute: typeof AssociacaoRoute
+    }
+    '/associacao/requerimento/exclusao': {
+      id: '/associacao/requerimento/exclusao'
+      path: '/requerimento/exclusao'
+      fullPath: '/associacao/requerimento/exclusao'
+      preLoaderRoute: typeof AssociacaoRequerimentoExclusaoRouteImport
+      parentRoute: typeof AssociacaoRoute
+    }
     '/associacao/gerenciamento/$id': {
       id: '/associacao/gerenciamento/$id'
       path: '/gerenciamento/$id'
@@ -719,6 +779,9 @@ interface AssociacaoRouteChildren {
   AssociacaoNovaInclusaoRoute: typeof AssociacaoNovaInclusaoRoute
   AssociacaoUploadRoute: typeof AssociacaoUploadRoute
   AssociacaoGerenciamentoIdRoute: typeof AssociacaoGerenciamentoIdRoute
+  AssociacaoRequerimentoExclusaoRoute: typeof AssociacaoRequerimentoExclusaoRoute
+  AssociacaoRequerimentoIncluirDependenteRoute: typeof AssociacaoRequerimentoIncluirDependenteRoute
+  AssociacaoRequerimentoNovoPlanoRoute: typeof AssociacaoRequerimentoNovoPlanoRoute
   AssociacaoGerenciamentoIndexRoute: typeof AssociacaoGerenciamentoIndexRoute
 }
 
@@ -726,6 +789,10 @@ const AssociacaoRouteChildren: AssociacaoRouteChildren = {
   AssociacaoNovaInclusaoRoute: AssociacaoNovaInclusaoRoute,
   AssociacaoUploadRoute: AssociacaoUploadRoute,
   AssociacaoGerenciamentoIdRoute: AssociacaoGerenciamentoIdRoute,
+  AssociacaoRequerimentoExclusaoRoute: AssociacaoRequerimentoExclusaoRoute,
+  AssociacaoRequerimentoIncluirDependenteRoute:
+    AssociacaoRequerimentoIncluirDependenteRoute,
+  AssociacaoRequerimentoNovoPlanoRoute: AssociacaoRequerimentoNovoPlanoRoute,
   AssociacaoGerenciamentoIndexRoute: AssociacaoGerenciamentoIndexRoute,
 }
 

@@ -50,11 +50,24 @@ export function NotificationBell({ notificacoes: notificacoesProp }: { notificac
                 Nenhuma notificação no momento.
               </p>
             ) : (
-              notificacoes.map((n) => (
-                <p key={n.id} className="px-4 py-3 text-xs text-foreground">
-                  {n.mensagem}
-                </p>
-              ))
+              notificacoes.map((n) =>
+                n.href ? (
+                  // Navegação completa (não roteamento tipado do SPA) — a notificação pode vir
+                  // de qualquer contexto (Associação, Servidor) e apontar para uma rota com
+                  // parâmetro dinâmico (`?requerimento=<id>`) só conhecido em tempo de execução.
+                  <button
+                    key={n.id}
+                    onClick={() => { window.location.href = n.href!; }}
+                    className="w-full text-left px-4 py-3 text-xs text-foreground hover:bg-muted transition"
+                  >
+                    {n.mensagem}
+                  </button>
+                ) : (
+                  <p key={n.id} className="px-4 py-3 text-xs text-foreground">
+                    {n.mensagem}
+                  </p>
+                ),
+              )
             )}
           </div>
         </div>

@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { servidorAtual, dependentes, formatCurrency, type StatusKey } from "@/lib/mock-data";
+import { servidorAtual, servidoresList, dependentes, formatCurrency } from "@/lib/mock-data";
+import { servidorParaFormularioRequerimento, dependentesDoBeneficiario } from "@/lib/associacao-beneficiario";
 import { StatusBadge } from "@/components/StatusBadge";
+import { RequerimentoAssociacaoStatusBadge } from "@/components/RequerimentoAssociacaoStatusBadge";
 import { SolicitacaoDocumentoBanner, StatusDocumentoEnviadoCard } from "@/components/SolicitacaoDocumentoBanner";
 import {
   getPendenciasDocumentaisDoServidor,
@@ -9,6 +11,12 @@ import {
   type PendenciaDocumental,
   type DocumentoPendenteView,
 } from "@/lib/pendencias-documentais";
+import {
+  listarRequerimentosAssociacao,
+  statusAtualRequerimento,
+  tipoRequerimentoAssociacaoLabels,
+  versaoVigenteRequerimento,
+} from "@/lib/requerimentos-associacao";
 import { ArrowLeft, FilePlus, UserMinus, UserPlus, X } from "lucide-react";
 
 export const Route = createFileRoute("/associacao/gerenciamento/$id")({
@@ -18,29 +26,17 @@ export const Route = createFileRoute("/associacao/gerenciamento/$id")({
 const tabs = ["Dados", "Dependentes", "Requerimentos"] as const;
 
 /** Ajuste pontual: os 3 requerimentos recorrentes ficam visíveis lado a lado, sem precisar de
- *  um clique extra para revelar as opções (modal removido — dificultava a visualização). */
+ *  um clique extra para revelar as opções (modal removido — dificultava a visualização).
+ *
+ * Correção desta rodada: os `to` apontavam para `/servidor/requerimento/*` (Portal do Servidor)
+ * — o atendente da Associação era visualmente redirecionado para fora do seu próprio contexto.
+ * Agora apontam para as rotas equivalentes dentro de `/associacao`, levando o `id` do
+ * beneficiário como parâmetro de busca — mesmo componente/formulário funcional reaproveitado
+ * (`NovoPlano`, `IncluirDependenteForm`, `Exclusao`), só o wrapper/layout muda. */
 const requerimentosRecorrentes = [
-  { to: "/servidor/requerimento/novo-plano" as const, icon: FilePlus, label: "Requerimento de Mudança de Plano" },
-  { to: "/servidor/requerimento/incluir-dependente" as const, icon: UserPlus, label: "Requerimento de Inclusão de Dependente" },
-  { to: "/servidor/requerimento/exclusao" as const, icon: UserMinus, label: "Requerimento de Exclusão de Dependente / Plano" },
-];
-
-/** Requerimentos deste beneficiário perante a GERDAB — ilustrativo (mock fixo, não filtrado
- *  pelo `$id` da rota, mesma simplificação já assumida por `servidorAtual`/`dependentes`
- *  nesta tela). Elevado para o escopo do módulo para alimentar tanto a aba "Requerimentos"
- *  quanto o indicativo de pendência nas abas "Dados"/"Requerimentos". */
-interface RequerimentoBeneficiario {
-  id: string;
-  numero: string;
-  tipo: string;
-  detalhe: string;
-  abertoEm: string;
-  status: StatusKey;
-}
-
-const requerimentosDoBeneficiario: RequerimentoBeneficiario[] = [
-  { id: "r1", numero: "REQ-2026-0047", tipo: "Inclusão de Dependente", detalhe: "Enteado(a), 23 anos — exige IRPF", abertoEm: "02/05/2026", status: "pendente" },
-  { id: "r3", numero: "REQ-2026-0045", tipo: "Exclusão", detalhe: "Exclusão de dependente", abertoEm: "01/05/2026", status: "aprovado" },
+  { to: "/associacao/requerimento/novo-plano" as const, icon: FilePlus, label: "Requerimento de Mudança de Plano" },
+  { to: "/associacao/requerimento/incluir-dependente" as const, icon: UserPlus, label: "Requerimento de Inclusão de Dependente" },
+  { to: "/associacao/requerimento/exclusao" as const, icon: UserMinus, label: "Requerimento de Exclusão de Dependente / Plano" },
 ];
 
 function TabBadge({ count }: { count: number }) {
@@ -57,24 +53,53 @@ function DetalheBeneficiarioAssetran() {
   const [tab, setTab] = useState<typeof tabs[number]>("Dados");
   const [solicitacoesVersion, setSolicitacoesVersion] = useState(0);
 
-  // Indicativos de pendência por aba — mesma regra usada no badge do sino de notificações:
-  // requerimentos ainda não decididos pela GERDAB e dependentes com alerta documental.
-  const requerimentosPendentes = requerimentosDoBeneficiario.filter(
-    (r) => r.status === "pendente" || r.status === "analise",
-  ).length;
-  const dependentesComAlerta = dependentes.filter((d) => d.alerta).length;
+  // Correção desta rodada: antes, esta ficha sempre mostrava o mesmo beneficiário fixo
+  // (`servidorAtual`) independentemente de qual `$id` fosse aberto na lista — mesma limitação
+  // pré-existente já em `admin.servidores.$id.tsx`, e explicitamente sinalizada na análise. Só
+  // corrigida aqui, e só para o que os 3 requerimentos recorrentes precisam: nome/CPF/matrícula/
+  // plano do titular e a lista de dependentes vêm agora do beneficiário real (`servidoresList`).
+  const servidorListItem = useMemo(() => servidoresList.find((s) => s.matricula === id), [id]);
+  const servidor = useMemo(
+    () => (servidorListItem ? servidorParaFormularioRequerimento(servidorListItem) : servidorAtual),
+    [servidorListItem],
+  );
+  const dependentesAtivos = useMemo(
+    () => (servidorListItem ? dependentesDoBeneficiario(servidorListItem) : dependentes),
+    [servidorListItem],
+  );
 
-  // Pendências documentais direcionadas "para a associação" sobre este beneficiário —
-  // unifica pendências automáticas do sistema (dependentes com prazo/consequência mapeados) e
-  // solicitações manuais da GERDAB sem prazo definido.
+  // Requerimentos reais deste beneficiário — mesma engine da Nova Inclusão (`requerimentos-
+  // associacao.ts`), nunca mais o array ilustrativo fixo que existia antes desta rodada.
+  const requerimentosDoBeneficiario = useMemo(
+    () =>
+      listarRequerimentosAssociacao("Assetran").filter(
+        (r) => r.beneficiarioId === id,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, solicitacoesVersion],
+  );
+
+  // Indicativos de pendência por aba — mesma regra usada no badge do sino de notificações:
+  // requerimentos ainda não decididos pela GERDAB (ou aguardando ação da associação) e
+  // dependentes com alerta documental.
+  const requerimentosPendentes = requerimentosDoBeneficiario.filter((r) => {
+    const status = statusAtualRequerimento(r);
+    return status === "pendente_validacao" || status === "aguardando_complementacao";
+  }).length;
+  const dependentesComAlerta = dependentesAtivos.filter((d) => d.alerta).length;
+
+  // Pendências documentais direcionadas "para a associação" sobre este beneficiário — unifica
+  // pendências automáticas do sistema e solicitações manuais da GERDAB. Limitação conhecida, não
+  // corrigida nesta rodada (fora do escopo dos 3 requerimentos recorrentes — exigiria refatorar
+  // `pendencias-documentais.ts`, que internamente também depende do singleton `servidorAtual`/
+  // `dependentes`): continua refletindo o beneficiário-demo do Portal do Servidor, não
+  // necessariamente o `$id` real aberto aqui.
   const pendenciasDocumento = useMemo(
     () => getPendenciasDocumentaisDoServidor(servidorAtual.matricula, "associacao"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [solicitacoesVersion],
   );
 
-  // Documentos já enviados pela associação, em análise ou já aprovados pela GERDAB — sem isto,
-  // depois de enviar o aviso simplesmente sumia, sem retorno nenhum sobre o resultado.
   const statusDocumentosEnviados = useMemo(
     () =>
       getStatusDocumentosDoServidor(servidorAtual.matricula, "associacao").filter(
@@ -98,11 +123,11 @@ function DetalheBeneficiarioAssetran() {
 
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{servidorAtual.nome}</h1>
-          <p className="text-sm text-muted-foreground">Matrícula {id} • {servidorAtual.plano} • ASSETRAN</p>
+          <h1 className="text-2xl font-bold">{servidor.nome}</h1>
+          <p className="text-sm text-muted-foreground">Matrícula {id} • {servidor.plano} • ASSETRAN</p>
         </div>
         <div className="flex items-center gap-3">
-          <StatusBadge status="ativo" />
+          <StatusBadge status={servidorListItem?.status ?? "ativo"} />
         </div>
       </header>
 
@@ -111,6 +136,7 @@ function DetalheBeneficiarioAssetran() {
           <Link
             key={r.to}
             to={r.to}
+            search={{ beneficiario: id }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-card hover:bg-primary-light transition"
           >
             <r.icon className="h-4 w-4 shrink-0" />
@@ -138,42 +164,45 @@ function DetalheBeneficiarioAssetran() {
 
       {tab === "Dados" && (
         <TabDados
+          servidor={servidor}
           pendenciasDocumento={pendenciasDocumento}
           statusDocumentosEnviados={statusDocumentosEnviados}
           onDocumentoEnviado={() => setSolicitacoesVersion((v) => v + 1)}
         />
       )}
-      {tab === "Dependentes" && <TabDependentes />}
-      {tab === "Requerimentos" && <TabRequerimentos />}
+      {tab === "Dependentes" && <TabDependentes dependentesAtivos={dependentesAtivos} beneficiarioId={id} />}
+      {tab === "Requerimentos" && <TabRequerimentos requerimentos={requerimentosDoBeneficiario} />}
     </div>
   );
 }
 
 function TabDados({
+  servidor,
   pendenciasDocumento,
   statusDocumentosEnviados,
   onDocumentoEnviado,
 }: {
+  servidor: typeof servidorAtual;
   pendenciasDocumento: PendenciaDocumental[];
   statusDocumentosEnviados: DocumentoPendenteView[];
   onDocumentoEnviado: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const fields: [string, string, string][] = [
-    ["Nome completo", "nome", servidorAtual.nome],
-    ["Matrícula", "matricula", servidorAtual.matricula],
-    ["CPF", "cpf", servidorAtual.cpf],
-    ["Data de nascimento", "dataNascimento", servidorAtual.dataNascimento],
-    ["E-mail institucional", "email", servidorAtual.email],
-    ["Telefone", "telefone", servidorAtual.telefone],
-    ["RG", "rg", servidorAtual.rg],
-    ["Endereço", "endereco", servidorAtual.endereco],
-    ["Plano", "plano", servidorAtual.plano],
-    ["Tipo de plano", "tipoPlano", servidorAtual.tipoPlano],
-    ["Operadora", "operadora", servidorAtual.operadora],
+    ["Nome completo", "nome", servidor.nome],
+    ["Matrícula", "matricula", servidor.matricula],
+    ["CPF", "cpf", servidor.cpf],
+    ["Data de nascimento", "dataNascimento", servidor.dataNascimento],
+    ["E-mail institucional", "email", servidor.email],
+    ["Telefone", "telefone", servidor.telefone],
+    ["RG", "rg", servidor.rg],
+    ["Endereço", "endereco", servidor.endereco],
+    ["Plano", "plano", servidor.plano],
+    ["Tipo de plano", "tipoPlano", servidor.tipoPlano],
+    ["Operadora", "operadora", servidor.operadora],
     ["Associação", "associacao", "ASSETRAN"],
-    ["Processo SEI", "processoSEI", servidorAtual.processoSEI],
-    ["Início do benefício", "inicioBeneficio", servidorAtual.inicioBeneficio],
+    ["Processo SEI", "processoSEI", servidor.processoSEI],
+    ["Início do benefício", "inicioBeneficio", servidor.inicioBeneficio],
   ];
 
   return (
@@ -208,7 +237,7 @@ function TabDados({
             <header className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card">
               <div>
                 <h2 className="font-semibold">Editar dados do beneficiário</h2>
-                <p className="text-xs text-muted-foreground">{servidorAtual.nome} — mat. {servidorAtual.matricula}</p>
+                <p className="text-xs text-muted-foreground">{servidor.nome} — mat. {servidor.matricula}</p>
               </div>
               <button onClick={() => setEditOpen(false)} className="p-1 hover:bg-muted rounded-md">
                 <X className="h-4 w-4" />
@@ -251,21 +280,28 @@ function TabDados({
   );
 }
 
-function TabDependentes() {
-  const [inativarId, setInativarId] = useState<string | null>(null);
-  const dep = dependentes.find((d) => d.id === inativarId);
-
+function TabDependentes({
+  dependentesAtivos,
+  beneficiarioId,
+}: {
+  dependentesAtivos: ReturnType<typeof dependentesDoBeneficiario>;
+  beneficiarioId: string;
+}) {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
         <Link
-          to="/servidor/requerimento/incluir-dependente"
+          to="/associacao/requerimento/incluir-dependente"
+          search={{ beneficiario: beneficiarioId }}
           className="text-sm bg-primary text-primary-foreground rounded-md px-3 py-1.5 font-medium"
         >
           <UserPlus className="h-4 w-4 inline mr-1" /> Incluir Dependente
         </Link>
       </div>
-      {dependentes.map((d) => (
+      {dependentesAtivos.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-6">Nenhum dependente cadastrado.</p>
+      )}
+      {dependentesAtivos.map((d) => (
         <div key={d.id} className="bg-card rounded-xl border border-border p-4 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex-1">
             <p className="font-semibold">{d.nome}</p>
@@ -280,7 +316,8 @@ function TabDependentes() {
           <StatusBadge status={d.status} />
           {d.status !== "inativo" && (
             <Link
-              to="/servidor/requerimento/exclusao"
+              to="/associacao/requerimento/exclusao"
+              search={{ beneficiario: beneficiarioId }}
               className="text-sm border border-destructive/30 text-destructive rounded-md px-3 py-1.5 hover:bg-destructive/5"
             >
               Solicitar Exclusão
@@ -292,18 +329,40 @@ function TabDependentes() {
   );
 }
 
-function TabRequerimentos() {
+function TabRequerimentos({
+  requerimentos,
+}: {
+  requerimentos: ReturnType<typeof listarRequerimentosAssociacao>;
+}) {
+  if (requerimentos.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-8 bg-card rounded-xl border border-border">
+        Nenhum requerimento enviado para este beneficiário ainda.
+      </p>
+    );
+  }
   return (
     <ul className="divide-y divide-border bg-card rounded-xl border border-border">
-      {requerimentosDoBeneficiario.map((r) => (
-        <li key={r.id} className="px-5 py-3 flex items-center gap-4">
-          <div className="flex-1">
-            <p className="text-sm font-medium">{r.numero} • {r.tipo}</p>
-            <p className="text-xs text-muted-foreground">{r.detalhe} • {r.abertoEm}</p>
-          </div>
-          <StatusBadge status={r.status} />
-        </li>
-      ))}
+      {requerimentos.map((r) => {
+        const status = statusAtualRequerimento(r);
+        const versao = versaoVigenteRequerimento(r);
+        const pendenteDeAcao = status === "aguardando_complementacao";
+        return (
+          <li key={r.id} className="px-5 py-3 flex items-center gap-4">
+            <div className="flex-1">
+              <p className="text-sm font-medium">{tipoRequerimentoAssociacaoLabels[r.tipo]}</p>
+              <p className="text-xs text-muted-foreground">
+                {versao.resumo} • {new Date(r.criadoEm).toLocaleDateString("pt-BR")}
+                {r.versoes.length > 1 && ` • versão ${versao.versao}`}
+              </p>
+              {pendenteDeAcao && (
+                <p className="text-xs text-warning mt-0.5">⚠ Aguardando ação da Associação</p>
+              )}
+            </div>
+            <RequerimentoAssociacaoStatusBadge status={status} />
+          </li>
+        );
+      })}
     </ul>
   );
 }

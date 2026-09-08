@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { createContext, useContext, useState, type Dispatch, type SetStateAction } from "react";
 import { Stepper, StepNav, Field, inputCls } from "@/components/Stepper";
 import { Switch } from "@/components/ui/switch";
 import { Upload, CheckCircle2, User, Info, FileText, UserPlus, X } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   formatCurrency,
   calcularReembolso,
   statusLabels,
+  type Dependente,
 } from "@/lib/mock-data";
 import { DOCUMENTOS_POR_TIPO_DEPENDENTE } from "@/lib/form-options";
 import { IncluirDependenteForm, type IncluirDependenteValue } from "@/components/IncluirDependenteForm";
@@ -20,6 +21,24 @@ export const Route = createFileRoute("/servidor/requerimento/novo-plano")({
 });
 
 const steps = ["Dados do Beneficiário", "Plano Anterior", "Novo Plano", "Dependentes", "Documentos", "Revisão"];
+
+/**
+ * Desacopla os Steps do singleton `servidorAtual`/`dependentes` sem precisar prop-drilling em
+ * cada um deles — `NovoPlano` é quem resolve `servidor`/`dependentesAtivos` (props recebidas ??
+ * dados do Portal do Servidor) uma única vez e disponibiliza aqui; nenhum Step lê o singleton
+ * diretamente a partir de agora. Mesmo componente funcional para os dois contextos — só a fonte
+ * do dado muda.
+ */
+const RequerimentoBeneficiarioContext = createContext<{
+  servidor: typeof servidorAtual;
+  dependentesAtivos: Dependente[];
+} | null>(null);
+
+function useRequerimentoBeneficiario() {
+  const ctx = useContext(RequerimentoBeneficiarioContext);
+  if (!ctx) throw new Error("useRequerimentoBeneficiario precisa estar dentro de <NovoPlano />.");
+  return ctx;
+}
 
 type DependentAction = "manter" | "migrar_titular" | "migrar_outro" | "remover";
 
@@ -48,11 +67,49 @@ type NewDependentBlock = {
   value?: IncluirDependenteValue;
 };
 
-function NovoPlano() {
+export type MudancaPlanoSubmitPayload = {
+  newPlanData: Record<string, unknown>;
+  dependentsData: Record<string, DependentData>;
+  novosDependentes: IncluirDependenteValue[];
+  updatedAt: string;
+};
+
+export function NovoPlano({
+  servidor: servidorProp,
+  dependentesIniciais,
+  onSubmit,
+  voltarTo = "/servidor/inicio",
+  voltarLabel = "Voltar ao início",
+  statusLabel = "Em Análise",
+  cancelTo = "/servidor/requerimento/novo",
+}: {
+  /** Beneficiário atendido — quando ausente, usa `servidorAtual` (Portal do Servidor, dado do
+   *  usuário logado), exatamente como antes desta refatoração. */
+  servidor?: typeof servidorAtual;
+  dependentesIniciais?: Dependente[];
+  /** Callback de conclusão do contexto Associação — quando fornecido, substitui a persistência
+   *  padrão (`saveRequerimentoMudancaPlano`, um rascunho único do Portal do Servidor) para que o
+   *  chamador persista na engine de requerimentos da Associação. Nenhuma regra do formulário
+   *  muda; só o destino do dado enviado. */
+  onSubmit?: (payload: MudancaPlanoSubmitPayload) => void;
+  voltarTo?: string;
+  voltarLabel?: string;
+  /** Rótulo do status mostrado na tela de sucesso — "Em Análise" é o vocabulário do rascunho do
+   *  Portal do Servidor; a Associação passa "Pendente de Validação" (vocabulário da engine de
+   *  requerimentos). Cosmético — não altera nenhuma regra. */
+  statusLabel?: string;
+  /** Destino do botão "Cancelar" na primeira etapa (`StepNav`) — "/servidor/requerimento/novo"
+   *  é o comportamento original do Portal do Servidor; a Associação passa a mesma ficha do
+   *  beneficiário (`voltarTo`), para nunca deixar o atendente cair no Portal do Servidor. */
+  cancelTo?: string;
+} = {}) {
+  const servidor = servidorProp ?? servidorAtual;
+  const dependentesAtivos = (dependentesIniciais ?? dependentes).filter((d) => d.status === "ativo");
+
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);
   const [declarationsChecked, setDeclarationsChecked] = useState<Record<number, boolean>>({ 1: false, 2: false, 3: false });
-  
+
   // Novo plano data
   const [newPlanData, setNewPlanData] = useState({
     operadora: "",
@@ -69,8 +126,8 @@ function NovoPlano() {
   // Dependentes data
   const [dependentsData, setDependentsData] = useState<Record<string, DependentData>>(
     Object.fromEntries(
-      dependentes.filter(d => d.status === "ativo").map(d => [
-        d.id, 
+      dependentesAtivos.map(d => [
+        d.id,
         { action: "manter" as DependentAction }
       ])
     )
@@ -78,7 +135,7 @@ function NovoPlano() {
 
   const [newDependentBlocks, setNewDependentBlocks] = useState<NewDependentBlock[]>([]);
 
-  const isPensionista = servidorAtual.cargo.startsWith("Pensionista");
+  const isPensionista = servidor.cargo.startsWith("Pensionista");
 
   const handleDeclarationChange = (index: number, checked: boolean) => {
     setDeclarationsChecked(prev => ({ ...prev, [index]: checked }));
@@ -88,12 +145,17 @@ function NovoPlano() {
   const hasPendingNewDependents = newDependentBlocks.some((b) => !b.saved);
 
   const handleSubmit = () => {
-    saveRequerimentoMudancaPlano({
+    const payload: MudancaPlanoSubmitPayload = {
       newPlanData,
       dependentsData,
-      novosDependentes: newDependentBlocks.filter((b) => b.saved && b.value).map((b) => b.value),
+      novosDependentes: newDependentBlocks.filter((b) => b.saved && b.value).map((b) => b.value!),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    if (onSubmit) {
+      onSubmit(payload);
+    } else {
+      saveRequerimentoMudancaPlano(payload);
+    }
     setDone(true);
   };
 
@@ -104,64 +166,68 @@ function NovoPlano() {
         <h2 className="text-xl font-bold">Solicitação enviada com sucesso!</h2>
         <div className="bg-muted rounded-lg py-3 px-4">
           <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Status</p>
-          <p className="text-lg font-bold text-status-analise-fg">Em Análise</p>
+          <p className="text-lg font-bold text-status-analise-fg">{statusLabel}</p>
         </div>
         <p className="text-xs text-muted-foreground italic px-2">
           A GERDAB realizará a conferência das informações e documentos enviados.
         </p>
         <Link
-          to="/servidor/inicio"
+          to={voltarTo}
           className="block w-full bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-medium mt-2"
         >
-          Voltar ao início
+          {voltarLabel}
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="p-4">
-      <h2 className="text-lg font-semibold mb-1">Requerimento de Mudança de Plano</h2>
-      <p className="text-xs text-muted-foreground mb-4">
-        Etapa {step + 1} de {steps.length}
-      </p>
-      <Stepper steps={steps} current={step} />
+    <RequerimentoBeneficiarioContext.Provider value={{ servidor, dependentesAtivos }}>
+      <div className="p-4">
+        <h2 className="text-lg font-semibold mb-1">Requerimento de Mudança de Plano</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Etapa {step + 1} de {steps.length}
+        </p>
+        <Stepper steps={steps} current={step} />
 
-      {step === 0 && <StepDadosBeneficiario />}
-      {step === 1 && <StepPlanoAnterior />}
-      {step === 2 && <StepNovoPlano data={newPlanData} setData={setNewPlanData} />}
-      {step === 3 && !isPensionista && <StepDependentes 
-        dependentsData={dependentsData}
-        setDependentsData={setDependentsData}
-        newDependentBlocks={newDependentBlocks}
-        setNewDependentBlocks={setNewDependentBlocks}
-      />}
-      {step === 3 && isPensionista && <StepPensionistaDependentes />}
-      {step === 4 && <StepDocs dependentsData={dependentsData} />}
-      {step === 5 && <StepRevisao 
-        dependentsData={dependentsData}
-        newPlanData={newPlanData}
-        newDependentBlocks={newDependentBlocks}
-        declarationsChecked={declarationsChecked}
-        onDeclarationChange={handleDeclarationChange}
-        allDeclarationsChecked={allDeclarationsChecked}
-      />}
+        {step === 0 && <StepDadosBeneficiario />}
+        {step === 1 && <StepPlanoAnterior />}
+        {step === 2 && <StepNovoPlano data={newPlanData} setData={setNewPlanData} />}
+        {step === 3 && !isPensionista && <StepDependentes
+          dependentsData={dependentsData}
+          setDependentsData={setDependentsData}
+          newDependentBlocks={newDependentBlocks}
+          setNewDependentBlocks={setNewDependentBlocks}
+        />}
+        {step === 3 && isPensionista && <StepPensionistaDependentes />}
+        {step === 4 && <StepDocs dependentsData={dependentsData} />}
+        {step === 5 && <StepRevisao
+          dependentsData={dependentsData}
+          newPlanData={newPlanData}
+          newDependentBlocks={newDependentBlocks}
+          declarationsChecked={declarationsChecked}
+          onDeclarationChange={handleDeclarationChange}
+          allDeclarationsChecked={allDeclarationsChecked}
+        />}
 
-      <StepNav
-        onPrev={step > 0 ? () => setStep(step - 1) : undefined}
-        onNext={() => {
-          if (step < steps.length - 1) setStep(step + 1);
-          else handleSubmit();
-        }}
-        nextLabel={step === steps.length - 1 ? "Enviar para análise da GERDAB" : "Próximo"}
-        isLast={step === steps.length - 1}
-        disabled={step === steps.length - 1 && (!allDeclarationsChecked || hasPendingNewDependents)}
-      />
-    </div>
+        <StepNav
+          onPrev={step > 0 ? () => setStep(step - 1) : undefined}
+          onNext={() => {
+            if (step < steps.length - 1) setStep(step + 1);
+            else handleSubmit();
+          }}
+          nextLabel={step === steps.length - 1 ? "Enviar para análise da GERDAB" : "Próximo"}
+          isLast={step === steps.length - 1}
+          disabled={step === steps.length - 1 && (!allDeclarationsChecked || hasPendingNewDependents)}
+          cancelTo={cancelTo}
+        />
+      </div>
+    </RequerimentoBeneficiarioContext.Provider>
   );
 }
 
 function StepDadosBeneficiario() {
+  const { servidor } = useRequerimentoBeneficiario();
   return (
     <div className="space-y-3">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
@@ -170,36 +236,37 @@ function StepDadosBeneficiario() {
         </p>
       </div>
       <Field label="Nome completo">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.nome} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.nome} disabled />
       </Field>
       <Field label="CPF">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.cpf} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.cpf} disabled />
       </Field>
       <Field label="Matrícula">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.matricula} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.matricula} disabled />
       </Field>
       <Field label="Tipo de beneficiário">
         <input className={`${inputCls} bg-muted`} value={
-          servidorAtual.cargo === "Pensionista vitalício" 
-            ? "Pensionista vitalício" 
-            : servidorAtual.cargo === "Pensionista temporário"
+          servidor.cargo === "Pensionista vitalício"
+            ? "Pensionista vitalício"
+            : servidor.cargo === "Pensionista temporário"
             ? "Pensionista temporário"
-            : servidorAtual.cargo === "Agente de Trânsito" || servidorAtual.cargo === "Analista de Trânsito" || servidorAtual.cargo === "Técnico de Trânsito"
+            : servidor.cargo === "Agente de Trânsito" || servidor.cargo === "Analista de Trânsito" || servidor.cargo === "Técnico de Trânsito"
             ? "Servidor ativo"
             : "Servidor ativo"
         } disabled />
       </Field>
       <Field label="Processo SEI vinculado">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.processoSEI} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.processoSEI} disabled />
       </Field>
       <Field label="Situação do benefício no Pró-Saúde">
-        <input className={`${inputCls} bg-muted`} value={statusLabels[servidorAtual.status]} disabled />
+        <input className={`${inputCls} bg-muted`} value={statusLabels[servidor.status]} disabled />
       </Field>
     </div>
   );
 }
 
 function StepPlanoAnterior() {
+  const { servidor } = useRequerimentoBeneficiario();
   return (
     <div className="space-y-3">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
@@ -208,19 +275,19 @@ function StepPlanoAnterior() {
         </p>
       </div>
       <Field label="Operadora atual">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.operadora} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.operadora} disabled />
       </Field>
       <Field label="Administradora atual">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.administradora} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.administradora} disabled />
       </Field>
       <Field label="Modalidade do plano atual">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.tipoPlano} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.tipoPlano} disabled />
       </Field>
       <Field label="Valor individual atual do beneficiário">
-        <input className={`${inputCls} bg-muted`} value={formatCurrency(servidorAtual.valorPlano)} disabled />
+        <input className={`${inputCls} bg-muted`} value={formatCurrency(servidor.valorPlano)} disabled />
       </Field>
       <Field label="Data de vigência do plano atual">
-        <input className={`${inputCls} bg-muted`} value={servidorAtual.inicioBeneficio} disabled />
+        <input className={`${inputCls} bg-muted`} value={servidor.inicioBeneficio} disabled />
       </Field>
     </div>
   );
@@ -338,8 +405,8 @@ function StepDependentes({
   newDependentBlocks: NewDependentBlock[];
   setNewDependentBlocks: Dispatch<SetStateAction<NewDependentBlock[]>>;
 }) {
-  const ativos = dependentes.filter(d => d.status === "ativo");
-  
+  const { servidor, dependentesAtivos: ativos } = useRequerimentoBeneficiario();
+
   const updateDependent = (id: string, updates: Partial<DependentData>) => {
     setDependentsData(prev => ({
       ...prev,
@@ -356,7 +423,7 @@ function StepDependentes({
       </div>
       
       {ativos.map((dep) => {
-        const isSamePlanAsTitular = dep.plano === servidorAtual.plano;
+        const isSamePlanAsTitular = dep.plano === servidor.plano;
         const currentData = dependentsData[dep.id] || { action: "manter" };
         
         return (
@@ -379,11 +446,11 @@ function StepDependentes({
                 </div>
                 <div>
                   <span className="text-muted-foreground">Operadora:</span>
-                  <p className="font-medium">{servidorAtual.operadora}</p>
+                  <p className="font-medium">{servidor.operadora}</p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Modalidade:</span>
-                  <p className="font-medium">{servidorAtual.tipoPlano}</p>
+                  <p className="font-medium">{servidor.tipoPlano}</p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Valor:</span>
@@ -391,7 +458,7 @@ function StepDependentes({
                 </div>
                 <div className="col-span-2">
                   <span className="text-muted-foreground">Vigência:</span>
-                  <p className="font-medium">{servidorAtual.inicioBeneficio}</p>
+                  <p className="font-medium">{servidor.inicioBeneficio}</p>
                 </div>
               </div>
               <div className={`mt-2 text-xs font-medium ${isSamePlanAsTitular ? 'text-green-700 bg-green-50' : 'text-blue-700 bg-blue-50'} p-2 rounded`}>
@@ -617,7 +684,7 @@ function StepPensionistaDependentes() {
 }
 
 function StepDocs({ dependentsData }: { dependentsData: Record<string, DependentData> }) {
-  const ativos = dependentes.filter(d => d.status === "ativo");
+  const { dependentesAtivos: ativos } = useRequerimentoBeneficiario();
   const dependentsWithDifferentPlan = ativos.filter(d => dependentsData[d.id]?.action === "migrar_outro");
 
   return (
@@ -691,14 +758,14 @@ function StepRevisao({
   onDeclarationChange: (index: number, checked: boolean) => void;
   allDeclarationsChecked: boolean;
 }) {
+  const { servidor, dependentesAtivos: ativos } = useRequerimentoBeneficiario();
   const TETO_VIGENTE = 4000;
   const PERCENTUAL = 0.9;
-  const numValor = servidorAtual.valorPlano;
+  const numValor = servidor.valorPlano;
   const baseCalculo = Math.min(numValor, TETO_VIGENTE);
   const reembolsoEstimado = baseCalculo * PERCENTUAL;
   const participacaoServidor = numValor - reembolsoEstimado;
-  const isPensionista = servidorAtual.cargo.startsWith("Pensionista");
-  const ativos = dependentes.filter(d => d.status === "ativo");
+  const isPensionista = servidor.cargo.startsWith("Pensionista");
 
   const getActionText = (action: DependentAction) => {
     switch (action) {
@@ -724,25 +791,25 @@ function StepRevisao({
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-muted-foreground">Nome:</span>
-            <p className="font-medium">{servidorAtual.nome}</p>
+            <p className="font-medium">{servidor.nome}</p>
           </div>
           <div>
             <span className="text-muted-foreground">CPF:</span>
-            <p className="font-medium">{servidorAtual.cpf}</p>
+            <p className="font-medium">{servidor.cpf}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Tipo de beneficiário:</span>
             <p className="font-medium">
-              {servidorAtual.cargo === "Pensionista vitalício" 
+              {servidor.cargo === "Pensionista vitalício" 
                 ? "Pensionista vitalício" 
-                : servidorAtual.cargo === "Pensionista temporário"
+                : servidor.cargo === "Pensionista temporário"
                 ? "Pensionista temporário"
                 : "Servidor ativo"}
             </p>
           </div>
           <div>
             <span className="text-muted-foreground">Plano anterior:</span>
-            <p className="font-medium">{servidorAtual.plano}</p>
+            <p className="font-medium">{servidor.plano}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Nova operadora:</span>
@@ -796,7 +863,7 @@ function StepRevisao({
           <h3 className="text-sm font-semibold">Resumo dos Dependentes</h3>
           {ativos.map((dep) => {
             const data = dependentsData[dep.id] || { action: "manter" };
-            const isSamePlanAsTitular = dep.plano === servidorAtual.plano;
+            const isSamePlanAsTitular = dep.plano === servidor.plano;
             
             return (
               <div key={dep.id} className="bg-card rounded-xl p-4 border border-border space-y-2">

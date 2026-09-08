@@ -18,6 +18,7 @@ import {
   CARGOS_SERVIDOR,
   SITUACOES_TITULAR,
   TIPOS_DEPENDENTE,
+  DOCUMENTOS_POR_TIPO_DEPENDENTE,
   type TipoDependente,
   calcularIdade,
   mostrarAlertaEscolaridadeDependente,
@@ -27,6 +28,10 @@ import {
   DocumentosDependenteLista,
   DocumentosDependenteUploads,
 } from "@/components/DocumentosDependente";
+import {
+  criarRequerimentoAssociacao,
+  type DocumentoRequerimentoAssociacao,
+} from "@/lib/requerimentos-associacao";
 
 export const Route = createFileRoute("/primeiro-acesso")({
   component: PrimeiroAcesso,
@@ -478,6 +483,37 @@ export function FlowInclusao({
         },
         dependentes: deps,
         updatedAt: new Date().toISOString(),
+      });
+    } else if (associacaoFixa) {
+      // Correção da lacuna identificada: antes, concluir a Nova Inclusão pela Associação não
+      // gerava nenhum registro — a tela de sucesso era só cosmética, nada chegava à GERDAB.
+      // Agora cria um requerimento real, sempre "Pendente de Validação" (nunca
+      // aprovado/concluído automaticamente pelo próprio envio), com a MESMA documentação
+      // exigida pela etapa "Docs" (reaproveitada aqui, não duplicada): documentos do titular,
+      // documentos por tipo de dependente (`DOCUMENTOS_POR_TIPO_DEPENDENTE`, mesma fonte usada
+      // por `DocumentosDependenteUploads`) e o Requerimento de Inclusão Assinado.
+      const documentosEnviados: DocumentoRequerimentoAssociacao[] = [
+        { nome: "Requerimento de Inclusão Assinado (Titular)", categoria: "associacao" },
+        ...(isPensionista
+          ? [{ nome: "Publicação de Pensão Vitalícia (ou documento equivalente)", categoria: "titular" as const }]
+          : []),
+        { nome: "Documento da entidade contratada / contrato do plano", categoria: "titular" },
+        { nome: "Documento de identificação do titular", categoria: "titular" },
+        { nome: "Último contracheque", categoria: "titular" },
+        ...deps.flatMap((d) =>
+          DOCUMENTOS_POR_TIPO_DEPENDENTE[d.parentesco].map((doc) => ({
+            nome: doc,
+            categoria: "dependente" as const,
+            dependenteNome: d.nome,
+          })),
+        ),
+      ];
+      criarRequerimentoAssociacao({
+        associacao: associacaoFixa,
+        tipo: "inclusao_no_plano",
+        beneficiarioNome: titular.nome,
+        resumo: `Nova Inclusão — ${titular.nome}${deps.length > 0 ? ` + ${deps.length} dependente(s)` : ""}`,
+        documentos: documentosEnviados,
       });
     }
     onDone();

@@ -1,9 +1,15 @@
 import { servidoresList, requerimentos, statusLabels } from "./mock-data";
+import type { NotificacaoPagamento } from "./notificacoes-pagamento";
+import {
+  listarRequerimentosAssociacao,
+  statusAtualRequerimento,
+  tipoRequerimentoAssociacaoLabels,
+  versaoVigenteRequerimento,
+} from "./requerimentos-associacao";
 
-export interface NotificacaoAssociacao {
-  id: string;
-  mensagem: string;
-}
+/** Mesma forma de `NotificacaoPagamento` (id + mensagem, `href` opcional) — não uma entidade
+ *  paralela; `NotificationBell` já aceita as duas indistintamente (ver seu comentário de topo). */
+export type NotificacaoAssociacao = NotificacaoPagamento;
 
 /**
  * Deriva notificações para o sino da Área da Associação a partir do status dos requerimentos
@@ -31,5 +37,21 @@ export function getNotificacoesAssociacao(associacao: string): NotificacaoAssoci
       mensagem: `${s.nome} está com o cadastro em "${statusLabels[s.status]}".`,
     }));
 
-  return [...deRequerimentos, ...deCadastro];
+  // Requerimentos reais originados por esta associação (Nova Inclusão nesta rodada) — só notifica
+  // quando existe ação pendente DA ASSOCIAÇÃO (GERDAB solicitou documentação complementar);
+  // "Pendente de Validação" não notifica, porque nesse estado a vez é da GERDAB, não da
+  // associação — notificar isso seria ruído, não uma ação necessária dela. O link leva direto ao
+  // requerimento (mesmo mecanismo de deep-link já usado em `servidor.pagamentos.enviar.tsx`).
+  const deRequerimentosAssociacao = listarRequerimentosAssociacao(associacao)
+    .filter((r) => statusAtualRequerimento(r) === "aguardando_complementacao")
+    .map((r) => {
+      const justificativa = versaoVigenteRequerimento(r).decisao?.justificativa;
+      return {
+        id: `req-assoc-${r.id}`,
+        mensagem: `GERDAB solicitou documentação complementar para "${tipoRequerimentoAssociacaoLabels[r.tipo]} — ${r.beneficiarioNome}"${justificativa ? `: ${justificativa}` : "."}`,
+        href: `/associacao/gerenciamento?requerimento=${r.id}`,
+      };
+    });
+
+  return [...deRequerimentosAssociacao, ...deRequerimentos, ...deCadastro];
 }

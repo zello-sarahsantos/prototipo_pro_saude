@@ -1,9 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { requerimentos } from "@/lib/mock-data";
+import { useEffect, useMemo, useState } from "react";
+import { requerimentos, analistaReferencia, gerenteReferencia } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { FileText, X, Eye, ZoomIn } from "lucide-react";
+import { getAdminRole } from "@/components/AdminLayout";
+import { FileText, X, Eye, ZoomIn, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
+import {
+  listarRequerimentosAssociacao,
+  statusAtualRequerimento,
+  tipoRequerimentoAssociacaoLabels,
+  versaoVigenteRequerimento,
+  garantirRequerimentoAssociacaoExemplo,
+  type RequerimentoAssociacao,
+} from "@/lib/requerimentos-associacao";
+import { RequerimentoAssociacaoStatusBadge } from "@/components/RequerimentoAssociacaoStatusBadge";
+import { AnaliseRequerimentoAssociacaoModal } from "@/components/AnaliseRequerimentoAssociacaoModal";
 
 export const Route = createFileRoute("/admin/requerimentos")({
   component: Fila,
@@ -61,6 +72,30 @@ function Fila() {
     setMode(m);
   }
 
+  // Requerimentos reais originados por associações (Nova Inclusão nesta rodada) —
+  // persistidos de verdade, ao contrário da lista acima (`requerimentos`, estática/exemplo,
+  // nunca alterada por nenhum botão). Mesma "Fila de Aprovação", reaproveitada visualmente
+  // (mesmo card, mesmos rótulos de ação) — só o modal de análise e a fonte de dados são
+  // próprios deste domínio, porque o vocabulário de status é diferente (ver
+  // `RequerimentoAssociacaoStatusBadge`).
+  const role = getAdminRole();
+  const isGerencia = role === "gerencia";
+  const decididoPorNome = isGerencia ? gerenteReferencia : analistaReferencia;
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [reqAssocAberto, setReqAssocAberto] = useState<RequerimentoAssociacao | null>(null);
+  // Exemplo permanente (idempotente) — mesmo padrão de `garantirPlanilhaExemplo`, só para a
+  // Fila nunca aparecer vazia; não é uma regra nova, é o mesmo `criarRequerimentoAssociacao`
+  // usado por qualquer envio real.
+  useEffect(() => {
+    garantirRequerimentoAssociacaoExemplo();
+    setRefreshKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const requerimentosAssoc = useMemo(() => listarRequerimentosAssociacao(), [refreshKey]);
+  const pendentesAssoc = requerimentosAssoc.filter(
+    (r) => statusAtualRequerimento(r) === "pendente_validacao",
+  ).length;
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       <header>
@@ -69,6 +104,63 @@ function Fila() {
           {pendentes} aguardando análise • aprovação efetiva alterações somente após validação da GERDAB
         </p>
       </header>
+
+      {requerimentosAssoc.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-primary" />
+            <h2 className="font-semibold text-sm">Requerimentos das Associações</h2>
+            <span className="text-xs text-muted-foreground">
+              {pendentesAssoc} aguardando validação
+            </span>
+          </div>
+          <div className="space-y-3">
+            {requerimentosAssoc.map((r) => {
+              const status = statusAtualRequerimento(r);
+              const versao = versaoVigenteRequerimento(r);
+              return (
+                <article key={r.id} className="bg-card rounded-xl border border-border shadow-card p-5">
+                  <header className="flex justify-between items-start mb-3">
+                    <div>
+                      <p className="font-semibold">
+                        {r.associacao}
+                        <span className="text-muted-foreground font-normal"> • {tipoRequerimentoAssociacaoLabels[r.tipo]}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">Beneficiário: {r.beneficiarioNome}</p>
+                      <p className="text-sm">{versao.resumo}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Aberto em {new Date(r.criadoEm).toLocaleDateString("pt-BR")}
+                        {r.versoes.length > 1 && ` • versão ${versao.versao}`}
+                      </p>
+                    </div>
+                    <RequerimentoAssociacaoStatusBadge status={status} />
+                  </header>
+                  <div className="flex gap-2 pt-3 border-t border-border">
+                    <button
+                      onClick={() => setReqAssocAberto(r)}
+                      className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted flex items-center gap-1.5"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> {status === "pendente_validacao" ? "Analisar" : "Ver"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {reqAssocAberto && (
+        <AnaliseRequerimentoAssociacaoModal
+          requerimento={reqAssocAberto}
+          decididoPorNome={decididoPorNome}
+          onFechar={() => setReqAssocAberto(null)}
+          onDecidido={() => {
+            setRefreshKey((k) => k + 1);
+            setReqAssocAberto(null);
+          }}
+        />
+      )}
 
       <div className="bg-card rounded-xl border border-border shadow-card p-4 flex flex-col sm:flex-row gap-3">
         <select
