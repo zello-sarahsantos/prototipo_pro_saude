@@ -245,6 +245,10 @@ export interface ComposicaoAssociacaoIntegrante {
   cpf: string;
   vinculo: string;
   valor: number;
+  /** Operadora do próprio beneficiário nesta linha da planilha (`RegistroPlanilhaAssociacao.operadora`)
+   *  — nunca a mesma operadora do titular assumida para o grupo inteiro; cada integrante mantém a
+   *  sua (correção da coluna "Operadora/Associação"). */
+  operadora: string;
 }
 
 /**
@@ -290,6 +294,7 @@ export function getRegistrosAssociacaoAprovadosNaCompetencia(competencia: string
         cpf: registro.cpf,
         vinculo: registro.vinculo,
         valor: registro.valor,
+        operadora: registro.operadora,
       });
       porTitular.set(registro.cpfTitular, atual);
     }

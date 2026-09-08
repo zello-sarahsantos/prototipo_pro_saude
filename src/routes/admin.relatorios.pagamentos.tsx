@@ -6,6 +6,7 @@ import { formatCurrency } from "@/lib/mock-data";
 import {
   competenciasParaFechamento,
   formatCompetencia,
+  formatarOperadoraIntegrante,
   getRegistrosFechamento,
   getResumoFechamento,
   podeFecharCompetencia,
@@ -127,7 +128,7 @@ function FechamentoDePagamento() {
         { header: "CPF Beneficiário", valor: (l) => l.integrante.cpf ?? "—", tipo: "texto" },
         { header: "Beneficiário", valor: (l) => l.integrante.nome, tipo: "texto", width: 24 },
         { header: "Parentesco", valor: (l) => l.integrante.parentesco, tipo: "texto" },
-        { header: "Operadora/Associação", valor: (l) => l.registro.operadoraOuAssociacao, tipo: "texto", width: 18 },
+        { header: "Operadora/Associação", valor: (l) => formatarOperadoraIntegrante(l.registro, l.integrante), tipo: "texto", width: 18 },
         { header: "Competência", valor: (l) => formatCompetencia(l.registro.competencia), tipo: "texto" },
         { header: "Valor Individual", valor: (l) => l.integrante.valor, tipo: "moeda" },
         { header: "Valor Total do Grupo Familiar", valor: (l) => l.registro.valor, tipo: "moeda" },

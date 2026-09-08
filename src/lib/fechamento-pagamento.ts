@@ -96,6 +96,11 @@ export interface IntegranteGrupoFechamento {
   cpf?: string;
   parentesco: string;
   valor: number;
+  /** Operadora do próprio integrante — origem "individual":
+   *  `BeneficiarioPagamento.operadora` do respectivo beneficiário; origem "associacao":
+   *  `ComposicaoAssociacaoIntegrante.operadora` (linha da planilha). Nunca assumida igual à do
+   *  titular/grupo — cada integrante mantém a sua (ver `formatarOperadoraIntegrante`). */
+  operadora?: string;
 }
 
 export interface RegistroFechamento {
@@ -143,6 +148,23 @@ export interface RegistroFechamento {
    *  origem sobre o mesmo `RegistroFechamento[]` único. */
   origem: OrigemComprovacao;
   origemAssociacao?: OrigemAssociacaoDetalhe;
+}
+
+/**
+ * Formata a coluna "Operadora/Associação" para 1 integrante do grupo — único ponto que decide
+ * essa regra, reaproveitado pela coluna da tela (grupo/titular) e pela exportação analítica
+ * (1 linha por integrante), nunca duplicado entre os dois.
+ *
+ * - Origem "associacao": operadora do próprio integrante (linha da planilha) + nome da
+ *   associação responsável — nunca a associação sozinha, nunca um sufixo artificial.
+ * - Origem "individual": só a operadora do integrante — não há associação a compor.
+ */
+export function formatarOperadoraIntegrante(registro: RegistroFechamento, integrante: IntegranteGrupoFechamento): string {
+  if (registro.origem === "associacao") {
+    const associacao = registro.origemAssociacao?.associacao ?? registro.operadoraOuAssociacao;
+    return integrante.operadora ? `${integrante.operadora} / ${associacao}` : associacao;
+  }
+  return integrante.operadora ?? registro.operadoraOuAssociacao;
 }
 
 function ultimoValor(comprovante: Comprovante, beneficiarioId: string): number | undefined {
@@ -195,7 +217,7 @@ function classificarTitularNaCompetencia(
   // valor já cadastrado de cada integrante (mesmo fallback que `titular.valorCadastrado` já
   // usava sozinho, agora explícito por integrante em vez de só a soma).
   const composicaoSemComprovante = (): IntegranteGrupoFechamento[] =>
-    grupo.map((b) => ({ beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: b.valorCadastrado }));
+    grupo.map((b) => ({ beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: b.valorCadastrado, operadora: b.operadora }));
 
   if (docsGrupo.length === 0) {
     const dispensado = grupo.every((b) => dispensadosIds.has(b.id));
@@ -229,7 +251,7 @@ function classificarTitularNaCompetencia(
   const composicaoGrupo: IntegranteGrupoFechamento[] = grupo.map((b) => {
     const entrada = statusPorBeneficiario.find((s) => s.beneficiarioId === b.id);
     const valorIndividual = entrada ? ultimoValor(entrada.comprovante, b.id) ?? b.valorCadastrado : b.valorCadastrado;
-    return { beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: valorIndividual };
+    return { beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: valorIndividual, operadora: b.operadora };
   });
   const valorTotal = composicaoGrupo.reduce((soma, i) => soma + i.valor, 0);
 
@@ -315,8 +337,12 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
     };
   });
 
-  const registrosAssociacao: RegistroFechamento[] = getRegistrosAssociacaoAprovadosNaCompetencia(competencia).map(
-    (r) => ({
+  const registrosAssociacao: RegistroFechamento[] = getRegistrosAssociacaoAprovadosNaCompetencia(competencia).map((r) => {
+    // Operadora exibida na coluna do grupo (1 linha por titular na tela) é a do próprio
+    // titular na planilha — nunca assumida igual à dos dependentes. Fallback ao primeiro
+    // integrante só na ausência defensiva de uma linha "Titular" (não deveria ocorrer).
+    const operadoraTitular = r.composicao.find((c) => c.vinculo === "Titular")?.operadora ?? r.composicao[0]?.operadora;
+    return {
       beneficiarioId: `associacao:${r.cpfTitular}:${r.competencia}`,
       cpf: r.cpfTitular,
       nome: r.nomeTitular,
@@ -325,12 +351,21 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
       // coerente para o filtro Todos|Ativos|Inativos da tela não quebrar; registrado como
       // simplificação técnica, não como regra de negócio (ver relatório de implementação).
       situacaoVinculo: "ativo",
-      operadoraOuAssociacao: r.associacao,
+      // Operadora do titular + associação responsável (correção da coluna "Operadora/Associação"
+      // — antes exibia só a associação). Cada integrante mantém a sua própria na exportação
+      // analítica (`formatarOperadoraIntegrante`); este campo é só o valor agregado do grupo.
+      operadoraOuAssociacao: operadoraTitular ? `${operadoraTitular} / ${r.associacao}` : r.associacao,
       competencia: r.competencia,
       classificacao: "adimplente",
       valor: r.valor,
       valorRessarcir: calcularReembolso(r.valor),
-      composicaoGrupo: r.composicao.map((c) => ({ nome: c.beneficiario, cpf: c.cpf, parentesco: c.vinculo, valor: c.valor })),
+      composicaoGrupo: r.composicao.map((c) => ({
+        nome: c.beneficiario,
+        cpf: c.cpf,
+        parentesco: c.vinculo,
+        valor: c.valor,
+        operadora: c.operadora,
+      })),
       origem: "associacao",
       origemAssociacao: {
         associacao: r.associacao,
@@ -338,8 +373,8 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
         planilhaId: r.planilhaId,
         statusPlanilha: r.statusPlanilha,
       },
-    }),
-  );
+    };
+  });
 
   return [...registrosIndividuais, ...registrosAssociacao];
 }
