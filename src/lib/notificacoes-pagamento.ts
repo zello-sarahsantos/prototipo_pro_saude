@@ -5,6 +5,10 @@ import { getCompetenciasPendentes } from "./competencias-pendentes";
 export interface NotificacaoPagamento {
   id: string;
   mensagem: string;
+  /** Opcional — quando presente, a notificação vira clicável em `NotificationBell` e leva direto
+   *  ao ponto onde a pendência pode ser tratada (ex: um requerimento específico). Reaproveitado
+   *  por `NotificacaoAssociacao` (`notificacoes-associacao.ts`) — nunca uma segunda central. */
+  href?: string;
 }
 
 /** Status do comprovante que geram uma notificação relevante para o servidor. */

@@ -20,6 +20,7 @@ export const PROSAUDE_STORAGE_KEYS = {
   fechamentosPagamento: "prosaude_fechamentos_pagamento",
   observacoesNurfi: "prosaude_observacoes_nurfi",
   planilhasAssociacao: "prosaude_planilhas_associacao",
+  requerimentosAssociacao: "prosaude_requerimentos_associacao",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -572,4 +573,91 @@ export function loadPlanilhasAssociacao(): PlanilhaAssociacao[] {
 export function savePlanilhasAssociacao(planilhas: PlanilhaAssociacao[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.planilhasAssociacao, JSON.stringify(planilhas));
+}
+
+/**
+ * Requerimentos originados pela Área da Associação (ex: ASSETRAN) perante a GERDAB — camada de
+ * persistência crua (CRUD), mesma convenção de `PlanilhaAssociacao` acima (a lógica de negócio
+ * vive em `requerimentos-associacao.ts`, que consome estas funções).
+ *
+ * Modelo genérico por `tipo` — nesta rodada só "inclusao_no_plano" (Nova Inclusão) é
+ * efetivamente gerado por algum fluxo (`associacao.nova-inclusao.tsx`); os demais valores do
+ * enum existem para que Mudança de Plano/Inclusão de Dependente/Exclusão (HU02) possam
+ * futuramente reaproveitar a MESMA estrutura de status/decisão/versionamento/notificação, sem
+ * precisar de um mecanismo de requerimentos paralelo — nada aqui é exclusivo de Nova Inclusão.
+ *
+ * Mesmo padrão de versionamento já usado em `PlanilhaAssociacao`: cada submissão (envio inicial
+ * ou complementação solicitada pela GERDAB) é uma nova entrada em `versoes`, nunca sobrescreve
+ * a anterior; o status atual é sempre derivado da decisão da versão vigente (`decisao?.status`),
+ * nunca um campo próprio guardado à parte.
+ */
+export type TipoRequerimentoAssociacao =
+  | "inclusao_no_plano"
+  | "mudanca_plano"
+  | "inclusao_dependente"
+  | "exclusao";
+
+export type StatusRequerimentoAssociacao =
+  | "pendente_validacao"
+  | "aguardando_complementacao"
+  | "aprovado"
+  | "negado";
+
+export interface DocumentoRequerimentoAssociacao {
+  nome: string;
+  categoria: "titular" | "dependente" | "associacao" | "complemento";
+  dependenteNome?: string;
+}
+
+/** Decisão da GERDAB sobre uma versão específica do requerimento — ausente enquanto a versão
+ *  ainda está "Pendente de Validação". */
+export interface DecisaoRequerimentoAssociacao {
+  status: Exclude<StatusRequerimentoAssociacao, "pendente_validacao">;
+  decididoEm: string;
+  decididoPor: string;
+  /** Obrigatória para "aguardando_complementacao" (o que falta enviar) e "negado" (o motivo);
+   *  ausente para "aprovado". */
+  justificativa?: string;
+}
+
+export interface VersaoRequerimentoAssociacao {
+  versao: number;
+  enviadoEm: string;
+  /** Resumo textual desta versão — no envio inicial, um resumo do titular/dependentes; numa
+   *  complementação, o que foi anexado (a lista completa fica em `documentos`). */
+  resumo: string;
+  documentos: DocumentoRequerimentoAssociacao[];
+  decisao?: DecisaoRequerimentoAssociacao;
+}
+
+export interface RequerimentoAssociacao {
+  id: string;
+  associacao: string;
+  tipo: TipoRequerimentoAssociacao;
+  beneficiarioNome: string;
+  /** Preenchido só quando o requerimento já pode ser associado a um beneficiário existente no
+   *  cadastro (matrícula) — numa Nova Inclusão o beneficiário ainda não existe, então fica
+   *  undefined; é o campo que permitirá, no futuro, a aba "Requerimentos" da ficha
+   *  (`associacao.gerenciamento.$id.tsx`) também exibir requerimentos reais deste beneficiário,
+   *  sem precisar de outra estrutura. */
+  beneficiarioId?: string;
+  criadoEm: string;
+  /** Sempre em ordem cronológica — a última é a vigente. Nunca removida/reescrita. */
+  versoes: VersaoRequerimentoAssociacao[];
+}
+
+export function loadRequerimentosAssociacao(): RequerimentoAssociacao[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.requerimentosAssociacao);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as RequerimentoAssociacao[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveRequerimentosAssociacao(requerimentos: RequerimentoAssociacao[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.requerimentosAssociacao, JSON.stringify(requerimentos));
 }
