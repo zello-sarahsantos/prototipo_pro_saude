@@ -402,10 +402,17 @@ export function getResumoFechamento(competencia: string): ResumoFechamento {
   };
 }
 
-/** Regra 2.4 do plano: existir qualquer registro em "Requer análise" bloqueia o fechamento —
- *  recomendação deste plano, marcada como pendente de confirmação com a stakeholder (seção 2.8). */
-export function podeFecharCompetencia(competencia: string): boolean {
-  return getResumoFechamento(competencia).requerAnalise === 0;
+/**
+ * Correção de regra de negócio: "Requer análise" NÃO bloqueia mais o fechamento da competência
+ * (revoga a regra 2.4 do plano, que tratava isso como recomendação pendente de confirmação —
+ * seção 2.8). A GERDAB tem autonomia para fechar a competência quando considerar adequado, ainda
+ * que existam registros em "Requer análise"; a contagem continua sendo só uma sinalização
+ * informativa (ver `getResumoFechamento`/tela). Fechar não classifica nem transforma esses
+ * registros — eles permanecem como estavam. Tratamento posterior (retroativo/avulso) é Não
+ * Escopo nesta rodada, a levantar com a stakeholder.
+ */
+export function podeFecharCompetencia(_competencia: string): boolean {
+  return true;
 }
 
 /**

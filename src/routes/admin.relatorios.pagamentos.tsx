@@ -9,7 +9,6 @@ import {
   formatarOperadoraIntegrante,
   getRegistrosFechamento,
   getResumoFechamento,
-  podeFecharCompetencia,
   statusComprovanteLabels,
   type ClassificacaoFechamento,
   type RegistroFechamento,
@@ -80,7 +79,6 @@ function FechamentoDePagamento() {
 
   const registros = useMemo(() => getRegistrosFechamento(competencia), [competencia]);
   const resumo = useMemo(() => getResumoFechamento(competencia), [competencia]);
-  const podeFechar = useMemo(() => podeFecharCompetencia(competencia), [competencia]);
   const fechamento = getFechamentoPagamento(competencia);
 
   const registrosFiltrados = useMemo(
@@ -275,20 +273,13 @@ function FechamentoDePagamento() {
             <>
               <button
                 onClick={fecharCompetencia}
-                disabled={!podeFechar}
-                title={
-                  podeFechar
-                    ? undefined
-                    : "Existem registros em 'Requer análise' — trate-os antes de fechar a competência."
-                }
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-light"
+                className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary-light"
               >
                 <Unlock className="h-4 w-4" /> Fechar competência
               </button>
-              {!podeFechar && (
+              {resumo.requerAnalise > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Bloqueado: {resumo.requerAnalise} registro(s) ainda em "Requer análise" (regra a
-                  confirmar com a stakeholder — ver docs/MODULO_RELATORIOS.md).
+                  {resumo.requerAnalise} registro(s) ainda em "Requer análise".
                 </p>
               )}
             </>
