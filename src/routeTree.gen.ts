@@ -44,7 +44,7 @@ import { Route as AdminRelatoriosPagamentosRouteImport } from './routes/admin.re
 import { Route as AdminRelatoriosGerencialRouteImport } from './routes/admin.relatorios.gerencial'
 import { Route as AdminRelatoriosDocumentacaoRouteImport } from './routes/admin.relatorios.documentacao'
 import { Route as AdminRelatoriosExtratoIndexRouteImport } from './routes/admin.relatorios.extrato.index'
-import { Route as AdminRelatoriosExtratoMatriculaRouteImport } from './routes/admin.relatorios.extrato.$matricula'
+import { Route as AdminRelatoriosExtratoCpfRouteImport } from './routes/admin.relatorios.extrato.$cpf'
 
 const ServidorRoute = ServidorRouteImport.update({
   id: '/servidor',
@@ -236,10 +236,10 @@ const AdminRelatoriosExtratoIndexRoute =
     path: '/relatorios/extrato/',
     getParentRoute: () => AdminRoute,
   } as any)
-const AdminRelatoriosExtratoMatriculaRoute =
-  AdminRelatoriosExtratoMatriculaRouteImport.update({
-    id: '/relatorios/extrato/$matricula',
-    path: '/relatorios/extrato/$matricula',
+const AdminRelatoriosExtratoCpfRoute =
+  AdminRelatoriosExtratoCpfRouteImport.update({
+    id: '/relatorios/extrato/$cpf',
+    path: '/relatorios/extrato/$cpf',
     getParentRoute: () => AdminRoute,
   } as any)
 
@@ -278,7 +278,7 @@ export interface FileRoutesByFullPath {
   '/admin/servidores/': typeof AdminServidoresIndexRoute
   '/associacao/gerenciamento/': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
-  '/admin/relatorios/extrato/$matricula': typeof AdminRelatoriosExtratoMatriculaRoute
+  '/admin/relatorios/extrato/$cpf': typeof AdminRelatoriosExtratoCpfRoute
   '/admin/relatorios/extrato/': typeof AdminRelatoriosExtratoIndexRoute
 }
 export interface FileRoutesByTo {
@@ -316,7 +316,7 @@ export interface FileRoutesByTo {
   '/admin/servidores': typeof AdminServidoresIndexRoute
   '/associacao/gerenciamento': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos': typeof ServidorPagamentosIndexRoute
-  '/admin/relatorios/extrato/$matricula': typeof AdminRelatoriosExtratoMatriculaRoute
+  '/admin/relatorios/extrato/$cpf': typeof AdminRelatoriosExtratoCpfRoute
   '/admin/relatorios/extrato': typeof AdminRelatoriosExtratoIndexRoute
 }
 export interface FileRoutesById {
@@ -355,7 +355,7 @@ export interface FileRoutesById {
   '/admin/servidores/': typeof AdminServidoresIndexRoute
   '/associacao/gerenciamento/': typeof AssociacaoGerenciamentoIndexRoute
   '/servidor/pagamentos/': typeof ServidorPagamentosIndexRoute
-  '/admin/relatorios/extrato/$matricula': typeof AdminRelatoriosExtratoMatriculaRoute
+  '/admin/relatorios/extrato/$cpf': typeof AdminRelatoriosExtratoCpfRoute
   '/admin/relatorios/extrato/': typeof AdminRelatoriosExtratoIndexRoute
 }
 export interface FileRouteTypes {
@@ -395,7 +395,7 @@ export interface FileRouteTypes {
     | '/admin/servidores/'
     | '/associacao/gerenciamento/'
     | '/servidor/pagamentos/'
-    | '/admin/relatorios/extrato/$matricula'
+    | '/admin/relatorios/extrato/$cpf'
     | '/admin/relatorios/extrato/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -433,7 +433,7 @@ export interface FileRouteTypes {
     | '/admin/servidores'
     | '/associacao/gerenciamento'
     | '/servidor/pagamentos'
-    | '/admin/relatorios/extrato/$matricula'
+    | '/admin/relatorios/extrato/$cpf'
     | '/admin/relatorios/extrato'
   id:
     | '__root__'
@@ -471,7 +471,7 @@ export interface FileRouteTypes {
     | '/admin/servidores/'
     | '/associacao/gerenciamento/'
     | '/servidor/pagamentos/'
-    | '/admin/relatorios/extrato/$matricula'
+    | '/admin/relatorios/extrato/$cpf'
     | '/admin/relatorios/extrato/'
   fileRoutesById: FileRoutesById
 }
@@ -731,11 +731,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRelatoriosExtratoIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/relatorios/extrato/$matricula': {
-      id: '/admin/relatorios/extrato/$matricula'
-      path: '/relatorios/extrato/$matricula'
-      fullPath: '/admin/relatorios/extrato/$matricula'
-      preLoaderRoute: typeof AdminRelatoriosExtratoMatriculaRouteImport
+    '/admin/relatorios/extrato/$cpf': {
+      id: '/admin/relatorios/extrato/$cpf'
+      path: '/relatorios/extrato/$cpf'
+      fullPath: '/admin/relatorios/extrato/$cpf'
+      preLoaderRoute: typeof AdminRelatoriosExtratoCpfRouteImport
       parentRoute: typeof AdminRoute
     }
   }
@@ -753,7 +753,7 @@ interface AdminRouteChildren {
   AdminServidoresIdRoute: typeof AdminServidoresIdRoute
   AdminRelatoriosIndexRoute: typeof AdminRelatoriosIndexRoute
   AdminServidoresIndexRoute: typeof AdminServidoresIndexRoute
-  AdminRelatoriosExtratoMatriculaRoute: typeof AdminRelatoriosExtratoMatriculaRoute
+  AdminRelatoriosExtratoCpfRoute: typeof AdminRelatoriosExtratoCpfRoute
   AdminRelatoriosExtratoIndexRoute: typeof AdminRelatoriosExtratoIndexRoute
 }
 
@@ -769,7 +769,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminServidoresIdRoute: AdminServidoresIdRoute,
   AdminRelatoriosIndexRoute: AdminRelatoriosIndexRoute,
   AdminServidoresIndexRoute: AdminServidoresIndexRoute,
-  AdminRelatoriosExtratoMatriculaRoute: AdminRelatoriosExtratoMatriculaRoute,
+  AdminRelatoriosExtratoCpfRoute: AdminRelatoriosExtratoCpfRoute,
   AdminRelatoriosExtratoIndexRoute: AdminRelatoriosExtratoIndexRoute,
 }
 

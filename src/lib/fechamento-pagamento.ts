@@ -38,7 +38,7 @@ import {
   getObservacaoNurfi,
 } from "./prosaude-storage";
 import { getCamposDoBeneficiario, statusDoBeneficiarioNoDocumento } from "./comprovante-status";
-import { getRegistrosAssociacaoAprovadosNaCompetencia } from "./planilhas-associacao";
+import { getRegistrosAssociacaoAprovadosNaCompetencia, type RegistroAssociacaoConsolidado } from "./planilhas-associacao";
 
 /** Competências que fazem sentido para um Fechamento — a atual (ainda em andamento, fechamento
  *  bloqueado por natureza) e as já fechadas para envio (candidatas reais a fechamento GERDAB). */
@@ -165,6 +165,14 @@ export function formatarOperadoraIntegrante(registro: RegistroFechamento, integr
     return integrante.operadora ? `${integrante.operadora} / ${associacao}` : associacao;
   }
   return integrante.operadora ?? registro.operadoraOuAssociacao;
+}
+
+/** Operadora do titular dentro de uma planilha de associação consolidada — a do integrante com
+ *  `vinculo === "Titular"`, nunca a de um dependente qualquer. Fallback ao primeiro integrante só
+ *  na ausência defensiva de uma linha "Titular" (não deveria ocorrer). Único ponto que decide essa
+ *  regra, reaproveitado por `getRegistrosFechamento` e por `getExtratoPorCpf`. */
+function operadoraTitularAssociacao(r: RegistroAssociacaoConsolidado): string | undefined {
+  return r.composicao.find((c) => c.vinculo === "Titular")?.operadora ?? r.composicao[0]?.operadora;
 }
 
 function ultimoValor(comprovante: Comprovante, beneficiarioId: string): number | undefined {
@@ -338,10 +346,7 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
   });
 
   const registrosAssociacao: RegistroFechamento[] = getRegistrosAssociacaoAprovadosNaCompetencia(competencia).map((r) => {
-    // Operadora exibida na coluna do grupo (1 linha por titular na tela) é a do próprio
-    // titular na planilha — nunca assumida igual à dos dependentes. Fallback ao primeiro
-    // integrante só na ausência defensiva de uma linha "Titular" (não deveria ocorrer).
-    const operadoraTitular = r.composicao.find((c) => c.vinculo === "Titular")?.operadora ?? r.composicao[0]?.operadora;
+    const operadoraTitular = operadoraTitularAssociacao(r);
     return {
       beneficiarioId: `associacao:${r.cpfTitular}:${r.competencia}`,
       cpf: r.cpfTitular,
@@ -432,6 +437,14 @@ export interface LinhaExtrato {
    *  sem motor de cálculo de diferença/teto (fora de escopo desta rodada, ver plano seção 2.1
    *  item 8 e docs/MODULO_RELATORIOS.md seção 4). */
   ocorrenciaRetroativo: boolean;
+  /** Origem da comprovação nesta competência — rastreabilidade no Extrato/Histórico de
+   *  Comprovações (HU04). `getExtratoServidor` (só individual) sempre marca "individual";
+   *  `getExtratoPorCpf` (consolidado por CPF) marca "associacao" quando a linha vem de uma
+   *  planilha de associação aprovada. */
+  origem: OrigemComprovacao;
+  /** Só presente quando `origem === "associacao"` — mesma estrutura de rastreabilidade já usada
+   *  em `RegistroFechamento.origemAssociacao` (P7), reaproveitada aqui. */
+  origemAssociacao?: OrigemAssociacaoDetalhe & { operadora?: string };
 }
 
 /** Competências consideradas no Extrato: as mesmas do Fechamento, mais qualquer competência com
@@ -461,7 +474,61 @@ export function getExtratoServidor(beneficiarioId: string): LinhaExtrato[] {
       valor: detalhe.classificacao === "adimplente" ? detalhe.valor : 0,
       statusComprovante: houveEnvio ? detalhe.statusComprovante ?? (detalhe.classificacao === "adimplente" ? "aprovado" : "recusado") : undefined,
       ocorrenciaRetroativo: comprovantesDaCompetencia.some((c) => c.isRetroativo),
+      origem: "individual",
     };
+  });
+}
+
+/**
+ * Extrato consolidado por CPF do titular (HU04) — mesma ideia de `getExtratoServidor`, mas capaz
+ * de identificar o titular tanto pelo fluxo individual (`BeneficiarioPagamento`) quanto por
+ * planilhas de associação já **aprovadas** pela GERDAB (`getRegistrosAssociacaoAprovadosNaCompetencia`),
+ * usando o CPF como identificador comum entre as duas origens (nunca duplicando o mesmo titular
+ * em duas linhas por vir de fontes diferentes). Nenhum motor de classificação novo: reaproveita
+ * `getExtratoServidor` para a origem individual e `getRegistrosAssociacaoAprovadosNaCompetencia`
+ * (já usada no Fechamento) para a origem associação — só orquestra as duas por competência.
+ *
+ * Prioridade em caso de sobreposição (mesmo CPF com dado nas duas origens na mesma competência,
+ * cenário hipotético — não ocorre nos dados de exemplo atuais): a linha individual prevalece
+ * quando existe envio individual real naquela competência; senão, usa a associação aprovada.
+ * Nunca soma as duas nem inventa um terceiro valor.
+ */
+export function getExtratoPorCpf(cpf: string): LinhaExtrato[] {
+  const beneficiarios = getBeneficiariosPagamentoAtual();
+  const titularIndividual = beneficiarios.find((b) => b.parentesco === "Titular" && b.cpf === cpf);
+  const linhasIndividuais = titularIndividual ? getExtratoServidor(titularIndividual.id) : [];
+  const porCompetenciaIndividual = new Map(linhasIndividuais.map((l) => [l.competencia, l]));
+
+  return getCompetenciasConhecidas().map((competencia): LinhaExtrato => {
+    const individual = porCompetenciaIndividual.get(competencia);
+    if (individual && (individual.houvePagamento || individual.statusComprovante)) return individual;
+
+    const registroAssociacao = getRegistrosAssociacaoAprovadosNaCompetencia(competencia).find(
+      (r) => r.cpfTitular === cpf,
+    );
+    if (registroAssociacao) {
+      return {
+        competencia,
+        ano: competencia.split("-")[0],
+        houvePagamento: true, // planilha só chega a "aprovada" com 100% dos registros válidos.
+        valor: registroAssociacao.valor,
+        statusComprovante: undefined, // não há StatusComprovante para planilha — situação própria
+        // é `origemAssociacao.statusPlanilha`, exposta abaixo (nunca inventada).
+        ocorrenciaRetroativo: false, // planilha de associação não tem conceito de retroativo hoje.
+        origem: "associacao",
+        origemAssociacao: {
+          associacao: registroAssociacao.associacao,
+          competencia: registroAssociacao.competencia,
+          planilhaId: registroAssociacao.planilhaId,
+          statusPlanilha: registroAssociacao.statusPlanilha,
+          operadora: operadoraTitularAssociacao(registroAssociacao),
+        },
+      };
+    }
+
+    // Sem dado em nenhuma das duas origens nesta competência — mesmo default "sem envio" que
+    // `getExtratoServidor` já usa (`origem` é irrelevante aqui, não há nada a rastrear).
+    return individual ?? { competencia, ano: competencia.split("-")[0], houvePagamento: false, valor: 0, ocorrenciaRetroativo: false, origem: "individual" };
   });
 }
 
@@ -514,20 +581,63 @@ export function getComprovanteRendimentos(beneficiarioId: string, ano: string): 
 }
 
 /**
+ * Titular consolidado por CPF (HU04) — identificador comum entre as duas origens que alimentam o
+ * Histórico de Comprovações: o fluxo individual (`BeneficiarioPagamento`) e as planilhas de
+ * associação já **aprovadas** pela GERDAB. Um titular com registros nas duas origens (mesmo CPF)
+ * aparece como uma única entrada — nunca duplicado por ter vindo de fontes diferentes. Reaproveita
+ * exatamente os dados já existentes (`getBeneficiariosPagamentoAtual`,
+ * `getRegistrosAssociacaoAprovadosNaCompetencia`); nenhuma fonte paralela de beneficiários.
+ */
+export interface TitularConsolidadoPorCpf {
+  cpf: string;
+  nome: string;
+  /** Só presente para titulares do fluxo individual — planilha de associação não tem matrícula
+   *  (é exatamente por isso que a identificação passou a ser por CPF, não por matrícula). */
+  matricula?: string;
+  situacaoVinculo: BeneficiarioPagamento["situacao"];
+}
+
+function getTitularesConsolidadosPorCpf(): TitularConsolidadoPorCpf[] {
+  const porCpf = new Map<string, TitularConsolidadoPorCpf>();
+
+  getBeneficiariosPagamentoAtual()
+    .filter((b) => b.parentesco === "Titular" && b.cpf)
+    .forEach((b) => porCpf.set(b.cpf!, { cpf: b.cpf!, nome: b.nome, matricula: b.matricula, situacaoVinculo: b.situacao }));
+
+  // Associação — mesma convenção já usada em `getRegistrosFechamento` para `situacaoVinculo`:
+  // não há, nesta rodada, conceito de vínculo funcional para quem vem só de planilha, então
+  // "ativo" é o valor neutro. Só entra como titular novo se o CPF ainda não veio do individual
+  // (prioridade ao cadastro individual quando o mesmo CPF existir nas duas origens).
+  getCompetenciasConhecidas().forEach((competencia) => {
+    getRegistrosAssociacaoAprovadosNaCompetencia(competencia).forEach((r) => {
+      if (!porCpf.has(r.cpfTitular)) {
+        porCpf.set(r.cpfTitular, { cpf: r.cpfTitular, nome: r.nomeTitular, situacaoVinculo: "ativo" });
+      }
+    });
+  });
+
+  return [...porCpf.values()];
+}
+
+/**
  * Histórico de Comprovações (visão administrativa consolidada — GERDAB) — inverte a dimensão do
- * Extrato do Servidor (que é 1 servidor × várias competências): aqui é vários servidores ×
+ * Extrato do Servidor (que é 1 titular × várias competências): aqui é vários titulares ×
  * histórico consolidado, com drill-down para o Extrato individual de cada um. **Nenhum motor de
- * classificação novo** — reaproveita `getExtratoServidor` (mesma fonte usada pelo Extrato) só
- * agregando por servidor, exatamente como pedido ("não criar um segundo motor de classificação").
+ * classificação novo** — reaproveita `getExtratoPorCpf` (que por sua vez reaproveita
+ * `getExtratoServidor` e `getRegistrosAssociacaoAprovadosNaCompetencia`, já usadas no Extrato e no
+ * Fechamento) só agregando por titular.
+ *
+ * Identificação por **CPF** (HU04) em vez de matrícula: matrícula não existe para titulares vindos
+ * só de planilha de associação, e o CPF é o identificador comum às duas origens — ver
+ * `getTitularesConsolidadosPorCpf`.
  *
  * Correção de nomenclatura (era "Histórico de Pagamentos"): o sistema não tem confirmação de
  * que o auxílio foi efetivamente pago em folha — só evidência de comprovação e análise. Por
  * isso "pagas" / "não pagas" / "total pago" viraram "comprovadas" / "não comprovadas" / "valor
- * aprovado" — o mesmo dado (`getExtratoServidor`), sem alterar o motor de análise, só a
- * semântica exposta.
+ * aprovado" — o mesmo dado, sem alterar o motor de análise, só a semântica exposta.
  */
 export interface LinhaHistoricoComprovacoes {
-  beneficiarioId: string;
+  cpf: string;
   matricula?: string;
   nome: string;
   situacaoVinculo: BeneficiarioPagamento["situacao"];
@@ -543,20 +653,23 @@ export interface FiltroHistoricoComprovacoes {
   competencia?: string;
 }
 
-export function getHistoricoComprovacoes(filtro?: FiltroHistoricoComprovacoes): LinhaHistoricoComprovacoes[] {
-  const beneficiarios = getBeneficiariosPagamentoAtual();
-  const titulares = beneficiarios.filter((b) => b.parentesco === "Titular");
+/** Lookup de 1 titular consolidado por CPF — usado pelo Extrato Individual (`/admin/relatorios/
+ *  extrato/$cpf`) para obter nome/matrícula/vínculo sem duplicar a lógica de consolidação de
+ *  `getTitularesConsolidadosPorCpf` (mesma fonte usada pela listagem do Histórico). */
+export function getTitularConsolidadoPorCpf(cpf: string): TitularConsolidadoPorCpf | undefined {
+  return getTitularesConsolidadosPorCpf().find((t) => t.cpf === cpf);
+}
 
-  return titulares.map((titular): LinhaHistoricoComprovacoes => {
-    let linhas = getExtratoServidor(titular.id);
+export function getHistoricoComprovacoes(filtro?: FiltroHistoricoComprovacoes): LinhaHistoricoComprovacoes[] {
+  return getTitularesConsolidadosPorCpf().map((titular): LinhaHistoricoComprovacoes => {
+    let linhas = getExtratoPorCpf(titular.cpf);
     if (filtro?.ano) linhas = linhas.filter((l) => l.ano === filtro.ano);
     if (filtro?.competencia) linhas = linhas.filter((l) => l.competencia === filtro.competencia);
 
-    // `houvePagamento` é o nome histórico do campo em `LinhaExtrato` (getExtratoServidor) —
-    // representa, na prática, "comprovação analisada e aprovada", não confirmação de pagamento
-    // em folha. Mantido sem renomear ali para não alterar o motor de análise; aqui, na camada
-    // de apresentação do Histórico de Comprovações, o significado correto (comprovada) é o que
-    // é exposto.
+    // `houvePagamento` é o nome histórico do campo em `LinhaExtrato` — representa, na prática,
+    // "comprovação analisada e aprovada" (individual) ou "planilha aprovada" (associação), não
+    // confirmação de pagamento em folha. Aqui, na camada de apresentação do Histórico, o
+    // significado correto (comprovada) é o que é exposto.
     const comprovadas = linhas.filter((l) => l.houvePagamento).length;
     const emAnalise = linhas.filter(
       (l) => l.statusComprovante && statusRequerAnalise.includes(l.statusComprovante),
@@ -564,10 +677,10 @@ export function getHistoricoComprovacoes(filtro?: FiltroHistoricoComprovacoes): 
     const naoComprovadas = linhas.length - comprovadas - emAnalise;
 
     return {
-      beneficiarioId: titular.id,
+      cpf: titular.cpf,
       matricula: titular.matricula,
       nome: titular.nome,
-      situacaoVinculo: titular.situacao,
+      situacaoVinculo: titular.situacaoVinculo,
       competencias: linhas.length,
       comprovadas,
       naoComprovadas,

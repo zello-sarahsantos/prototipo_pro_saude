@@ -20,11 +20,12 @@ type FiltroSituacao = "todos" | "comprovado" | "nao_comprovado" | "em_analise";
 
 /**
  * Histórico de Comprovações — porta de entrada administrativa consolidada (GERDAB) para a
- * consulta individual. Apresenta TODOS os servidores da base administrativa (hoje só 1, pela
- * mesma limitação de dados já registrada no Fechamento/Extrato — ver docs/MODULO_RELATORIOS.md),
- * com drill-down para `/admin/relatorios/extrato/$matricula` (Extrato Individual, já
- * implementado — preservado sem alterações). Nenhum motor de classificação novo:
- * `getHistoricoComprovacoes` reaproveita `getExtratoServidor`, mesma fonte do Extrato.
+ * consulta individual. Apresenta os titulares consolidados por **CPF** (HU04) — identificador
+ * comum entre comprovações individuais e planilhas de associação já aprovadas, já que planilha
+ * de associação não tem matrícula — com drill-down para `/admin/relatorios/extrato/$cpf`
+ * (Extrato Individual). Nenhum motor de classificação novo: `getHistoricoComprovacoes`
+ * reaproveita `getExtratoPorCpf` (que por sua vez reaproveita `getExtratoServidor` e os dados já
+ * usados no Fechamento de Pagamento para a origem associação).
  *
  * Correção de nomenclatura (era "Histórico de Pagamentos"): o sistema não confirma que o
  * auxílio foi efetivamente pago em folha — só possui evidência de comprovação e análise. Por
@@ -63,7 +64,7 @@ function HistoricoDeComprovacoes() {
     .filter((l) => {
       if (!busca.trim()) return true;
       const alvo = busca.trim().toLowerCase();
-      return l.nome.toLowerCase().includes(alvo) || (l.matricula ?? "").includes(alvo);
+      return l.nome.toLowerCase().includes(alvo) || l.cpf.toLowerCase().includes(alvo);
     });
 
   // Exportação (PDF/XLSX) — mesmas linhas já filtradas na tela (`filtradas`), nunca só a
@@ -87,7 +88,7 @@ function HistoricoDeComprovacoes() {
     origem: "Relatórios",
     filtrosAplicados,
     colunas: [
-      { header: "Matrícula", valor: (l) => l.matricula ?? "—", tipo: "texto" },
+      { header: "CPF", valor: (l) => l.cpf, tipo: "texto" },
       { header: "Servidor", valor: (l) => l.nome, tipo: "texto", width: 26 },
       { header: "Competências", valor: (l) => l.competencias, tipo: "numero" },
       { header: "Comprovadas", valor: (l) => l.comprovadas, tipo: "numero" },
@@ -186,7 +187,7 @@ function HistoricoDeComprovacoes() {
             <input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Nome ou matrícula"
+              placeholder="Nome ou CPF"
               className="border border-border rounded-md pl-8 pr-3 py-2 bg-background text-sm"
             />
           </div>
@@ -201,7 +202,7 @@ function HistoricoDeComprovacoes() {
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
-              <th className="text-left px-4 py-2">Matrícula</th>
+              <th className="text-left px-4 py-2">CPF</th>
               <th className="text-left px-4 py-2">Servidor</th>
               <th className="text-center px-4 py-2">Competências</th>
               <th className="text-center px-4 py-2">Comprovadas</th>
@@ -213,8 +214,8 @@ function HistoricoDeComprovacoes() {
           </thead>
           <tbody>
             {filtradas.map((l) => (
-              <tr key={l.beneficiarioId} className="border-t border-border">
-                <td className="px-4 py-2">{l.matricula ?? "—"}</td>
+              <tr key={l.cpf} className="border-t border-border">
+                <td className="px-4 py-2">{l.cpf}</td>
                 <td className="px-4 py-2 font-medium">{l.nome}</td>
                 <td className="px-4 py-2 text-center">{l.competencias}</td>
                 <td className="px-4 py-2 text-center text-status-aprovado-fg font-medium">{l.comprovadas}</td>
@@ -223,8 +224,8 @@ function HistoricoDeComprovacoes() {
                 <td className="px-4 py-2 text-right font-medium">{formatCurrency(l.valorAprovado)}</td>
                 <td className="px-4 py-2">
                   <Link
-                    to="/admin/relatorios/extrato/$matricula"
-                    params={{ matricula: l.matricula ?? "" }}
+                    to="/admin/relatorios/extrato/$cpf"
+                    params={{ cpf: l.cpf }}
                     className="inline-flex items-center gap-1 text-primary text-xs font-medium hover:underline"
                   >
                     Ver extrato <ArrowRight className="h-3 w-3" />
