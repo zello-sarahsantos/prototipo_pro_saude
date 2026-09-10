@@ -109,7 +109,7 @@ function VisoesGerenciais() {
       <header>
         <h1 className="text-2xl font-bold">Visões Gerenciais</h1>
         <p className="text-sm text-muted-foreground">
-          Visão consolidada da população do Pró-Saúde — operadora, situação do beneficiário
+          Visão consolidada da população do Pró-Saúde: operadora, situação do beneficiário
           titular, faixa etária e teto familiar.
         </p>
       </header>
