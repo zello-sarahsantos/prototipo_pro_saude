@@ -845,11 +845,6 @@ function TabCalculo() {
   const final = calcularReembolso(total, teto);
   return (
     <div className="space-y-4 max-w-xl">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-        <p>
-          Validar com GERDAB se o servidor pode visualizar este detalhamento.
-        </p>
-      </div>
       <div className="bg-card rounded-xl border border-border p-6 font-mono text-sm space-y-2">
         <Line k="Titular" v={valorTitular} />
         {dependentes.filter(d => d.status === "ativo").map(d => (
