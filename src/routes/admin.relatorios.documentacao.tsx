@@ -117,10 +117,8 @@ function DocumentacaoEPendencias() {
       <header>
         <h1 className="text-2xl font-bold">Documentação e Pendências</h1>
         <p className="text-sm text-muted-foreground">
-          Visão consolidada da documentação obrigatória dos beneficiários/dependentes — IRPF, IR
-          de enteado, comprovante de matrícula/escolaridade, laudo de invalidez e limite de
-          idade. Distinta do Comprovante de Rendimentos (valores pagos), ver
-          docs/MODULO_RELATORIOS.md.
+          Visão consolidada da documentação obrigatória dos beneficiários/dependentes: IRPF, IR
+          de enteado, comprovante de matrícula, laudo de invalidez e limite de idade.
         </p>
       </header>
 
