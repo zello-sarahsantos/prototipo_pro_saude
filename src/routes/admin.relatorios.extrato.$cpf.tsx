@@ -61,10 +61,7 @@ function ExtratoServidor() {
         <p className="text-sm text-muted-foreground">
           {titular.nome} — CPF {titular.cpf}
           {titular.matricula ? ` — matrícula ${titular.matricula}` : ""} — histórico individual de
-          comprovações apresentadas e analisadas ao longo das competências, sem afirmar pagamento
-          em folha. Visão distinta do Fechamento de Pagamento (coletiva, por competência) e do
-          Comprovante de Rendimentos (consolidado anual — funcionalidade exclusiva do Portal do
-          Servidor, ver docs/MODULO_RELATORIOS.md).
+          comprovações apresentadas e analisadas ao longo das competências.
         </p>
       </header>
 
