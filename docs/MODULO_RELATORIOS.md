@@ -712,8 +712,8 @@ junto de `garantirSolicitacoesAutomaticas` no `useEffect` de `TabDocumentacao`.
 
 - Ao abrir a aba Documentação pela primeira vez (ou depois de um `localStorage` limpo), **Pedro
   da Silva** (o único dependente sem nenhuma outra pendência de exemplo — Lucas Souza e Marcos
-  Lima já ilustram a 2.11/2.12) passa a ter, automaticamente, um documento "Atestado de
-  Frequência Escolar" já enviado e **Aguardando análise**, como se um analista tivesse pedido
+  Lima já ilustram a 2.11/2.12) passa a ter, automaticamente, um documento "Comprovante de
+  Matrícula" já enviado e **Aguardando análise**, como se um analista tivesse pedido
   manualmente e o servidor já tivesse respondido.
 - Idempotente (checa um id fixo, `obs-exemplo-analise-d2`, antes de criar) — reaparece sozinho
   mesmo depois de limpar o `localStorage`, sem duplicar em re-renders.
@@ -721,8 +721,8 @@ junto de `garantirSolicitacoesAutomaticas` no `useEffect` de `TabDocumentacao`.
   documento" para já testar **Aprovar** ou **Solicitar reenvio** sem nenhum passo manual antes.
 
 **Testado manualmente no navegador (localStorage limpo):** aba Documentação aberta do zero —
-Pedro da Silva já apareceu com badge "1 P/ Analisar"; expandido, mostrou "Atestado de Frequência
-Escolar — Aguardando análise"; "Analisar documento" abriu o modal com preview e os botões
+Pedro da Silva já apareceu com badge "1 P/ Analisar"; expandido, mostrou "Comprovante de
+Matrícula — Aguardando análise"; "Analisar documento" abriu o modal com preview e os botões
 Aprovar/Solicitar reenvio prontos para uso. `tsc --noEmit` (2 erros pré-existentes, sem mudança)
 e `npm run build` limpos.
 
@@ -989,7 +989,7 @@ via `estaVencida()`).
 
 **Testado manualmente no navegador:** confirmado que `/admin/relatorios/documentacao` mostra os
 3 registros de pendência já existentes no protótipo (Lucas Souza — Comprovante de Matrícula,
-vencido; Marcos Lima — Declaração de IR; Pedro da Silva — Atestado de Frequência Escolar,
+vencido; Marcos Lima — Declaração de IR; Pedro da Silva — Comprovante de Matrícula,
 aguardando análise), com prazo vencido destacado, filtros funcionando e o link "Ver na ficha"
 apontando corretamente para `/admin/servidores/12345678`. `npx tsc --noEmit` e `npm run build`
 limpos (só os 2 erros pré-existentes).

@@ -402,12 +402,29 @@ export type ObservacaoGerdab = {
   justificativaReenvio?: string;
 };
 
+/** Renomeações de documento aplicadas a bases já persistidas (o nome à esquerda saiu das regras
+ *  de negócio e é substituído pelo da direita ao ler/gravar). */
+const RENOMEACOES_DOCUMENTO: Record<string, string> = {
+  "Atestado de Frequência Escolar": "Comprovante de Matrícula",
+};
+
 export function loadObservacoesGerdab(): ObservacaoGerdab[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.observacoesGerdab);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as ObservacaoGerdab[];
+    const parsed = JSON.parse(raw) as ObservacaoGerdab[];
+    let alterou = false;
+    const normalizadas = parsed.map((o) => {
+      const novoNome = o.documento ? RENOMEACOES_DOCUMENTO[o.documento] : undefined;
+      if (!novoNome) return o;
+      alterou = true;
+      return { ...o, documento: novoNome };
+    });
+    if (alterou) {
+      localStorage.setItem(PROSAUDE_STORAGE_KEYS.observacoesGerdab, JSON.stringify(normalizadas));
+    }
+    return normalizadas;
   } catch {
     return [];
   }

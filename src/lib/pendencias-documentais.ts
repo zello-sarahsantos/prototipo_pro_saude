@@ -464,7 +464,7 @@ export function garantirExemploDocumentoEmAnalise(servidorMatricula: string) {
     destino: destinoSistema,
     associacao: servidorAtual.associacao !== "—" ? servidorAtual.associacao : undefined,
     tipo: "solicitacao_documento",
-    documento: "Atestado de Frequência Escolar",
+    documento: "Comprovante de Matrícula",
     autor: "Rebeca",
     cargo: "Analista GERDAB",
     texto: "Necessário para renovação do plano escolar do dependente.",
