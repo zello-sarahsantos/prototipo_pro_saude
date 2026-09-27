@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Upload, History, LogOut, Building2, Menu, X, Shield, UserPlus } from "lucide-react";
+import { Upload, History, LogOut, Building2, Menu, X, Shield, UserPlus, RefreshCcw } from "lucide-react";
 import { useState } from "react";
 
 export const Route = createFileRoute("/associacao")({
@@ -12,6 +12,7 @@ function AssociacaoLayout() {
 
   const items = [
     { to: "/associacao/upload", icon: Upload, label: "Upload de Planilha (ASSEFAZ)" },
+    { to: "/associacao/retroativo", icon: RefreshCcw, label: "Envio Retroativo" },
     { to: "/associacao/gerenciamento", icon: UserPlus, label: "Gerenciamento (ASSETRAN)" },
   ];
 

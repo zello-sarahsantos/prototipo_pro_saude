@@ -1,25 +1,25 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { XCircle, HelpCircle, Lock, Unlock, ExternalLink, X, Building2, ListTree } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { XCircle, HelpCircle, Lock, Unlock, ExternalLink, X, Building2, ListTree, CalendarClock, FileClock, FileOutput } from "lucide-react";
+import { garantirPlanilhaExemplo } from "@/lib/planilhas-associacao";
 import { getAdminRole } from "@/components/AdminLayout";
 import { formatCurrency } from "@/lib/mock-data";
 import {
   competenciasParaFechamento,
   formatCompetencia,
   formatarOperadoraIntegrante,
+  gerarRelatorioFechamento,
+  getRegistrosDisponiveisParaRelatorio,
   getRegistrosFechamento,
   getResumoFechamento,
+  getStatusFechamentoAutomatico,
   statusComprovanteLabels,
   type ClassificacaoFechamento,
   type RegistroFechamento,
   type IntegranteGrupoFechamento,
 } from "@/lib/fechamento-pagamento";
-import {
-  getFechamentoPagamento,
-  salvarFechamentoPagamento,
-  getObservacaoNurfi,
-  salvarObservacaoNurfi,
-} from "@/lib/prosaude-storage";
+import { getDataReferencia, setDataReferencia } from "@/lib/dias-uteis";
+import { getObservacaoNurfi, salvarObservacaoNurfi, PROSAUDE_STORAGE_KEYS } from "@/lib/prosaude-storage";
 import { ExportarRelatorio } from "@/components/ExportarRelatorio";
 import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
@@ -72,14 +72,85 @@ function FechamentoDePagamento() {
   const [filtroVinculo, setFiltroVinculo] = useState<FiltroVinculo>("todos");
   const [obsRascunho, setObsRascunho] = useState<Record<string, string>>({});
   const [, forceUpdate] = useState(0);
+  // DEMONSTRAÇÃO DO PROTÓTIPO: garante as planilhas de exemplo das Associações (ver `garantirPlanilhaExemplo`) para o
+  // Fechamento já mostrar o efeito da habilitação explícita; não é comportamento esperado para produção.
+  const [versaoMassa, setVersaoMassa] = useState(0);
+  useEffect(() => {
+    garantirPlanilhaExemplo();
+    setVersaoMassa((v) => v + 1);
+  }, []);
   // Drill-down da composição do grupo familiar ("Detalhes") — reaproveita `composicaoGrupo`, já
   // calculado por `getRegistrosFechamento`; nenhuma segunda apuração aqui. Também mostra a
   // origem da comprovação (P7) quando aplicável, unificando o que antes eram dois popovers.
   const [detalheGrupo, setDetalheGrupo] = useState<RegistroFechamento | null>(null);
 
-  const registros = useMemo(() => getRegistrosFechamento(competencia), [competencia]);
-  const resumo = useMemo(() => getResumoFechamento(competencia), [competencia]);
-  const fechamento = getFechamentoPagamento(competencia);
+  const registros = useMemo(() => getRegistrosFechamento(competencia), [competencia, versaoMassa]);
+  const resumo = useMemo(() => getResumoFechamento(competencia), [competencia, versaoMassa]);
+
+  // Fase 9 — Data simulada (RECURSO EXCLUSIVO DO PROTÓTIPO, ver `dias-uteis.ts`): não existe
+  // calendário oficial de feriados nem um jeito de "avançar o tempo" de verdade nesta demonstração,
+  // então esse controle deixa a GERDAB simular "hoje" para observar o fechamento automático
+  // (2º/3º dia útil) em datas diferentes da data real. Em produção não há nada equivalente — o
+  // fechamento reage à data real do servidor, sem nenhum controle manual de data.
+  const [dataSimulada, setDataSimuladaState] = useState(() => getDataReferencia());
+  function aplicarDataSimulada(valorInput: string) {
+    // Meio-dia local (não meia-noite UTC) — evita que `new Date("AAAA-MM-DD")` (parseada como UTC)
+    // "vire o dia" para trás nos métodos locais (`getDay`/`getDate`) que `dias-uteis.ts` usa para
+    // decidir dia útil, dependendo do fuso horário de quem está testando.
+    const [ano, mes, dia] = valorInput.split("-").map(Number);
+    const local = new Date(ano, mes - 1, dia, 12, 0, 0, 0);
+    setDataReferencia(local.toISOString());
+    setDataSimuladaState(getDataReferencia());
+    forceUpdate((n) => n + 1);
+  }
+  function limparDataSimulada() {
+    setDataReferencia(null);
+    setDataSimuladaState(getDataReferencia());
+    forceUpdate((n) => n + 1);
+  }
+  const estaSimulando = (() => {
+    try {
+      return localStorage.getItem(PROSAUDE_STORAGE_KEYS.dataReferenciaPrototipo) !== null;
+    } catch {
+      return false;
+    }
+  })();
+
+  // Fechamento automático (Fase 9) — nunca persistido, sempre recomputado a partir da data de
+  // referência (real ou simulada acima). `versaoMassa` só está na lista de dependências porque
+  // reordena os dados exibidos; a data simulada é lida direto em cada render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const statusFechamento = useMemo(() => getStatusFechamentoAutomatico(competencia), [competencia, versaoMassa, dataSimulada]);
+
+  // Fase 10 — Histórico do Fechamento (relatório oficial para o NURFI). Só existem registros
+  // "disponíveis" quando a competência já encerrou automaticamente; um registro que já entrou em
+  // um relatório anterior desta competência nunca aparece de novo aqui (evita duplicidade).
+  const registrosDisponiveis = useMemo(
+    () => (statusFechamento.fechada ? getRegistrosDisponiveisParaRelatorio(competencia) : []),
+    [competencia, statusFechamento.fechada, versaoMassa],
+  );
+  const [mensagemRelatorio, setMensagemRelatorio] = useState<string | null>(null);
+
+  function handleGerarRelatorio() {
+    const adimplentesAptos = registrosDisponiveis.filter((r) => r.classificacao === "adimplente").length;
+    const inadimplentesAptos = registrosDisponiveis.filter((r) => r.classificacao === "inadimplente").length;
+    const confirmado = window.confirm(
+      `Gerar o relatório de ${formatCompetencia(competencia)} com ${registrosDisponiveis.length} registro(s) ` +
+        `(${adimplentesAptos} adimplente(s), ${inadimplentesAptos} inadimplente(s))?\n\n` +
+        `Registros em "Requer análise" não entram e continuam disponíveis para um relatório posterior. ` +
+        `Os registros incluídos agora não poderão compor outro relatório desta competência.`,
+    );
+    if (!confirmado) return;
+    try {
+      const snapshot = gerarRelatorioFechamento(competencia, fechadoPorReferencia);
+      setMensagemRelatorio(`Relatório nº ${snapshot.sequencia} de ${formatCompetencia(competencia)} gerado com sucesso.`);
+      // `versaoMassa`, não `forceUpdate`: `registrosDisponiveis` (e o próprio `snapshot` recém-criado
+      // não devem mais aparecer como disponíveis) depende de `versaoMassa` para recomputar.
+      setVersaoMassa((v) => v + 1);
+    } catch (e) {
+      setMensagemRelatorio(e instanceof Error ? e.message : "Não foi possível gerar o relatório.");
+    }
+  }
 
   const registrosFiltrados = useMemo(
     () =>
@@ -121,7 +192,7 @@ function FechamentoDePagamento() {
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "CPF Titular", valor: (l) => l.registro.cpf ?? "—", tipo: "texto" },
+        { header: "Matrícula Titular", valor: (l) => l.registro.matricula ?? "—", tipo: "texto" },
         { header: "Titular", valor: (l) => l.registro.nome, tipo: "texto", width: 24 },
         { header: "CPF Beneficiário", valor: (l) => l.integrante.cpf ?? "—", tipo: "texto" },
         { header: "Beneficiário", valor: (l) => l.integrante.nome, tipo: "texto", width: 24 },
@@ -145,7 +216,7 @@ function FechamentoDePagamento() {
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
+        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
         { header: "Nome", valor: (r) => r.nome, tipo: "texto", width: 26 },
         { header: "Valor do Plano", valor: (r) => r.valor, tipo: "moeda" },
         { header: "Situação", valor: (r) => r.situacao ?? "—", tipo: "texto" },
@@ -170,7 +241,7 @@ function FechamentoDePagamento() {
       competencia: competenciaLabel,
       filtrosAplicados,
       colunas: [
-        { header: "CPF", valor: (r) => r.cpf ?? "—", tipo: "texto" },
+        { header: "Matrícula", valor: (r) => r.matricula ?? "—", tipo: "texto" },
         { header: "Servidor", valor: (r) => r.nome, tipo: "texto", width: 26 },
         { header: "Competência", valor: (r) => formatCompetencia(r.competencia), tipo: "texto" },
         {
@@ -198,11 +269,6 @@ function FechamentoDePagamento() {
     forceUpdate((n) => n + 1);
   }
 
-  function fecharCompetencia() {
-    salvarFechamentoPagamento(competencia, fechadoPorReferencia);
-    forceUpdate((n) => n + 1);
-  }
-
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -213,20 +279,51 @@ function FechamentoDePagamento() {
             para o NURFI — nasce dos dados do Módulo de Pagamento, não de uma nova apuração.
           </p>
         </div>
-        <label className="text-sm">
-          <span className="block text-xs text-muted-foreground mb-1">Competência</span>
-          <select
-            value={competencia}
-            onChange={(e) => setCompetencia(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 bg-card text-sm"
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="block text-xs text-muted-foreground mb-1">Competência</span>
+            <select
+              value={competencia}
+              onChange={(e) => {
+                setCompetencia(e.target.value);
+                setMensagemRelatorio(null);
+              }}
+              className="border border-border rounded-md px-3 py-2 bg-card text-sm"
+            >
+              {competenciasParaFechamento.map((c) => (
+                <option key={c} value={c}>
+                  {formatCompetencia(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* RECURSO EXCLUSIVO DO PROTÓTIPO — ver comentário acima de `dataSimulada`. */}
+          <label
+            className="text-sm border border-dashed border-border rounded-md px-2.5 py-1.5 flex items-end gap-2"
+            title="Recurso exclusivo do protótipo — simula 'hoje' para demonstrar o fechamento automático em datas diferentes da data real. Não existe em produção."
           >
-            {competenciasParaFechamento.map((c) => (
-              <option key={c} value={c}>
-                {formatCompetencia(c)}
-              </option>
-            ))}
-          </select>
-        </label>
+            <span className="flex flex-col">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                <CalendarClock className="h-3 w-3" /> Data simulada (protótipo)
+              </span>
+              <input
+                type="date"
+                value={dataSimulada.toISOString().slice(0, 10)}
+                onChange={(e) => e.target.value && aplicarDataSimulada(e.target.value)}
+                className="border border-border rounded-md px-2 py-1 bg-card text-xs"
+              />
+            </span>
+            {estaSimulando && (
+              <button
+                type="button"
+                onClick={limparDataSimulada}
+                className="text-xs text-primary hover:underline pb-1.5"
+              >
+                Usar data real
+              </button>
+            )}
+          </label>
+        </div>
       </header>
 
       {/* Nota de escopo do protótipo — sem esconder a limitação de dados */}
@@ -263,28 +360,73 @@ function FechamentoDePagamento() {
           </div>
         </div>
 
+        {/* Fase 9 — fechamento automático (`getStatusFechamentoAutomatico`, `dias-uteis.ts`): sem
+            botão manual, sem reabertura, sem override. O ciclo permanece vigente até o fim do 2º
+            dia útil do mês seguinte; a partir do 3º dia útil, encerra sozinho. */}
         <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
-          {fechamento ? (
+          {statusFechamento.fechada ? (
             <span className="inline-flex items-center gap-2 text-sm text-status-aprovado-fg font-medium">
-              <Lock className="h-4 w-4" /> Competência fechada em{" "}
-              {new Date(fechamento.fechadoEm).toLocaleDateString("pt-BR")} por {fechamento.fechadoPor}
+              <Lock className="h-4 w-4" /> Competência encerrada automaticamente em{" "}
+              {statusFechamento.fechamentoEm.toLocaleDateString("pt-BR")}
             </span>
           ) : (
-            <>
-              <button
-                onClick={fecharCompetencia}
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary-light"
-              >
-                <Unlock className="h-4 w-4" /> Fechar competência
-              </button>
-              {resumo.requerAnalise > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {resumo.requerAnalise} registro(s) ainda em "Requer análise".
-                </p>
-              )}
-            </>
+            <span className="inline-flex items-center gap-2 text-sm text-muted-foreground font-medium">
+              <Unlock className="h-4 w-4" /> Fechamento automático em{" "}
+              {statusFechamento.fechamentoEm.toLocaleDateString("pt-BR")} (fim do 2º dia útil)
+            </span>
+          )}
+          {resumo.requerAnalise > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {resumo.requerAnalise} registro(s) ainda em "Requer análise" — o fechamento automático não os
+              classifica; permanecem como estão (tratamento posterior é pendência já registrada, fora desta
+              etapa).
+            </p>
           )}
         </div>
+        {statusFechamento.direcionamentoSeRecebidoAgora.direcionadoAoCicloSeguinte && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Na data de referência atual, um novo registro desta competência já seria direcionado ao ciclo
+            seguinte ({formatCompetencia(statusFechamento.direcionamentoSeRecebidoAgora.competenciaDestino)}) —
+            indicador só informativo; o envio do servidor ainda não aplica esse direcionamento de fato
+            (pendência sinalizada, não implementada nesta fase).
+          </p>
+        )}
+
+        {/* Fase 10 — Histórico do Fechamento (relatório oficial para o NURFI). Só "Adimplente"/
+            "Inadimplente" entram no snapshot; "Requer análise" nunca compõe o relatório oficial
+            (fica disponível para um relatório posterior, quando resolvido) — ver
+            `gerarRelatorioFechamento`. Habilitado só depois do encerramento automático; gerar não
+            é uma forma de fechar/reabrir a competência, é só empacotar o que já está decidido. */}
+        <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
+          {statusFechamento.fechada ? (
+            registrosDisponiveis.length > 0 ? (
+              <button
+                onClick={handleGerarRelatorio}
+                className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary-light"
+              >
+                <FileOutput className="h-4 w-4" /> Gerar relatório para o NURFI ({registrosDisponiveis.length})
+              </button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Nenhum registro novo apto (Adimplente/Inadimplente) para um relatório desta competência — os já
+                aptos foram todos incluídos em relatórios anteriores.
+              </p>
+            )
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              O relatório para o NURFI só pode ser gerado depois do encerramento automático da competência.
+            </p>
+          )}
+          <Link
+            to="/admin/relatorios/pagamentos/historico"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            <FileClock className="h-4 w-4" /> Ver histórico de relatórios
+          </Link>
+        </div>
+        {mensagemRelatorio && (
+          <p className="text-xs text-status-aprovado-fg mt-2">{mensagemRelatorio}</p>
+        )}
       </section>
 
       {/* Abas */}
@@ -337,7 +479,7 @@ function FechamentoDePagamento() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-2">CPF</th>
+                <th className="text-left px-4 py-2">Matrícula</th>
                 <th className="text-left px-4 py-2">Nome</th>
                 <th className="text-left px-4 py-2">Situação do vínculo</th>
                 <th className="text-left px-4 py-2">Operadora/Associação</th>
@@ -350,7 +492,7 @@ function FechamentoDePagamento() {
             <tbody>
               {registrosFiltrados.map((r) => (
                 <tr key={r.beneficiarioId} className="border-t border-border">
-                  <td className="px-4 py-2">{r.cpf ?? "—"}</td>
+                  <td className="px-4 py-2">{r.matricula ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
                   <td className="px-4 py-2">
                     <BadgeVinculo situacao={r.situacaoVinculo} />
@@ -385,7 +527,7 @@ function FechamentoDePagamento() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-2">CPF</th>
+                <th className="text-left px-4 py-2">Matrícula</th>
                 <th className="text-left px-4 py-2">Nome</th>
                 <th className="text-right px-4 py-2">Valor do Plano</th>
                 <th className="text-left px-4 py-2">Situação</th>
@@ -396,7 +538,7 @@ function FechamentoDePagamento() {
             <tbody>
               {registrosFiltrados.map((r) => (
                 <tr key={r.beneficiarioId} className="border-t border-border align-top">
-                  <td className="px-4 py-2">{r.cpf ?? "—"}</td>
+                  <td className="px-4 py-2">{r.matricula ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
                   <td className="px-4 py-2 text-right">{formatCurrency(r.valor)}</td>
                   <td className="px-4 py-2">
@@ -438,7 +580,7 @@ function FechamentoDePagamento() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-2">CPF</th>
+                <th className="text-left px-4 py-2">Matrícula</th>
                 <th className="text-left px-4 py-2">Servidor</th>
                 <th className="text-left px-4 py-2">Competência</th>
                 <th className="text-left px-4 py-2">Pendência/Motivo</th>
@@ -449,7 +591,7 @@ function FechamentoDePagamento() {
             <tbody>
               {registrosFiltrados.map((r) => (
                 <tr key={r.beneficiarioId} className="border-t border-border">
-                  <td className="px-4 py-2">{r.cpf ?? "—"}</td>
+                  <td className="px-4 py-2">{r.matricula ?? "—"}</td>
                   <td className="px-4 py-2 font-medium">{r.nome}</td>
                   <td className="px-4 py-2">{formatCompetencia(r.competencia)}</td>
                   <td className="px-4 py-2 flex items-center gap-1.5">

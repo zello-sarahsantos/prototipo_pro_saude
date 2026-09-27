@@ -26,6 +26,8 @@ import {
   todosContemplados,
   todosDocumentosComCoberturaDefinida,
 } from "@/lib/comprovante-status";
+import { ComprovacaoPelaAssociacaoAviso } from "@/components/ComprovacaoPelaAssociacaoAviso";
+import { getOrigemComprovacaoServidorLogado } from "@/lib/origem-comprovacao";
 import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
 import {
   addComprovantePagamento,
@@ -33,6 +35,7 @@ import {
   saveConclusaoCompetencia,
   getBeneficiariosPagamentoAtual,
 } from "@/lib/prosaude-storage";
+import { getCicloDeDestino, getDataReferencia } from "@/lib/dias-uteis";
 
 const titularPagamento = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
 
@@ -41,7 +44,7 @@ export const Route = createFileRoute("/servidor/pagamentos/enviar")({
     competencia: typeof search.competencia === "string" ? search.competencia : undefined,
     beneficiario: typeof search.beneficiario === "string" ? search.beneficiario : undefined,
   }),
-  component: EnviarComprovante,
+  component: EnviarComprovanteGuard,
 });
 
 type Step =
@@ -60,6 +63,19 @@ function stepIndex(step: Step): number {
   if (step === "upload" || step === "lendo" || step === "ilegivel") return 1;
   if (step === "conferencia_beneficiarios") return 2;
   return 3;
+}
+
+/** Servidor de Associação não tem envio individual de comprovante (comprovação é da Associação). */
+function EnviarComprovanteGuard() {
+  const { associacao } = getOrigemComprovacaoServidorLogado();
+  if (associacao) {
+    return (
+      <div className="p-4">
+        <ComprovacaoPelaAssociacaoAviso associacao={associacao} />
+      </div>
+    );
+  }
+  return <EnviarComprovante />;
 }
 
 function EnviarComprovante() {
@@ -97,6 +113,22 @@ function EnviarComprovante() {
   const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [step]);
 
   const isRetroativo = competencia !== competenciaAtual;
+
+  // Fase 9 (complemento) — direcionamento efetivo ao ciclo vigente/seguinte (`getCicloDeDestino`,
+  // `dias-uteis.ts`, Fase 0 — nenhuma fórmula de calendário nova). Só se aplica ao envio ORDINÁRIO
+  // (`competencia === competenciaAtual`, seja na primeira etapa ou ao "anexar dependente" depois,
+  // que trava a mesma competência); o caminho do alerta de retroativo LEGADO (`competencia` já
+  // travada numa competência antiga e fechada) não é redirecionado — não faz sentido mover um
+  // registro que já pertence, por natureza, a uma competência passada específica.
+  //
+  // Isto NÃO é o mesmo conceito de `isRetroativo`/justificativa do atraso acima: aquele é sobre o
+  // SERVIDOR ter escolhido deliberadamente uma competência passada; isto é sobre, mesmo num envio
+  // ordinário da competência aberta, o RELÓGIO já ter passado do 3º dia útil — o envio continua
+  // ordinário (sem justificativa, sem aprovação especial), só é contado no Fechamento do ciclo
+  // seguinte em vez do vigente.
+  const cicloOrdinario = getCicloDeDestino(competenciaAtual, getDataReferencia());
+  const direcionadoAoCicloSeguinte = competencia === competenciaAtual && cicloOrdinario.direcionadoAoCicloSeguinte;
+  const competenciaEfetiva = competencia === competenciaAtual ? cicloOrdinario.competenciaDestino : competencia;
   const beneficiariosEscolhidos = beneficiariosAtuais.filter((b) =>
     beneficiariosSelecionados.includes(b.id),
   );
@@ -179,7 +211,9 @@ function EnviarComprovante() {
       id: `comp-${Date.now()}`,
       arquivos: arquivosDoEnvio,
       beneficiarioIds: beneficiariosSelecionados,
-      competencia,
+      // `competenciaEfetiva`, não `competencia`: o registro é gravado no ciclo de destino
+      // (vigente ou seguinte, conforme o 2º/3º dia útil) — ver nota acima de `cicloOrdinario`.
+      competencia: competenciaEfetiva,
       isRetroativo,
       justificativaAtraso: isRetroativo ? justificativaAtraso : undefined,
       camposExtraidos: primeiro?.campos ?? [],
@@ -210,7 +244,7 @@ function EnviarComprovante() {
   }
 
   function handleConcluir() {
-    saveConclusaoCompetencia(competencia);
+    saveConclusaoCompetencia(competenciaEfetiva);
     navigate({ to: "/servidor/pagamentos" });
   }
 
@@ -237,15 +271,37 @@ function EnviarComprovante() {
               className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm disabled:opacity-70"
             >
               <option value={competenciaAtual}>{formatCompetencia(competenciaAtual)} (aberta)</option>
-              {competenciasFechadas.map((c) => (
-                <option key={c} value={c}>
-                  {formatCompetencia(c)} (fechada — retroativo)
-                </option>
-              ))}
+              {/* Revisão (integração com o Ressarcimento Retroativo): o envio ordinário não abre mais
+                  competências passadas para escolha livre — o novo módulo é a única porta de entrada
+                  para elas (`/servidor/retroativo/novo`, via o bloco "Ressarcimento retroativo" em
+                  `servidor.pagamentos.index.tsx`). A única exceção é completar um envio retroativo
+                  LEGADO já existente (ex.: "Anexar documento complementar" de um registro antigo),
+                  quando a competência chega travada por link — nunca escolhida aqui. */}
+              {travarCompetencia && competencia !== competenciaAtual && (
+                <option value={competencia}>{formatCompetencia(competencia)} (retroativo — registro legado)</option>
+              )}
             </select>
-            {travarCompetencia && (
+            {travarCompetencia ? (
               <p className="text-xs text-muted-foreground mt-1">
                 Competência preenchida automaticamente — os comprovantes já enviados foram preservados.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">
+                Para uma competência anterior, use o Ressarcimento Retroativo, no menu Pagamentos.
+              </p>
+            )}
+            {/* Ciclo de destino efetivo — mostrado antes da confirmação do envio (não só no resumo
+                final), conforme o 2º/3º dia útil (`cicloOrdinario`). Só se aplica ao caminho
+                ordinário; o alerta de retroativo legado não é redirecionado. */}
+            {competencia === competenciaAtual && (
+              <p
+                className={`text-xs mt-1 ${
+                  direcionadoAoCicloSeguinte ? "text-status-pendente-fg font-medium" : "text-muted-foreground"
+                }`}
+              >
+                {direcionadoAoCicloSeguinte
+                  ? `${formatCompetencia(competenciaAtual)} já encerrou automaticamente (a partir do 3º dia útil) — este envio será registrado no ciclo seguinte: ${formatCompetencia(competenciaEfetiva)}.`
+                  : `Este envio será registrado em ${formatCompetencia(competenciaEfetiva)} (ciclo vigente).`}
               </p>
             )}
           </div>
@@ -379,6 +435,21 @@ function EnviarComprovante() {
             justificativaAtraso={justificativaAtraso}
             gruposExtraidos={gruposExtraidos}
           />
+          {/* Última confirmação do ciclo de destino antes de gravar o envio (mesma regra da etapa
+              "Beneficiários" — repetida aqui para ficar visível bem antes do clique final). */}
+          {competencia === competenciaAtual && (
+            <div
+              className={`text-sm rounded-md border px-3 py-2 ${
+                direcionadoAoCicloSeguinte
+                  ? "border-status-pendente-bg bg-status-pendente-bg/40 text-status-pendente-fg"
+                  : "border-border bg-muted/40 text-muted-foreground"
+              }`}
+            >
+              {direcionadoAoCicloSeguinte
+                ? `Atenção: ${formatCompetencia(competenciaAtual)} já encerrou automaticamente — este envio será registrado no ciclo seguinte (${formatCompetencia(competenciaEfetiva)}), não na competência aberta originalmente.`
+                : `Este envio será registrado em ${formatCompetencia(competenciaEfetiva)} (ciclo vigente).`}
+            </div>
+          )}
           <StepNav
             onPrev={() => setStep("conferencia_beneficiarios")}
             onNext={confirmarDocumento}
@@ -390,7 +461,9 @@ function EnviarComprovante() {
 
       {step === "resumo_competencia" && (
         <ConsolidadoCompetencia
-          competencia={competencia}
+          // `competenciaEfetiva`: o resumo precisa refletir o ciclo em que o envio foi
+          // efetivamente gravado (`confirmarDocumento`), não necessariamente a competência aberta.
+          competencia={competenciaEfetiva}
           onAnexarDependente={handleAnexarDependente}
           onConcluir={handleConcluir}
           onRefresh={() => setRefreshResumoKey((k) => k + 1)}

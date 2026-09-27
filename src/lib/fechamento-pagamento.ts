@@ -36,9 +36,15 @@ import {
   getComprovantesUnificados,
   getBeneficiariosDispensadosIds,
   getObservacaoNurfi,
+  loadHistoricoFechamentos,
+  saveHistoricoFechamentos,
+  type SnapshotFechamentoPagamento,
 } from "./prosaude-storage";
 import { getCamposDoBeneficiario, statusDoBeneficiarioNoDocumento } from "./comprovante-status";
 import { getRegistrosAssociacaoAprovadosNaCompetencia, type RegistroAssociacaoConsolidado } from "./planilhas-associacao";
+import { getResultadoRetroativoIndividual, getSolicitacoesRetroativas } from "./ressarcimento-retroativo";
+import { getMatriculaPorCpf } from "./base-institucional";
+import { competenciaEstaFechada, getCicloDeDestino, getDataReferencia, getFechamentoAutomatico } from "./dias-uteis";
 
 /** Competências que fazem sentido para um Fechamento — a atual (ainda em andamento, fechamento
  *  bloqueado por natureza) e as já fechadas para envio (candidatas reais a fechamento GERDAB). */
@@ -129,7 +135,10 @@ export interface RegistroFechamento {
   valor: number;
   /** Ressarcimento do grupo familiar — `calcularReembolso(valor)` (teto + percentual já
    *  existentes, `mock-data.ts`), aplicado UMA VEZ sobre o total do grupo, nunca por integrante
-   *  nem por cima de um valor que já passou por este cálculo. */
+   *  nem por cima de um valor que já passou por este cálculo. Quando a competência veio do
+   *  Ressarcimento Retroativo (módulo novo), este número é o `calcularValorRessarcir` que a
+   *  GERDAB já apurou lá (ver `valorRessarcirPrecalculado`) — nunca os dois cálculos aplicados
+   *  em sequência sobre o mesmo valor. */
   valorRessarcir: number;
   /** Composição do grupo familiar (titular + dependentes) que forma `valor` — drill-down da
    *  tela e base da exportação analítica (uma linha por integrante). */
@@ -144,6 +153,11 @@ export interface RegistroFechamento {
   statusComprovante?: StatusComprovante;
   /** Data da última ação registrada no comprovante — base para "Tempo aguardando". */
   ultimaAcaoEm?: string;
+  /** Presente só quando a classificação veio do Ressarcimento Retroativo (módulo novo, origem
+   *  individual): o `Valor a ser Ressarcido` que a GERDAB já apurou lá (`calcularValorRessarcir`),
+   *  reaproveitado tal como está — nunca recalculado por `calcularReembolso`. Ausência = calcula
+   *  normalmente (`calcularReembolso(valor)`, como sempre foi). */
+  valorRessarcirPrecalculado?: number;
   /** P5/P7 — fonte de comprovação explícita: nunca um `Comprovante` sintético, só um marcador de
    *  origem sobre o mesmo `RegistroFechamento[]` único. */
   origem: OrigemComprovacao;
@@ -194,7 +208,7 @@ function ultimaAcao(comprovante: Comprovante, beneficiarioId?: string) {
 
 type ClassificacaoDetalhe = Pick<
   RegistroFechamento,
-  "classificacao" | "comprovanteId" | "valor" | "situacao" | "motivo" | "statusComprovante" | "ultimaAcaoEm" | "composicaoGrupo"
+  "classificacao" | "comprovanteId" | "valor" | "situacao" | "motivo" | "statusComprovante" | "ultimaAcaoEm" | "composicaoGrupo" | "valorRessarcirPrecalculado"
 >;
 
 /**
@@ -204,12 +218,62 @@ type ClassificacaoDetalhe = Pick<
  * para 1 titular). Nenhum motor de cálculo novo, só leitura/derivação dos dados já existentes
  * do Módulo de Pagamento (`Comprovante`, `AcaoComprovante`) — mesmo padrão "recompute on
  * demand, nunca persistir" já usado em notificações.
+ *
+ * **Ressarcimento Retroativo (módulo novo — ver `ressarcimento-retroativo.ts`):** essa função
+ * consulta primeiro `getResultadoRetroativoIndividual`; se houver resultado, ele decide a
+ * classificação (adimplente/inadimplente/requer_analise) e a lógica de `Comprovante` abaixo nem
+ * roda para aquela competência. Isso é só o suficiente para que Fechamento e Histórico consigam
+ * mostrar os resultados do módulo novo — não é uma migração de dados nem uma reconciliação entre
+ * os dois fluxos. Reaproveita os rótulos de status já existentes (`retroativo_aprovado`/
+ * `retroativo_recusado`/`retroativo_aguardando_aprovacao`), nenhum `StatusComprovante` novo.
+ *
+ * Nota de protótipo: os registros legados (`isRetroativo`/`retroativo_*`) continuam sendo lidos
+ * pelo caminho antigo, sem qualquer conversão para o formato novo. Isso é aceitável aqui porque os
+ * dados são mockados e em pequeno número; uma migração real dos registros legados para o módulo
+ * novo (ou sua descontinuação de fato) é uma decisão de produção, fora do escopo deste protótipo.
  */
 function classificarTitularNaCompetencia(
   titular: BeneficiarioPagamento,
   competencia: string,
   todosBeneficiarios: BeneficiarioPagamento[],
 ): ClassificacaoDetalhe {
+  const retroativoNovo = titular.cpf ? getResultadoRetroativoIndividual(titular.cpf, competencia) : undefined;
+  if (retroativoNovo) {
+    const composicaoGrupo = todosBeneficiarios
+      .filter((b) => !b.associacao)
+      .map((b) => ({ beneficiarioId: b.id, nome: b.nome, cpf: b.cpf, parentesco: b.parentesco, valor: b.valorCadastrado, operadora: b.operadora }));
+    if (retroativoNovo.estado === "pendente") {
+      return {
+        classificacao: "requer_analise",
+        valor: titular.valorCadastrado,
+        statusComprovante: "retroativo_aguardando_aprovacao",
+        ultimaAcaoEm: retroativoNovo.ultimaAtualizacaoEm,
+        composicaoGrupo,
+      };
+    }
+    if (retroativoNovo.estado === "negado") {
+      return {
+        classificacao: "inadimplente",
+        valor: titular.valorCadastrado,
+        situacao: "Suspender",
+        motivo: retroativoNovo.justificativaNegado ?? "Ressarcimento retroativo não autorizado pela GERDAB.",
+        statusComprovante: "retroativo_recusado",
+        ultimaAcaoEm: retroativoNovo.ultimaAtualizacaoEm,
+        composicaoGrupo,
+      };
+    }
+    // aprovado: "resolvido" no Histórico mesmo quando Pago = Devido (Ressarcir = 0) — só não entra na
+    // Consolidação/NURFI (regra já existente e inalterada em `getRegistrosRelatorioRetroativo`).
+    return {
+      classificacao: "adimplente",
+      valor: retroativoNovo.valorPago ?? titular.valorCadastrado,
+      statusComprovante: "retroativo_aprovado",
+      ultimaAcaoEm: retroativoNovo.ultimaAtualizacaoEm,
+      valorRessarcirPrecalculado: retroativoNovo.valorRessarcir ?? 0,
+      composicaoGrupo,
+    };
+  }
+
   const comprovantes = getComprovantesUnificados().filter((c) => c.competencia === competencia);
   const dispensadosIds = new Set(getBeneficiariosDispensadosIds(competencia));
 
@@ -340,8 +404,11 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
       origem: "individual",
       ...detalhe,
       // `calcularReembolso` (teto + percentual já existentes, `mock-data.ts`) aplicado uma única
-      // vez sobre o total do grupo (`detalhe.valor`) — nunca por integrante.
-      valorRessarcir: calcularReembolso(detalhe.valor),
+      // vez sobre o total do grupo (`detalhe.valor`) — nunca por integrante. Quando a competência
+      // veio do Ressarcimento Retroativo, `valorRessarcirPrecalculado` já é o valor certo (apurado
+      // lá pela GERDAB) — não passa de novo por `calcularReembolso` (evitaria aplicar a fórmula duas
+      // vezes sobre o mesmo valor).
+      valorRessarcir: detalhe.valorRessarcirPrecalculado ?? calcularReembolso(detalhe.valor),
     };
   });
 
@@ -349,6 +416,11 @@ export function getRegistrosFechamento(competencia: string): RegistroFechamento[
     const operadoraTitular = operadoraTitularAssociacao(r);
     return {
       beneficiarioId: `associacao:${r.cpfTitular}:${r.competencia}`,
+      // Fase 9: planilhas de associação não trazem matrícula (só CPF) — recuperada da base
+      // institucional simulada pelo mesmo ponto único já usado pelo Relatório Financeiro
+      // Retroativo (`getMatriculaPorCpf`, `base-institucional.ts`). `undefined` quando o CPF não
+      // tem correspondência na base simulada (a tela mostra "—", nunca inventa uma matrícula).
+      matricula: getMatriculaPorCpf(r.cpfTitular),
       cpf: r.cpfTitular,
       nome: r.nomeTitular,
       // Não há, nesta rodada, um conceito de vínculo funcional (ativo/inativo/pendente de
@@ -408,16 +480,145 @@ export function getResumoFechamento(competencia: string): ResumoFechamento {
 }
 
 /**
- * Correção de regra de negócio: "Requer análise" NÃO bloqueia mais o fechamento da competência
- * (revoga a regra 2.4 do plano, que tratava isso como recomendação pendente de confirmação —
- * seção 2.8). A GERDAB tem autonomia para fechar a competência quando considerar adequado, ainda
- * que existam registros em "Requer análise"; a contagem continua sendo só uma sinalização
- * informativa (ver `getResumoFechamento`/tela). Fechar não classifica nem transforma esses
- * registros — eles permanecem como estavam. Tratamento posterior (retroativo/avulso) é Não
- * Escopo nesta rodada, a levantar com a stakeholder.
+ * Situação do fechamento automático de uma competência (Fase 9 — substitui o botão manual
+ * "Fechar competência"). O ciclo permanece vigente até o fim do 2º dia útil do mês seguinte à
+ * competência; a partir do 3º dia útil, encerra automaticamente (`dias-uteis.ts`, Fase 0). Nunca
+ * persistido — sempre recomputado a partir da data de referência (real ou simulada pelo
+ * protótipo, `getDataReferencia`), mesmo padrão "recompute on demand" do restante do módulo. Sem
+ * reabertura/override: não existe mais nenhuma ação que grave um "fechado" manualmente.
+ *
+ * `direcionamentoSeRecebidoAgora` reaproveita `getCicloDeDestino` para mostrar para qual
+ * competência um registro desta seria direcionado se recebido na data de referência atual — usado
+ * aqui só como indicador informativo desta tela (Fechamento). O direcionamento **efetivo** de um
+ * novo envio ordinário do servidor (até o 2º dia útil → ciclo vigente; a partir do 3º → ciclo
+ * seguinte) é aplicado em `servidor.pagamentos.enviar.tsx` (complemento da Fase 9), com a mesma
+ * função `getCicloDeDestino` — nenhuma segunda fórmula de calendário.
+ *
+ * **Dois casos, propositalmente diferentes (não confundir um com o outro):**
+ * 1. **Novo envio, a partir do 3º dia útil** — gravado (`Comprovante.competencia`) já no ciclo
+ *    seguinte, com aviso explícito ao servidor antes de confirmar (`servidor.pagamentos.enviar.tsx`).
+ * 2. **Registro que já existia (qualquer status, inclusive "Requer análise") no momento em que o
+ *    ciclo virou** — **nunca** é movido, reclassificado, aprovado, recusado ou excluído
+ *    automaticamente por causa da virada; permanece exatamente como estava, rastreável na
+ *    competência em que foi gravado. O fechamento (agora automático) não classifica nem
+ *    transforma esses registros. O que fazer com eles depois da virada (retroativo/avulso)
+ *    continua Não Escopo — pendência já registrada antes desta fase, explicitamente **não**
+ *    resolvida agora, a levantar com a stakeholder.
  */
-export function podeFecharCompetencia(_competencia: string): boolean {
-  return true;
+export interface StatusFechamentoAutomatico {
+  competencia: string;
+  fechada: boolean;
+  /** Fim do 2º dia útil do mês seguinte — momento exato do encerramento automático. */
+  fechamentoEm: Date;
+  direcionamentoSeRecebidoAgora: { competenciaDestino: string; direcionadoAoCicloSeguinte: boolean };
+}
+
+export function getStatusFechamentoAutomatico(
+  competencia: string,
+  dataReferencia: Date = getDataReferencia(),
+): StatusFechamentoAutomatico {
+  return {
+    competencia,
+    fechada: competenciaEstaFechada(competencia, dataReferencia),
+    fechamentoEm: getFechamentoAutomatico(competencia),
+    direcionamentoSeRecebidoAgora: getCicloDeDestino(competencia, dataReferencia),
+  };
+}
+
+/* ── Fase 10 — Histórico do Fechamento de Pagamento (snapshot imutável para o NURFI) ──────────
+ *
+ * Duas regras validadas com o usuário, além do padrão já usado no Retroativo (snapshot imutável,
+ * nunca recalculado):
+ *
+ * 1. **"Requer análise" nunca entra no relatório oficial** — só Adimplente/Inadimplente são
+ *    "aptos para envio ao NURFI". Isto reaproveita exatamente a distinção que `ClassificacaoFechamento`
+ *    já fazia desde sempre (3 estados; só 2 são decisões finais) — nenhuma regra financeira nova,
+ *    só a escolha de quais dos 3 estados já existentes compõem o relatório definitivo. A tela ao
+ *    vivo continua mostrando as 3 abas normalmente; só a geração do relatório filtra.
+ * 2. **Múltiplos relatórios por competência, sem duplicidade** — cada "Gerar relatório" cria um
+ *    snapshot com sequência própria (nº 1, nº 2, ...) e nunca sobrescreve o anterior; um registro
+ *    (`beneficiarioId`) que já entrou em QUALQUER snapshot daquela competência não pode entrar de
+ *    novo (`getBeneficiariosJaConsolidados`). Um registro em "Requer análise" nunca foi incluído,
+ *    então, quando resolvido depois, fica disponível para um relatório posterior da mesma
+ *    competência — sem nenhuma ação extra além de gerar de novo.
+ *
+ *    **Isto é uma possibilidade de contingência, não o fluxo operacional principal.** O esperado
+ *    é normalmente um único relatório por competência, contendo todos os registros aptos naquele
+ *    momento — um segundo relatório (nº 2, nº 3...) só existe para cobrir o caso em que algo ficou
+ *    de fora do primeiro (estava "Requer análise" e só foi resolvido depois). O suporte a múltiplos
+ *    relatórios existe para não perder rastreabilidade nesse cenário excepcional, não para incentivar
+ *    fatiar deliberadamente o envio ao NURFI em vários relatórios pequenos.
+ */
+
+/** Registros da competência já decididos (Adimplente ou Inadimplente) — os únicos aptos para o
+ *  relatório oficial do NURFI. "Requer análise" fica de fora até ser resolvido. */
+function getRegistrosAptosParaNurfi(competencia: string): RegistroFechamento[] {
+  return getRegistrosFechamento(competencia).filter((r) => r.classificacao !== "requer_analise");
+}
+
+/** Todos os relatórios (snapshots) já gerados para a competência informada (ou todos, se omitida),
+ *  do mais recente para o mais antigo. */
+export function getHistoricoFechamentos(competencia?: string): SnapshotFechamentoPagamento[] {
+  const todos = loadHistoricoFechamentos();
+  return (competencia ? todos.filter((s) => s.competencia === competencia) : todos).sort((a, b) =>
+    b.geradoEm.localeCompare(a.geradoEm),
+  );
+}
+
+/** `beneficiarioId`s da competência que já entraram em algum relatório anterior — nunca podem
+ *  compor um novo (evita duplicidade entre relatórios da mesma competência). */
+function getBeneficiariosJaConsolidados(competencia: string): Set<string> {
+  return new Set(getHistoricoFechamentos(competencia).flatMap((s) => s.linhas.map((l) => l.beneficiarioId)));
+}
+
+/** Registros aptos (Adimplente/Inadimplente) que ainda não entraram em nenhum relatório desta
+ *  competência — o que um clique em "Gerar relatório" incluiria agora. Serve tanto para a geração
+ *  em si quanto para a tela mostrar, antes do clique, quantos registros compõem o próximo relatório. */
+export function getRegistrosDisponiveisParaRelatorio(competencia: string): RegistroFechamento[] {
+  const jaConsolidados = getBeneficiariosJaConsolidados(competencia);
+  return getRegistrosAptosParaNurfi(competencia).filter((r) => !jaConsolidados.has(r.beneficiarioId));
+}
+
+/**
+ * Gera (congela) um novo relatório do Fechamento de Pagamento para o NURFI. Só permitido depois
+ * que a competência já encerrou automaticamente (`getStatusFechamentoAutomatico`) — a geração é um
+ * ato deliberado da GERDAB sobre uma competência já decidida por data, nunca uma forma alternativa
+ * de fechar ou reabrir. Guarda só os valores já calculados (nunca IDs a re-resolver depois) — o
+ * mesmo padrão "nunca recalcula" do Histórico de Consolidações do Retroativo.
+ */
+export function gerarRelatorioFechamento(competencia: string, responsavel: string): SnapshotFechamentoPagamento {
+  if (!getStatusFechamentoAutomatico(competencia).fechada) {
+    throw new Error("Só é possível gerar o relatório depois que a competência encerrar automaticamente.");
+  }
+  const disponiveis = getRegistrosDisponiveisParaRelatorio(competencia);
+  if (disponiveis.length === 0) {
+    throw new Error("Não há registros aptos (Adimplente/Inadimplente) ainda não incluídos em um relatório anterior desta competência.");
+  }
+  const anteriores = getHistoricoFechamentos(competencia);
+  const snapshot: SnapshotFechamentoPagamento = {
+    id: `fech-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    competencia,
+    sequencia: anteriores.length + 1,
+    geradoEm: getDataReferencia().toISOString(),
+    responsavel,
+    linhas: disponiveis.map((r) => ({
+      beneficiarioId: r.beneficiarioId,
+      matricula: r.matricula,
+      nome: r.nome,
+      situacaoVinculo: r.situacaoVinculo,
+      operadoraOuAssociacao: r.operadoraOuAssociacao,
+      competencia: r.competencia,
+      classificacao: r.classificacao as "adimplente" | "inadimplente",
+      valor: r.valor,
+      valorRessarcir: r.valorRessarcir,
+      situacao: r.situacao,
+      motivo: r.motivo,
+      observacaoNurfi: getObservacaoNurfi(r.beneficiarioId, competencia)?.texto,
+      origem: r.origem,
+    })),
+  };
+  saveHistoricoFechamentos([...loadHistoricoFechamentos(), snapshot]);
+  return snapshot;
 }
 
 /**
@@ -453,6 +654,12 @@ export interface LinhaExtrato {
 export function getCompetenciasConhecidas(): string[] {
   const doDataset = new Set(competenciasParaFechamento);
   getComprovantesUnificados().forEach((c) => doDataset.add(c.competencia));
+  // Ressarcimento Retroativo (módulo novo): competências que ele já tratou também precisam
+  // aparecer no Extrato/Histórico de Comprovações, mesmo fora de `competenciasFechadas` (o
+  // servidor pode solicitar qualquer competência anterior, não só as "fechadas para envio").
+  getSolicitacoesRetroativas()
+    .filter((s) => s.origem === "individual")
+    .forEach((s) => s.competencias.forEach((c) => doDataset.add(c.competenciaReferencia)));
   return [...doDataset].sort();
 }
 
@@ -472,8 +679,11 @@ export function getExtratoServidor(beneficiarioId: string): LinhaExtrato[] {
       ano: competencia.split("-")[0],
       houvePagamento: detalhe.classificacao === "adimplente",
       valor: detalhe.classificacao === "adimplente" ? detalhe.valor : 0,
-      statusComprovante: houveEnvio ? detalhe.statusComprovante ?? (detalhe.classificacao === "adimplente" ? "aprovado" : "recusado") : undefined,
-      ocorrenciaRetroativo: comprovantesDaCompetencia.some((c) => c.isRetroativo),
+      // `detalhe.statusComprovante` tem prioridade: hoje pode vir tanto de um `Comprovante` legado
+      // quanto do Ressarcimento Retroativo (módulo novo) — nos dois casos já é a informação certa,
+      // mesmo sem `houveEnvio` (o módulo novo não cria `Comprovante` nenhum).
+      statusComprovante: detalhe.statusComprovante ?? (houveEnvio ? (detalhe.classificacao === "adimplente" ? "aprovado" : "recusado") : undefined),
+      ocorrenciaRetroativo: comprovantesDaCompetencia.some((c) => c.isRetroativo) || (detalhe.statusComprovante ?? "").startsWith("retroativo_"),
       origem: "individual",
     };
   });

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   X,
@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
-import { AnalisePlanilhaModal } from "@/components/AnalisePlanilhaModal";
 import { DocPreview } from "@/components/DocPreview";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { DivergenciaAprovacaoModal } from "@/components/DivergenciaAprovacaoModal";
@@ -52,28 +51,35 @@ import {
   listarPlanilhasAssociacao,
   garantirPlanilhaExemplo,
   statusAtualPlanilha,
+  getAnaliseFinanceiraVigente,
   versaoVigente,
   type PlanilhaAssociacao,
 } from "@/lib/planilhas-associacao";
+import { BTN_NEUTRO, BTN_PRIMARIO } from "@/lib/ui-botoes";
+
+/** Resumo neutro da conferência (só para planilhas com análise concluída): quantas linhas foram
+ *  consideradas na composição do Fechamento, do total de linhas válidas da versão vigente. */
+function resumoConferencia(p: PlanilhaAssociacao): string {
+  const analise = getAnaliseFinanceiraVigente(p);
+  if (!analise) return "—";
+  const validos = versaoVigente(p).registros.filter((r) => r.status === "válido").length;
+  return `${analise.indicesConsiderados.length} de ${validos} linhas consideradas`;
+}
 
 export const Route = createFileRoute("/admin/comprovantes")({
   component: Comprovantes,
 });
 
-type Tab = "comprovantes" | "retroativos" | "historico" | "planilhas";
+// Navegação (revisão): a aba "Retroativos" saiu desta tela — o Ressarcimento Retroativo (novo
+// módulo) já tem área própria no menu lateral ("Retroativos"), e mantê-la aqui também duplicava a
+// entrada. Os comprovantes do retroativo "leve" legado (`Comprovante.isRetroativo`, status
+// `retroativo_*` — ver `docs/MODULO_PAGAMENTO.md` §3.12/4.5, mecanismo distinto e mais antigo que
+// o módulo novo) continuam existindo e intactos; só perderam uma aba dedicada nesta tela, sem
+// remoção de dado ou de regra.
+type Tab = "comprovantes" | "historico" | "planilhas";
 
 const statusPorTab: Record<Tab, StatusComprovante[]> = {
   comprovantes: ["em_analise"],
-  // Os 3 últimos são legado (nomes de status de antes da Etapa 1; nenhum envio novo os produz
-  // mais). "aguardando_analista"/"aguardando_gerencia" continuam pendentes de decisão — mesma
-  // coisa que "aguardando_aprovacao", só com o nome antigo — e por isso são acionáveis
-  // (ver `statusComAcaoDisponivel`). Só "devolvido" fica só para consulta.
-  retroativos: [
-    "retroativo_aguardando_aprovacao",
-    "retroativo_aguardando_analista",
-    "retroativo_devolvido",
-    "retroativo_aguardando_gerencia",
-  ],
   historico: [
     "aprovado",
     "aprovado_com_ressalva",
@@ -143,7 +149,6 @@ function Comprovantes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const planilhas = useMemo(() => listarPlanilhasAssociacao(), [refreshKey]);
-  const [planilhaAberta, setPlanilhaAberta] = useState<PlanilhaAssociacao | null>(null);
 
   function refresh() {
     setRefreshKey((k) => k + 1);
@@ -362,9 +367,8 @@ function Comprovantes() {
         {(
           [
             ["comprovantes", "Comprovantes"],
-            ["retroativos", "Retroativos"],
-            ["historico", "Histórico"],
             ["planilhas", "Planilhas - Associações"],
+            ["historico", "Histórico"],
           ] as [Tab, string][]
         ).map(([value, label]) => (
           <button
@@ -431,6 +435,7 @@ function Comprovantes() {
                 <th className="text-left px-4 py-3">Data de Envio</th>
                 <th className="text-center px-4 py-3">Qtd. Registros</th>
                 <th className="text-left px-4 py-3">Status</th>
+                <th className="text-left px-4 py-3">Conferência financeira</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -451,20 +456,25 @@ function Comprovantes() {
                     <td className="px-4 py-2">
                       <PlanilhaStatusBadge status={statusAtualPlanilha(p)} />
                     </td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {statusAtualPlanilha(p) === "aprovada" ? resumoConferencia(p) : "—"}
+                    </td>
                     <td className="px-4 py-2 text-right">
-                      <button
-                        onClick={() => setPlanilhaAberta(p)}
-                        className="inline-flex items-center gap-1.5 text-sm border border-border rounded-md px-3 py-1.5 hover:bg-muted"
+                      {/* Abre a tela ampla de análise (não mais um modal estreito). */}
+                      <Link
+                        to="/admin/planilhas/$id"
+                        params={{ id: p.id }}
+                        className={`inline-flex items-center gap-1.5 ${statusAtualPlanilha(p) === "em_analise" ? BTN_PRIMARIO : BTN_NEUTRO}`}
                       >
                         <Eye className="h-3.5 w-3.5" /> {statusAtualPlanilha(p) === "em_analise" ? "Analisar" : "Ver"}
-                      </button>
+                      </Link>
                     </td>
                   </tr>
                 );
               })}
               {planilhas.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <FileSpreadsheet className="h-4 w-4" /> Nenhuma planilha de associação recebida ainda.
                     </span>
@@ -474,18 +484,6 @@ function Comprovantes() {
             </tbody>
           </table>
         </div>
-      )}
-
-      {planilhaAberta && (
-        <AnalisePlanilhaModal
-          planilha={planilhaAberta}
-          decididoPorNome={autor}
-          onFechar={() => setPlanilhaAberta(null)}
-          onDecidido={() => {
-            refresh();
-            setPlanilhaAberta(null);
-          }}
-        />
       )}
 
       {/* Modal principal — visualização + ações por beneficiário */}

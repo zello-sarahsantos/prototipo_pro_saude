@@ -1,6 +1,8 @@
 import { beneficiariosPagamento, competenciaAtual, formatCompetencia, type StatusComprovante } from "./mock-data";
 import { getComprovantesUnificados } from "./prosaude-storage";
 import { getCompetenciasPendentes } from "./competencias-pendentes";
+import { getNotificacoesRetroativo } from "./retroativo-fluxo";
+import { getSolicitacoesRetroativas } from "./ressarcimento-retroativo";
 
 export interface NotificacaoPagamento {
   id: string;
@@ -62,5 +64,13 @@ export function getNotificacoesPagamento(): NotificacaoPagamento[] {
       }),
     );
 
-  return [...notificacoesPendentes, ...notificacoesComplementar, ...notificacoesStatus];
+  // Ressarcimento retroativo: pedido de complementação da GERDAB (proposta a validar, `retroativo-fluxo.ts`).
+  // Enquanto não lida (o servidor abre o bloco de retroativo), aparece no sino com link para Pagamentos.
+  const cpfTitular = beneficiariosPagamento.find((b) => b.parentesco === "Titular")?.cpf;
+  const solicitacoesDoTitular = new Set(getSolicitacoesRetroativas().filter((s) => s.origem === "individual" && s.cpfTitular === cpfTitular).map((s) => s.id));
+  const notificacoesRetroativo = getNotificacoesRetroativo("servidor", true)
+    .filter((n) => solicitacoesDoTitular.has(n.solicitacaoId))
+    .map((n) => ({ id: n.id, mensagem: n.mensagem, href: "/servidor/pagamentos" }));
+
+  return [...notificacoesRetroativo, ...notificacoesPendentes, ...notificacoesComplementar, ...notificacoesStatus];
 }

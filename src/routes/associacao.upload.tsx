@@ -18,15 +18,19 @@ import { Field, inputCls } from "@/components/Stepper";
 import { formatCurrency, formatCompetencia } from "@/lib/mock-data";
 import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
 import {
-  registrosPlanilhaExemplo,
-  registrosValidosExemplo,
+  getRegistrosPlanilhaExemplo,
+  getRegistrosValidosExemplo,
+  getAssociacaoModelo,
+  getColunasModelo,
+  getNomeArquivoModelo,
+  ROTULO_PLANO_POR_ASSOCIACAO,
   getPlanilhaAssociacao,
+  getAnaliseFinanceiraVigente,
   listarPlanilhasPorAssociacao,
   enviarPlanilhaAssociacao,
   statusAtualPlanilha,
   statusPlanilhaLabels,
   versaoVigente,
-  COLUNAS_MODELO_PLANILHA,
   type RegistroPlanilhaAssociacao,
   type PlanilhaAssociacao,
   type VersaoPlanilhaAssociacao,
@@ -71,7 +75,7 @@ function UploadPlanilha() {
   // bloqueio da HU01), um reenvio pós-correção usa só o subconjunto já válido — representando a
   // planilha já corrigida pela associação — para que o fluxo de reenvio (P6) seja demonstrável de
   // ponta a ponta, sem inventar conteúdo novo (é o mesmo subconjunto já existente no protótipo).
-  const dadosSimulados = ehReenvio ? registrosValidosExemplo : registrosPlanilhaExemplo;
+  const dadosSimulados = ehReenvio ? getRegistrosValidosExemplo(associacao) : getRegistrosPlanilhaExemplo(associacao);
 
   const totalRegistros = dadosSimulados.length;
   const validos = dadosSimulados.filter(d => d.status === "válido").length;
@@ -103,15 +107,17 @@ function UploadPlanilha() {
   // Modelo em branco (docs/modelo_envio_mensal_associacoes.xlsx) — gerado em código a partir da
   // mesma fonte única de colunas usada pela reconstrução da GERDAB (`planilha-arquivo-versao.ts`),
   // eliminando a divergência entre "o que o modelo anuncia" e "o que a GERDAB baixa depois".
+  // Fase 5: o modelo baixado é o da associação selecionada (que no protótipo simula a associação
+  // autenticada) — ASSEFAZ → "Nome do Plano"; ASSETRAN → "Operadora do Plano".
   async function handleBaixarModelo() {
     setBaixandoModelo(true);
     try {
-      const [{ buildModeloEnvioBlob }, { baixarBlob }] = await Promise.all([
+      const [{ buildModeloBlob }, { baixarBlob }] = await Promise.all([
         import("@/lib/planilha-modelo"),
         import("@/lib/relatorio-export"),
       ]);
-      const blob = await buildModeloEnvioBlob();
-      baixarBlob(blob, "modelo_envio_mensal_associacoes.xlsx");
+      const blob = await buildModeloBlob(associacao, "ordinario");
+      baixarBlob(blob, getNomeArquivoModelo(associacao, "ordinario"));
     } finally {
       setBaixandoModelo(false);
     }
@@ -176,7 +182,7 @@ function UploadPlanilha() {
                   )}
                   {statusExistente === "aprovada" && (
                     <p className="text-xs text-muted-foreground">
-                      Esta competência já foi aprovada pela GERDAB.
+                      A planilha desta competência foi aprovada pela GERDAB; a habilitação financeira de cada titular é decidida individualmente.
                     </p>
                   )}
                   {statusExistente === "negada" && (
@@ -243,7 +249,7 @@ function UploadPlanilha() {
                       servidor titular e o CPF do beneficiário (a associação não tem acesso à matrícula do
                       DETRAN, então a matrícula não é mais usada como chave). Pessoas que não se enquadram
                       nas regras do Pró-Saúde (pais, mães, irmãos ou outros vínculos não previstos) ou que não
-                      forem encontradas no cadastro aparecerão como pendência na conferência e o envio para a
+                      forem encontradas no cadastro aparecerão como pendência na conferência. O mesmo vale para titulares que não são vinculados a esta associação (sem associação responsável ou vinculados a outra): cada associação só envia os seus titulares. O envio para a
                       GERDAB só é liberado quando todos os registros estiverem válidos.
                     </p>
                   </div>
@@ -339,8 +345,8 @@ function UploadPlanilha() {
                 <Download className="h-5 w-5" /> Modelo de Planilha
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Modelo oficial aprovado — mesma estrutura que a GERDAB usa para conferir e baixar
-                cada versão do seu envio.
+                Modelo da {associacao.toUpperCase()} — mesma estrutura que a GERDAB usa para conferir e baixar
+                cada versão do seu envio. Muda só a identificação do plano: <strong className="text-slate-300">{ROTULO_PLANO_POR_ASSOCIACAO[getAssociacaoModelo(associacao) ?? "Assetran"]}</strong>.
               </p>
               <button
                 onClick={handleBaixarModelo}
@@ -353,7 +359,7 @@ function UploadPlanilha() {
               <div className="pt-4 border-t border-slate-800">
                 <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-3">Campos esperados na planilha</p>
                 <div className="grid grid-cols-1 gap-1.5 text-[10px] text-slate-300">
-                  {COLUNAS_MODELO_PLANILHA.map(col => (
+                  {getColunasModelo(associacao, "ordinario").map(col => (
                     <div key={col} className="flex items-center gap-2">
                       <div className="h-1 w-1 bg-primary rounded-full" />
                       {col}
@@ -545,6 +551,13 @@ function HistoricoVersoesModal({
   const [baixandoVersao, setBaixandoVersao] = useState<number | null>(null);
   const status = statusAtualPlanilha(planilha);
   const pendente = status === "correcao_solicitada";
+  // Fase 7 (revisão): conferência financeira por linha — visível à associação como transparência,
+  // sem expor a seleção linha a linha (isso fica só na tela ampla da GERDAB).
+  const planilhaAtual = getPlanilhaAssociacao(planilha.associacao, planilha.competencia) ?? planilha;
+  const versaoAtual = versaoVigente(planilhaAtual);
+  const analise = status === "aprovada" ? getAnaliseFinanceiraVigente(planilhaAtual) : undefined;
+  const totalValidos = versaoAtual.registros.filter((r) => r.status === "válido").length;
+  const naoConsideradas = analise ? totalValidos - analise.indicesConsiderados.length : 0;
 
   async function baixarVersao(v: VersaoPlanilhaAssociacao) {
     setBaixandoVersao(v.versao);
@@ -639,6 +652,20 @@ function HistoricoVersoesModal({
               ))}
             </ul>
           </div>
+
+          {status === "aprovada" && (
+            <div className="space-y-2" data-testid="conferencia-financeira-associacao">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Conferência financeira pela GERDAB</p>
+              {analise ? (
+                <p className="text-xs">
+                  {analise.indicesConsiderados.length} de {totalValidos} linha(s) consideradas para o Fechamento, confirmado por {analise.responsavel} em{" "}
+                  {new Date(analise.concluidaEm).toLocaleString("pt-BR")}. {naoConsideradas > 0 && `${naoConsideradas} linha(s) não foram consideradas.`}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Conferência ainda não concluída.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-6 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">

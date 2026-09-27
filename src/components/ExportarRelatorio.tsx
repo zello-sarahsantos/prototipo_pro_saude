@@ -10,7 +10,7 @@ import type { RelatorioExportSpec } from "@/lib/relatorio-export";
  * `docs/MODULO_RELATORIOS.md`, seção de Exportação). Evita dois botões grandes separados por
  * tela: "Exportar ▾" com PDF e Excel como itens do menu, com feedback de geração/processamento.
  */
-export function ExportarRelatorio<T>({ spec }: { spec: RelatorioExportSpec<T> }) {
+export function ExportarRelatorio<T>({ spec, rotulo = "Exportar" }: { spec: RelatorioExportSpec<T>; rotulo?: string }) {
   const [aberto, setAberto] = useState(false);
   const [gerando, setGerando] = useState<"pdf" | "xlsx" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -53,7 +53,7 @@ export function ExportarRelatorio<T>({ spec }: { spec: RelatorioExportSpec<T> })
         className="inline-flex items-center gap-2 border border-border rounded-md px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
       >
         {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-        {gerando === "pdf" ? "Gerando PDF…" : gerando === "xlsx" ? "Gerando Excel…" : "Exportar"}
+        {gerando === "pdf" ? "Gerando PDF…" : gerando === "xlsx" ? "Gerando Excel…" : rotulo}
         {!gerando && <ChevronDown className="h-3.5 w-3.5" />}
       </button>
       {aberto && (

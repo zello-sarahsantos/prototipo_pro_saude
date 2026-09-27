@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { requerimentos, regrasProSaude } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
-import { getComprovantesUnificados } from "@/lib/prosaude-storage";
+import { getSituacaoConsolidacao } from "@/lib/retroativo-fluxo";
 import { AlertCircle, ArrowRight, ClipboardList, ShieldQuestion, UserCheck, Users } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
@@ -9,9 +9,10 @@ export const Route = createFileRoute("/admin/dashboard")({
 });
 
 function Dashboard() {
-  const retroativosPendentes = getComprovantesUnificados().filter(
-    (c) => c.status === "retroativo_aguardando_aprovacao",
-  );
+  // Revisão (integração com o Ressarcimento Retroativo): o indicador passou a refletir a Fila de
+  // análise do módulo novo (única porta de entrada para competências passadas) — não mais o
+  // retroativo leve legado, que não recebe mais envios novos.
+  const retroativosPendentes = getSituacaoConsolidacao().pendentesNaFila;
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
@@ -61,18 +62,18 @@ function Dashboard() {
             <div>
               <h2 className="font-semibold text-sm">Retroativos pendentes</h2>
               <p className="text-xs text-muted-foreground">
-                Aguardando aprovação (Analista ou Gerência).
+                Competências ainda em análise na Fila do Ressarcimento Retroativo.
               </p>
             </div>
           </div>
-          <p className="text-3xl font-bold tracking-tight text-primary">{retroativosPendentes.length}</p>
+          <p className="text-3xl font-bold tracking-tight text-primary">{retroativosPendentes}</p>
         </div>
-        {retroativosPendentes.length > 0 && (
+        {retroativosPendentes > 0 && (
           <Link
-            to="/admin/comprovantes"
+            to="/admin/retroativos"
             className="mt-3 inline-flex items-center gap-1 text-sm text-primary hover:underline"
           >
-            Ver na fila de Comprovantes <ArrowRight className="h-3 w-3" />
+            Ver na Fila de análise <ArrowRight className="h-3 w-3" />
           </Link>
         )}
       </section>

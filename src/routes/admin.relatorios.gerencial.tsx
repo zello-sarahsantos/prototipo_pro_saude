@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, Building2, UserCog, Users } from "lucide-react";
 import { formatCurrency, regrasProSaude } from "@/lib/mock-data";
 import {
@@ -10,6 +10,7 @@ import {
   type LinhaOperadora,
   type LinhaSituacaoTitular,
   type LinhaFaixaEtaria,
+  type SituacaoTeto,
 } from "@/lib/visoes-gerenciais";
 import { ExportarRelatorio } from "@/components/ExportarRelatorio";
 import type { RelatorioExportSpec } from "@/lib/relatorio-export";
@@ -28,6 +29,19 @@ function VisoesGerenciais() {
   const porFaixaEtaria = getConsolidadoPorFaixaEtaria();
   const teto = getSituacaoTeto();
   const totalTitulares = porOperadora.reduce((soma, o) => soma + o.titulares, 0);
+
+  // Fase 8 — único filtro hoje na tela (busca por nome/matrícula), aplicado só sobre a lista de
+  // Servidores no Teto Familiar. Filtragem client-side sobre `teto.servidoresNoTeto`, sem tocar
+  // `visoes-gerenciais.ts` — a tela decide o recorte, `getSituacaoTeto()` continua devolvendo a
+  // fotografia completa, como as demais tabelas desta página.
+  const [buscaTeto, setBuscaTeto] = useState("");
+  const servidoresNoTetoFiltrados = useMemo(() => {
+    const termo = buscaTeto.trim().toLowerCase();
+    if (!termo) return teto.servidoresNoTeto;
+    return teto.servidoresNoTeto.filter(
+      (s) => s.nome.toLowerCase().includes(termo) || s.matricula.toLowerCase().includes(termo),
+    );
+  }, [teto.servidoresNoTeto, buscaTeto]);
 
   // Relatório-piloto de exportação (PDF/XLSX) — ver docs/MODULO_RELATORIOS.md, seção de
   // Exportação. Consome exatamente os mesmos dados já calculados acima para a tela
@@ -103,6 +117,28 @@ function VisoesGerenciais() {
       nomeArquivoBase: `pro-saude_visao_faixa_etaria_${periodoArquivo}`,
     };
   }, [porFaixaEtaria]);
+
+  // Fase 8 — mesmos registros e mesma ordem exibidos na lista da tela (`servidoresNoTetoFiltrados`,
+  // já com a busca aplicada); nenhum cálculo novo, `getSituacaoTeto()` segue sendo a única fonte.
+  const specTeto: RelatorioExportSpec<SituacaoTeto["servidoresNoTeto"][number]> = useMemo(() => {
+    const hoje = new Date();
+    const periodoArquivo = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+    return {
+      titulo: "Servidores no Teto Familiar",
+      origem: "Visões Gerenciais",
+      filtrosAplicados: [
+        `Teto familiar vigente: ${formatCurrency(regrasProSaude.tetoFamiliar)}`,
+        ...(buscaTeto.trim() ? [`Busca: "${buscaTeto.trim()}"`] : []),
+      ],
+      colunas: [
+        { header: "Nome", valor: (l) => l.nome, tipo: "texto", width: 30 },
+        { header: "Matrícula", valor: (l) => l.matricula, tipo: "texto", width: 14 },
+        { header: "Valor do Plano", valor: (l) => l.valorPlano, tipo: "moeda", width: 16 },
+      ],
+      linhas: servidoresNoTetoFiltrados,
+      nomeArquivoBase: `pro-saude_servidores_teto_familiar_${periodoArquivo}`,
+    };
+  }, [servidoresNoTetoFiltrados, buscaTeto]);
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-6">
@@ -273,11 +309,14 @@ function VisoesGerenciais() {
 
       {/* Teto familiar — indicador complementar, fotografia atual */}
       <section className="bg-card rounded-xl border border-border shadow-card p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <AlertTriangle className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Servidores no teto familiar
-          </h2>
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Servidores no teto familiar
+            </h2>
+          </div>
+          <ExportarRelatorio spec={specTeto} />
         </div>
         <p className="text-xs text-muted-foreground mb-4">
           Teto familiar vigente: {formatCurrency(regrasProSaude.tetoFamiliar)} — posição atual do
@@ -285,17 +324,32 @@ function VisoesGerenciais() {
           {formatPercentual(teto.percentualNoTeto)} da base).
         </p>
         {teto.servidoresNoTeto.length > 0 && (
-          <div className="space-y-2">
-            {teto.servidoresNoTeto.map((s) => (
-              <div
-                key={s.matricula}
-                className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2 text-sm"
-              >
-                <span>{s.nome}</span>
-                <span className="font-medium">{formatCurrency(s.valorPlano)}</span>
+          <>
+            <input
+              type="text"
+              value={buscaTeto}
+              onChange={(e) => setBuscaTeto(e.target.value)}
+              placeholder="Buscar por nome ou matrícula"
+              className="w-full max-w-xs mb-3 rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+            />
+            {servidoresNoTetoFiltrados.length > 0 ? (
+              <div className="space-y-2">
+                {servidoresNoTetoFiltrados.map((s) => (
+                  <div
+                    key={s.matricula}
+                    className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <span>
+                      {s.nome} <span className="text-muted-foreground">— matrícula {s.matricula}</span>
+                    </span>
+                    <span className="font-medium">{formatCurrency(s.valorPlano)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhum servidor no teto encontrado para essa busca.</p>
+            )}
+          </>
         )}
         <p className="text-xs text-muted-foreground mt-4">
           Evolução de Servidores no Teto (série ao longo de competências) permanece como

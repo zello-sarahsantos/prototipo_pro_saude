@@ -28,6 +28,11 @@ ressarcimentos/retroativos **não entram nesta rodada** — a própria ata regis
 "exige tratamento próprio" e será detalhado em reunião específica futura. Ver seção 4 para a
 lista completa de exclusões de escopo do Módulo de Relatórios.
 
+> **Atualização — ata 22/09/2026:** a "reunião específica futura" citada acima aconteceu — o
+> Ressarcimento Retroativo entrou em escopo e foi implementado (seções 3.20 a 3.30, e o
+> apontamento atualizado na seção 4). Este parágrafo é mantido como registro histórico da decisão
+> original, não como o estado atual do escopo.
+
 ---
 
 ## 2. Ajustes aprovados — Planilha modelo e Requerimentos ASSETRAN
@@ -886,6 +891,12 @@ erros pré-existentes e não relacionados). Dados de teste (`prosaude_role`,
 `prosaude_fechamentos_pagamento`, `prosaude_observacoes_nurfi`) limpos do `localStorage` ao
 final da verificação.
 
+> **Atualização — ata 22/09/2026 (ver seção 3.29):** o botão manual "Fechar competência" descrito
+> acima **não existe mais** — foi substituído por um status automático derivado de data (2º/3º
+> dia útil), e a coluna de identificação passou a ser **Matrícula**, não CPF. Todo o restante
+> desta seção (estrutura das 3 abas, classificação, Situação/Motivo/Observação NURFI, filtro
+> Vínculo) continua exatamente como descrito.
+
 ### 3.2 Visão Geral / Dashboard do módulo
 
 **Contexto:** com o Fechamento de Pagamento já implementado, a Visão Geral (item 1 da
@@ -1738,27 +1749,254 @@ botão "Exportar" quebra para uma nova linha do cartão sem sobrepor outros elem
 **Aguardando validação visual do usuário antes de commit** — nenhum commit foi feito nesta
 implementação.
 
+### 3.20 Ressarcimento Retroativo e Evoluções do Pró-Saúde — ata 22/09/2026 (visão geral)
+
+**Contexto:** a ata de 22/09/2026 fecha o que a seção 4 abaixo mantinha como Fora de Escopo
+("Ressarcimentos/retroativos") e pede, além disso, uma série de evoluções transversais do Módulo
+de Relatórios (matrícula, fechamento automático, histórico de relatórios, modelos por associação,
+exportação de Servidores no Teto). Implementado em 11 fases (0 a 10), plano completo em
+`/Users/User/.claude/plans/ol-como-fa-o-para-atomic-sun.md` (Plano v3). As seções 3.21 a 3.30
+documentam cada fase; esta seção só resume o que muda na estrutura já registrada acima.
+
+**O retroativo leve legado já documentado no Módulo de Pagamento (`Comprovante.isRetroativo`,
+status `retroativo_*`, seção 3.12 de `MODULO_PAGAMENTO.md`) permanece intacto como está — nenhum
+dado ou status legado foi apagado.** Ele deixou de ser o caminho de entrada para novas
+competências passadas (ver 3.27) e passou a existir só como referência histórica simulada,
+convivendo com o módulo novo sem se fundir com ele.
+
+**Arquivos novos principais desta série de fases**, para referência cruzada rápida das seções
+seguintes: `src/lib/base-institucional.ts`, `src/lib/dias-uteis.ts`, `src/lib/auditoria.ts`,
+`src/lib/ressarcimento-retroativo.ts`, `src/lib/retroativo-fluxo.ts`, `src/lib/planilha-retroativa.ts`,
+`src/lib/consolidacao-export.ts`, `src/lib/origem-comprovacao.ts`, `src/lib/massa-demonstracao.ts`,
+`src/lib/fechamento-export.ts`; rotas `admin.retroativos`, `admin.relatorios.retroativos`,
+`admin.relatorios.consolidacoes`, `admin.planilhas.$id`, `associacao.retroativo`,
+`servidor.retroativo.novo`, `admin.relatorios.pagamentos_.historico`; componentes
+`RetroativosNav`, `RessarcimentoRetroativoBloco`, `ComprovacaoPelaAssociacaoAviso`,
+`SecaoExpansivel`.
+
+### 3.21 Fase 0-1 — Fundações e motor do Ressarcimento Retroativo
+
+**Regra funcional (decisão fechada):** o novo módulo cobre duas origens de solicitação —
+`individual` (servidor titular, pelo Portal) e `associacao` (planilha retroativa enviada pela
+associação, seção 3.25). Cada solicitação tem N competências, cada uma com estado próprio
+(`em_analise | aprovado | negado` para origem individual; `habilitado | não habilitado` para
+origem associação) — decisão **independente por competência**, nunca uma decisão só para a
+solicitação inteira. Valor Pago (contracheque) e Valor Devido são sempre apurados/validados pela
+GERDAB, nunca vindos do cadastro atual nem de `calcularReembolso` (fórmula do Fechamento
+ordinário, seção 3.1 — as duas fórmulas nunca se misturam). Valor a Ressarcir só existe depois do
+Valor Devido validado, nunca negativo.
+
+**Limitação de protótipo (não é regra de negócio):** a "base institucional segura" que resolve
+CPF→matrícula é simulada (`base-institucional.ts`) cruzando os dois mocks já existentes
+(`servidoresList`, `beneficiariosPagamento`) — única exceção autorizada ao isolamento entre esses
+dois datasets. "Dia útil" é seg-sex sem calendário oficial de feriados (`dias-uteis.ts`) — ver
+pendência na seção 5.
+
+**Pendência, não decisão fechada** (achado da auditoria de 27/09/2026 — a frase original desta
+seção rotulava isso incorretamente como "decisão fechada"): o motor assume "um motivo por
+solicitação" (não por competência) como suposição do protótipo, ainda **não validada** em
+detalhe com a stakeholder — ver seção 5.
+
+### 3.22 Fase 2-3 — Portal do Servidor e Análise da GERDAB por competência
+
+O servidor informa motivo, justificativa, competências e documentos por competência
+(`servidor.retroativo.novo.tsx`) — **nunca** Valor Pago, Valor Devido, Mês/Ano de Pagamento ou
+matrícula (esses são de apuração exclusiva da GERDAB). A GERDAB (`admin.retroativos.tsx`, "Fila de
+análise") registra Valor Pago, valida Valor Devido, marca contracheque conferido, e decide
+Aprovado/Negado por competência (origem individual) ou Habilitado/Não habilitado (origem
+associação, seção 3.26) — um único gate financeiro por origem, nunca os dois exigidos ao mesmo
+tempo para o mesmo registro. `correcao_solicitada` não existe neste fluxo novo (não sustentado
+pelos requisitos) — permanece como pendência, não implementado por suposição.
+
+### 3.23 Fase 4 — Relatório Financeiro Retroativo (NURFI) + exportação
+
+**Regra fechada:** colunas oficiais `Matrícula | Nome | Mês/Ano Pagamento | Valor Pago | Valor
+Devido | Valor a ser Ressarcido | Observação`; uma linha por competência, nunca consolidando
+meses; abas Ativos/Inativos separadas; PDF = XLSX = tela, via `RelatorioExportSpec`/
+`ExportarRelatorio` (nenhuma engine nova). **Matrícula substitui CPF** neste relatório (decisão
+fechada da ata) — CPF permanece no cadastro e nas telas internas. Regra de entrada: só registros
+autorizados (aprovado, origem individual; habilitado, origem associação) compõem o relatório.
+Titular sem matrícula localizada na base institucional simulada → **pendência cadastral**,
+retido fora do relatório mas rastreável na fila (`getSituacaoConsolidacao().retidasPorCadastro`).
+Pago = Devido → resolvido/rastreável, mas **excluído** da Consolidação/NURFI (Ressarcir = R$
+0,00); Pago \< Devido → só a diferença compõe a Consolidação; Pago \> Devido → divergência, bloqueia
+a autorização.
+
+**UX** (revisão pós-implementação inicial): nomes de aba fixados como **Fila de análise |
+Consolidação | Histórico** (`RetroativosNav`); "Selecionar todos" na Consolidação atua só sobre os
+registros visíveis/filtrados no momento (nunca a base inteira); "Exportar prévia" (sem tirar da
+fila) é distinto de "Gerar relatório" (com confirmação explícita listando o que sai da
+Consolidação); "Restaurar dados de demonstração" é **rótulo exclusivo do protótipo**, nunca um
+requisito de produção.
+
+### 3.24 Fase 5 — Modelos por associação (ASSEFAZ/ASSETRAN)
+
+Modelo de planilha (ordinária e retroativa) determinado pela associação autenticada, não
+escolhido por ela: ASSEFAZ usa a coluna final "Nome do Plano"; ASSETRAN usa "Operadora do Plano"
+(padrão já existente, inalterado). Os modelos reais fornecidos pela stakeholder foram usados só
+como **referência de conteúdo**, nunca como estrutura literal a reproduzir (decisão explícita do
+usuário) — a estrutura de colunas é a já definida no plano (seção "Regras funcionais" acima).
+
+### 3.25 Fase 6 — Retroativo das Associações + vínculo Associação × Titular
+
+Planilha retroativa da associação (upload → validação em 2 camadas → envio) consolida as linhas
+por **Titular + Competência** num único registro financeiro (dependentes só em `composicao`,
+nunca linha própria) — mesma unidade financeira já usada na planilha ordinária (seção 3.26).
+**Validação defensiva acrescentada durante a fase:** cada titular informado precisa pertencer,
+segundo a base institucional simulada, à associação que está enviando (`validarVinculoTitularAssociacao`)
+— um titular vinculado a outra associação (ou sem associação cadastrada) é rejeitado linha a
+linha, sem inferir ou corrigir o vínculo automaticamente.
+
+**Regra de origem (correção durante a fase):** servidor vinculado a uma Associação responsável
+não tem acesso ao envio individual de comprovante nem ao retroativo individual pelo Portal —
+comprovação (ordinária e retroativa) é sempre pela Associação (`origem-comprovacao.ts`,
+`ComprovacaoPelaAssociacaoAviso`). A validação de duplicidade titular/competência dentro do motor
+(`ressarcimento-retroativo.ts`) permanece só como proteção defensiva, nunca como fluxo esperado de
+negócio.
+
+### 3.26 Fase 7 — Conferência individual das planilhas (ordinária e retroativa)
+
+**Regra fechada (Opção B — habilitação explícita):** registros de uma planilha apta para análise
+nascem **marcados/habilitados** (☑) — não é aprovação de pagamento, é só o ponto de partida da
+conferência; a GERDAB desmarca exceções (justificativa obrigatória, histórico append-only,
+reabilitação sem apagar a decisão anterior). Só registros habilitados compõem Fechamento,
+Relatório Retroativo e exportações NURFI. **Validação de arquivo ≠ autorização financeira**: uma
+planilha "apta para análise" nunca equivale, por si só, a estar 100% habilitada.
+
+Revisão de UX pós-Fase 6: status simplificado para só **"Em análise"** (sem o estado intermediário
+"apta para análise" na etiqueta visível); tela de conferência em página cheia (não mais modal —
+`AnalisePlanilhaModal` removido, substituído por `admin.planilhas.$id.tsx`); seleção em lote
+adicionada. Para a planilha **ordinária**, o modelo final ficou mais simples que a Opção B da
+retroativa: seleção **por linha** (não por titular), uma única ação "Confirmar análise" (sem o
+gate duplo aprovar-planilha/habilitar-titular), status interno inalterado, só o rótulo mudou para
+"Análise concluída" (`AnaliseFinanceiraPlanilha`, `confirmarAnaliseFinanceira`).
+
+### 3.27 Integração do retroativo leve legado ao novo módulo (e sua simplificação)
+
+Levantamento prévio (read-only) confirmou que o retroativo leve (`Comprovante.isRetroativo`,
+status `retroativo_*`) segue ativo em `getExtratoServidor`/Histórico de Comprovações/Fechamento, e
+a decisão do usuário foi **integrar em etapas, sem excluir dados/status legados**: o módulo novo
+vira a única porta de entrada visível para competências passadas (dropdown de
+`servidor.pagamentos.enviar.tsx` não oferece mais competências fechadas livremente); Histórico de
+Comprovações e Fechamento passam a também refletir o resultado do módulo novo
+(`getResultadoRetroativoIndividual`, consultado antes da lógica legada em
+`classificarTitularNaCompetencia`); as regras já existentes de Consolidação (Pago=Devido excluído,
+Pago\<Devido só a diferença) foram preservadas, nunca reinventadas.
+
+**Ajuste posterior, explícito do usuário:** por se tratar de um protótipo com dados simulados,
+essa integração foi **simplificada** — removida a lógica de "reconciliação" entre os dois fluxos
+(`getCompetenciasComRegistroLegado`, guard de duplicidade contra o legado) por ser mais elaborada
+do que o protótipo precisa; revertida uma alteração de status de um comprovante legado
+(`comp004`) que havia sido mudada só por causa de uma reorganização de abas — **dado mockado não
+deve mudar por causa de navegação**. Documentado explicitamente no código que uma migração real de
+registros legados para produção é decisão de produção, fora do escopo deste protótipo.
+
+### 3.28 Fase 8 — Exportação de Servidores no Teto Familiar
+
+Exportação PDF/XLSX (`ExportarRelatorio`) da lista já existente `getSituacaoTeto().servidoresNoTeto`
+em Visões Gerenciais (`admin.relatorios.gerencial.tsx`) — mesmos dados da tela, sem cálculo novo
+em `visoes-gerenciais.ts`. Único filtro da tela (busca por nome/matrícula) refletido também na
+exportação. Massa simulada ampliada em 1 servidor (Ana Beatriz Ferreira) para demonstrar mais de
+um servidor no teto.
+
+### 3.29 Fase 9 — Matrícula no Relatório de Pagamento + Fechamento automático
+
+**Duas mudanças na mesma tela já documentada na seção 3.1 (Fechamento de Pagamento) — leia esta
+seção como atualização daquela:**
+
+1. **Matrícula substitui CPF** na grade e nas 3 exportações do Fechamento de Pagamento (decisão
+   da ata, mesma já aplicada ao Relatório Retroativo na seção 3.23). Origem individual já
+   carregava matrícula própria; origem associação passou a resolvê-la via `getMatriculaPorCpf`
+   (mesma base institucional simulada da seção 3.21). CPF permanece no detalhamento por
+   integrante do grupo familiar (não é o identificador oficial do relatório).
+2. **Fechamento automático substitui o botão manual "Fechar competência"** documentado na seção
+   3.1 (`FechamentoPagamento`, `podeFecharCompetencia()` — ambos removidos). O ciclo permanece
+   vigente até o fim do 2º dia útil do mês seguinte à competência; a partir do 3º dia útil,
+   encerra sozinho (`getStatusFechamentoAutomatico`, reaproveitando `dias-uteis.ts` da seção
+   3.21) — **nunca persistido**, sempre recomputado a partir da data de referência (real, ou
+   simulada só para demonstração via o controle "Data simulada (protótipo)" na própria tela).
+   "Requer análise" continua **não bloqueando** e **não sendo classificado** pelo fechamento —
+   confirma, agora como regra automática, a mesma recomendação que já estava pendente de
+   confirmação na seção 3.1/seção 5.
+3. **Direcionamento efetivo ao ciclo seguinte, implementado no envio do servidor**
+   (`servidor.pagamentos.enviar.tsx`): um envio ordinário da competência aberta, feito a partir do
+   3º dia útil, é gravado (`Comprovante.competencia`) já no ciclo seguinte — com aviso explícito
+   ao servidor antes da confirmação — em vez de só um indicador informativo. Continua sendo um
+   envio **ordinário** (não vira "retroativo", sem justificativa nem aprovação especial). Um
+   registro que já existia (em qualquer estado, inclusive "Requer análise") no momento da virada
+   **nunca** é movido, reclassificado, aprovado, recusado ou excluído automaticamente — permanece
+   como estava; o que fazer com ele depois da virada é pendência explícita, não resolvida (seção
+   5).
+
+### 3.30 Fase 10 — Histórico de Relatórios (Fechamento de Pagamento)
+
+Snapshot **imutável** do relatório de Fechamento de Pagamento gerado para o NURFI
+(`SnapshotFechamentoPagamento`, `gerarRelatorioFechamento`) — mesmo padrão já usado no Histórico
+de Consolidações do Retroativo (seção 3.23): consulta posterior nunca recalcula com dados atuais.
+Só **Adimplente**/**Inadimplente** são "aptos para envio ao NURFI" — a mesma distinção de sempre
+entre os 3 estados de classificação (seção 3.1), nenhuma regra financeira nova; "Requer análise"
+nunca compõe um relatório gerado, mas fica disponível para um relatório posterior da mesma
+competência assim que resolvido. Um registro que já entrou em qualquer relatório de uma
+competência não pode entrar de novo (evita duplicidade entre relatórios da mesma competência).
+Geração habilitada só depois do encerramento automático (seção 3.29) — gerar o relatório nunca é
+uma forma alternativa de fechar/reabrir a competência.
+
+**Múltiplos relatórios por competência são uma possibilidade de contingência, não o fluxo
+operacional principal** — o esperado é normalmente um único relatório por competência, contendo
+todos os registros aptos naquele momento; um segundo relatório só existe para cobrir registros que
+ficaram de fora do primeiro por estarem "Requer análise" e terem sido resolvidos depois.
+
+Tela nova `/admin/relatorios/pagamentos/historico` (lista → detalhe read-only, abas
+Adimplentes/Inadimplentes + filtro Vínculo → exportação PDF/XLSX pela mesma
+`RelatorioExportSpec`), separada do Histórico do Retroativo (que continua em
+`/admin/relatorios/consolidacoes`, sem alteração). Nota técnica de implementação: o arquivo de
+rota precisou ser nomeado com a convenção "não aninhada" do TanStack Router
+(`admin.relatorios.pagamentos_.historico.tsx`) para não ser engolido pelo layout da rota-pai
+`admin.relatorios.pagamentos.tsx` (que não renderiza `<Outlet/>`) — sem efeito na URL pública.
+
+**Superado por esta fase:** o storage `FechamentoPagamento`/`salvarFechamentoPagamento`/
+`getFechamentoPagamento`/`invalidarFechamentoPagamento` (seção 3.1) foi removido — substituído
+pelo par `getStatusFechamentoAutomatico` (estado, nunca persistido) + este novo snapshot
+(conteúdo, persistido e imutável).
+
 ## 4. Fora de escopo (decisão explícita, registrada desde já)
 
-- **Ressarcimentos/retroativos** — motor de cálculo, casos especiais **e a própria tela
-  administrativa dedicada** (correção v3: nem uma tela só de status é construída nesta rodada).
-  O Extrato do Servidor (quando implementado) exibirá os registros retroativos já existentes no
-  Módulo de Pagamento como parte do histórico normal, sem tela própria. Pedido explícito do
-  usuário; a própria ata indica que o fluxo completo precisa de uma reunião específica com
-  exemplos reais antes de ser prototipado.
+- ~~Ressarcimentos/retroativos — motor de cálculo, casos especiais e tela administrativa
+  dedicada.~~ **Implementado** na ata de 22/09/2026 (ver seções 3.20 a 3.30) — motor
+  (`ressarcimento-retroativo.ts`), fila de análise, relatório NURFI retroativo, planilhas de
+  associação e a integração com o retroativo leve legado (que permanece intacto, agora só como
+  referência histórica). O que continua fora desta rodada: negociação/parcelamento com
+  operadoras, integração automática com contracheque real, e o texto institucional definitivo do
+  relatório retroativo (ver seção 5).
 - Integração real com SEI (links diretos, blocos de assinatura, abertura de processo),
   integração com GOV.BR (assinatura) e integração com WhatsApp — todas citadas na ata como
   dependentes de definição institucional/técnica ainda não fechada.
 - Dashboard via ferramenta de BI externa (Grafana etc.) — quando implementado, o painel
   operacional será nativo do protótipo.
+- **Central de Notificações consolidada no Dashboard da GERDAB** (registrado ao final da Fase 11,
+  27/09/2026) — não faz parte desta entrega uma central única, na página inicial/Dashboard da
+  GERDAB, que reúna alertas de atividades que demandem acompanhamento ou atuação da unidade
+  (requerimentos pendentes, solicitações de complementação, planilhas recebidas das associações,
+  registros em "Requer análise", e outras ocorrências relevantes). Fica registrado como
+  **evolução futura**, com levantamento próprio ainda a fazer para definir regras de geração,
+  destinatários, priorização, leitura/não leitura, direcionamento à funcionalidade de origem e
+  tratamento das notificações — nada disso deve ser inventado ou antecipado sem esse
+  levantamento. **Isto não tira de escopo os alertas contextuais já existentes dentro das
+  funcionalidades atuais** (ex.: card "Retroativos pendentes" no Dashboard — seção 5.4 de
+  `MODULO_PAGAMENTO.md`; sino de notificações do Servidor — seção 3.13 de `MODULO_PAGAMENTO.md`;
+  indicadores de pendência nas telas do Ressarcimento Retroativo) — só a centralização desses
+  eventos numa Central própria é que fica fora desta entrega.
 - "Relatório por sexo" — a própria ata marca como baixa prioridade, fora do MVP.
 - Relatórios do sistema legado marcados "Descontinuar" na ata (débito em folha, incoerências de
   migração, comparação/correção de dependentes do legado, valor médio por seguradora).
 - Atualização cadastral periódica com bloqueio de ações — periodicidade e regras ainda "a
   definir" segundo a própria ata; entrará como uma etapa mais leve (confirmação simples, sem
   bloqueio automático completo).
-- Exportação real de arquivo (Excel/PDF) do relatório para o NURFI — mock em toda a Parte 2,
-  como em outras ações simuladas do protótipo.
+- ~~Exportação real de arquivo (Excel/PDF) do relatório para o NURFI — mock em toda a Parte 2.~~
+  **Implementado** para o Relatório Financeiro Retroativo (seção 3.23) e para o Fechamento de
+  Pagamento/seu Histórico (seções 3.29-3.30) — PDF/XLSX reais via `RelatorioExportSpec`/
+  `ExportarRelatorio`, nenhum mock. Outros relatórios do módulo (Extrato/Histórico de
+  Comprovações, Documentação e Pendências) continuam sem exportação — ver seção 5.
 
 ## 5. Pendências
 
@@ -1786,11 +2024,11 @@ implementação.
   relevância atual); ativar se essa avaliação mudar.
 - **Exportação (PDF/.xlsx) de todos os relatórios do módulo** — pedido explícito do usuário
   (§3.10): todo relatório construído neste módulo deve poder ser exportado como PDF ou .xlsx.
-  Nenhuma exportação real foi implementada em nenhuma etapa até aqui (Fechamento, Extrato/
-  Histórico, Documentação, Beneficiários/Contratos) — todas continuam mock/simuladas, seguindo o
-  mesmo tratamento de outras ações simuladas do protótipo. Quando a exportação real for
-  priorizada, a de Beneficiários/Contratos deve incluir telefone/e-mail mesmo não sendo coluna
-  da tabela em tela.
+  **Resolvido para o Fechamento de Pagamento** (tela e Histórico, seções 3.29-3.30) **e o
+  Relatório Financeiro Retroativo** (tela e Histórico, seção 3.23). Ainda mock/não implementada
+  para Extrato/Histórico de Comprovações, Documentação e Pendências, Beneficiários/Contratos.
+  Quando a exportação real for priorizada para esses últimos, a de Beneficiários/Contratos deve
+  incluir telefone/e-mail mesmo não sendo coluna da tabela em tela.
 - **Notificação em massa** na Documentação e Pendências (§3.4) — mencionada na arquitetura do
   plano, não implementada ainda; não há função pronta a reaproveitar, criar uma nova ficaria
   para quando for explicitamente priorizado.
@@ -1798,11 +2036,14 @@ implementação.
   (`fechamento-pagamento.ts`) — mapeamento tecnicamente coerente com os dados existentes, mas
   ainda não validado como regra de negócio pela stakeholder; só a estrutura de 3 grupos na UI
   está aprovada.
-- **Se "Requer análise" deve bloquear o fechamento da competência** — implementado como
-  recomendação do plano (`podeFecharCompetencia()`), não como regra já confirmada.
-  - Se a stakeholder confirmar um critério diferente, ajustar só `fechamento-pagamento.ts`
-    (`statusRequerAnalise`/`statusAdimplente`/`statusInadimplente` e a checagem de "sem
-    comprovante") — a tela (`admin.relatorios.pagamentos.tsx`) não precisa mudar.
+- ~~Se "Requer análise" deve bloquear o fechamento da competência~~ — **resolvido na ata de
+  22/09/2026** (seção 3.29): o fechamento passou a ser automático (por data, não mais por botão) e
+  "Requer análise" explicitamente **não bloqueia nem é classificado** por ele. Continua em aberto,
+  isso sim, **o que fazer** com um registro em "Requer análise" depois que a competência já
+  encerrou — decisão explicitamente não tomada, sinalizada no código
+  (`getStatusFechamentoAutomatico`, `fechamento-pagamento.ts`) como pendência para a stakeholder.
+  - Critério de classificação em si (`statusRequerAnalise`/`statusAdimplente`/
+    `statusInadimplente`) continua ajustável só em `fechamento-pagamento.ts`, sem mudar a tela.
 - **Vocabulário fechado de "Situação"** na aba Inadimplentes — hoje só "Suspender" é produzido
   automaticamente; confirmar com a GERDAB se há outros valores usados na prática.
 - **Significado da coluna "QT"** — tratada como sequencial de exibição, não indicador (ver 3.1).
@@ -1822,6 +2063,41 @@ implementação.
   conferência** (seção 2.3) — planejado para uma rodada futura; até lá, a lista de campos
   exibida na tela (5 campos essenciais) é só uma simplificação da comunicação ao usuário, e a
   validação da conferência continua sendo simulada (`dadosSimulados` fixo), não real.
+
+**Pendências da ata 22/09/2026 (Ressarcimento Retroativo e Evoluções, seções 3.20-3.30), ainda sem
+decisão definitiva:**
+
+- **Motivo por solicitação ou por competência** (seção 3.21) — o motor assume um motivo por
+  solicitação (todas as competências dela compartilham); não confirmado se competências de motivos
+  diferentes podem coexistir numa mesma solicitação.
+- **Lista final de motivos padronizados e redação institucional da Observação** (seção 3.23) —
+  catálogo (`comprovante_pagamento`, `inclusao_dependente`, etc.) e textos de
+  `OBSERVACAO_POR_MOTIVO` são provisórios, pendentes de validação institucional.
+- **"Solicitar Correção" no fluxo retroativo novo** — deliberadamente fora do escopo (seção 3.22)
+  até existir um requisito validado; hoje só decisão binária Aprovado/Negado por competência.
+- **Conteúdo definitivo dos modelos retroativos ASSEFAZ/ASSETRAN** (seção 3.24) — os arquivos reais
+  da stakeholder foram usados só como referência de conteúdo; a estrutura de colunas do protótipo
+  ainda não foi confrontada com um modelo real definitivo.
+- **Texto institucional definitivo do Relatório Retroativo** (seção 3.23) — mesma natureza da
+  pendência de Observação acima, específica deste relatório.
+- **Negociação/parcelamento com operadoras** (retroativo) — aguarda decisão de gestão, fora desta
+  rodada (seção 3.20/4).
+- **Calendário oficial de feriados para produção** (`dias-uteis.ts`, seções 3.21/3.29) — "dia
+  útil" no protótipo é só seg-sex; produção precisa do calendário institucional real (2º/3º dia
+  útil do Fechamento automático e do ciclo do Retroativo dependem diretamente disso).
+- **Direcionamento efetivo de um envio tardio ao ciclo seguinte, só para o Fechamento ordinário**
+  (seção 3.29) — implementado no envio do servidor (`servidor.pagamentos.enviar.tsx`); o que fazer
+  com um registro que **já existia** (em qualquer estado) no momento da virada do ciclo continua
+  sem regra definida — nunca é movido/reclassificado automaticamente, mas o tratamento posterior
+  segue pendente, a levantar com a stakeholder.
+- **Estratégia de migração/integração real dos registros do retroativo leve legado** (seção 3.27)
+  — o protótipo manteve os dois fluxos coexistindo por serem poucos registros mockados; uma
+  migração de dados reais de produção (ou descontinuação efetiva do legado) é decisão de produção,
+  não resolvida aqui.
+- **Expandir `beneficiariosPagamento` para múltiplos servidores/grupos familiares** — pendência já
+  registrada acima (ver bullet sobre isso mais acima nesta seção) — também afeta diretamente o
+  volume de demonstração do Ressarcimento Retroativo e do Histórico do Fechamento (seções
+  3.29-3.30), que hoje mostram poucos registros pelo mesmo motivo.
 
 ## 6. Backlog de refinamento (rodada posterior)
 

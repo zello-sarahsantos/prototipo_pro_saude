@@ -5,9 +5,9 @@ import {
   type Comprovante,
   type ConclusaoCompetencia,
   type BeneficiarioDispensado,
-  type FechamentoPagamento,
   type ObservacaoNurfi,
 } from "./mock-data";
+import type { AuditoriaBase } from "./auditoria";
 
 export const PROSAUDE_STORAGE_KEYS = {
   titularCadastro: "prosaude_titular_cadastro",
@@ -17,10 +17,21 @@ export const PROSAUDE_STORAGE_KEYS = {
   beneficiariosDispensados: "prosaude_beneficiarios_dispensados",
   valoresCadastradosBeneficiarios: "prosaude_valores_cadastrados_beneficiarios",
   observacoesGerdab: "prosaude_observacoes_gerdab",
-  fechamentosPagamento: "prosaude_fechamentos_pagamento",
   observacoesNurfi: "prosaude_observacoes_nurfi",
   planilhasAssociacao: "prosaude_planilhas_associacao",
+  massaDemoPlanilhas: "prosaude_massa_demo_planilhas",
   requerimentosAssociacao: "prosaude_requerimentos_associacao",
+  // Ressarcimento Retroativo (plano v3, ata 22/09/2026). Dados de demonstração — persistência real
+  // das solicitações/snapshots é preenchida nas Fases 1 e 10.
+  planilhasRetroativasOriginais: "prosaude_planilhas_retroativas_originais",
+  notificacoesRetroativo: "prosaude_notificacoes_retroativo",
+  consolidacoesRetroativo: "prosaude_consolidacoes_retroativo",
+  massaDemoRetroativos: "prosaude_massa_demo_retroativos",
+  solicitacoesRetroativas: "prosaude_solicitacoes_retroativas",
+  // Fase 10 — Histórico do Fechamento de Pagamento (chave já reservada desde a Fase 0).
+  historicoFechamentos: "prosaude_historico_relatorios",
+  /** Data simulada do protótipo (limitação de demonstração — ver `dias-uteis.ts`). */
+  dataReferenciaPrototipo: "prosaude_data_referencia",
 } as const;
 
 export type TitularCadastroPlano = {
@@ -120,7 +131,6 @@ export function addComprovantePagamento(comprovante: Comprovante) {
     limparSolicitacaoComplementar(id, comprovante.competencia);
   });
   invalidarConclusaoCompetencia(comprovante.competencia);
-  invalidarFechamentoPagamento(comprovante.competencia);
 }
 
 /** Remove o pedido de documento complementar de qualquer comprovante do beneficiário/competência
@@ -157,7 +167,6 @@ export function updateComprovantePagamento(id: string, patch: Partial<Comprovant
   const atualizado = { ...existente, ...patch };
   const semAntigo = atuais.filter((c) => c.id !== id);
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.comprovantesPagamento, JSON.stringify([...semAntigo, atualizado]));
-  invalidarFechamentoPagamento(atualizado.competencia);
 }
 
 /** Conclusão do envio de uma competência pelo servidor — não representa novos comprovantes,
@@ -195,41 +204,57 @@ export function invalidarConclusaoCompetencia(competencia: string) {
 }
 
 /**
- * Fechamento de Pagamento (GERDAB) — ver `FechamentoPagamento` (`mock-data.ts`) para a
- * distinção em relação a `ConclusaoCompetencia`. Mesmo padrão de persistência/invalidação.
+ * Fase 10 — Histórico do Fechamento de Pagamento: snapshot IMUTÁVEL do relatório gerado para o
+ * NURFI. Substitui de vez o antigo `FechamentoPagamento`/`salvarFechamentoPagamento` (marcador
+ * manual de "fechado", já sem uso desde a Fase 9): aquele marcava só um booleano de fechamento;
+ * este guarda o próprio conteúdo do relatório, congelado. Mesmo padrão do Retroativo
+ * (`SnapshotConsolidacaoRetroativo`, `loadConsolidacoesRetroativo`) — consulta posterior nunca
+ * recalcula com dados atuais.
+ *
+ * Só entram aqui registros **Adimplente ou Inadimplente** (as duas classificações já decididas);
+ * "Requer análise" nunca é congelado — ver `gerarRelatorioFechamento` (`fechamento-pagamento.ts`).
  */
-export function loadFechamentosPagamento(): FechamentoPagamento[] {
+export interface LinhaFechamentoSnapshot {
+  beneficiarioId: string;
+  matricula?: string;
+  nome: string;
+  situacaoVinculo: BeneficiarioPagamento["situacao"];
+  operadoraOuAssociacao: string;
+  competencia: string;
+  classificacao: "adimplente" | "inadimplente";
+  valor: number;
+  valorRessarcir: number;
+  /** Só quando `classificacao === "inadimplente"`. */
+  situacao?: string;
+  motivo?: string;
+  observacaoNurfi?: string;
+  origem: "individual" | "associacao";
+}
+
+export interface SnapshotFechamentoPagamento {
+  id: string;
+  competencia: string;
+  /** Sequência dentro da própria competência (podem existir vários: "Julho/2026 nº 1", "nº 2"...). */
+  sequencia: number;
+  geradoEm: string;
+  responsavel: string;
+  linhas: LinhaFechamentoSnapshot[];
+}
+
+export function loadHistoricoFechamentos(): SnapshotFechamentoPagamento[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.fechamentosPagamento);
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.historicoFechamentos);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as FechamentoPagamento[];
+    return JSON.parse(raw) as SnapshotFechamentoPagamento[];
   } catch {
     return [];
   }
 }
 
-export function getFechamentoPagamento(competencia: string): FechamentoPagamento | undefined {
-  return loadFechamentosPagamento().find((f) => f.competencia === competencia);
-}
-
-export function salvarFechamentoPagamento(competencia: string, fechadoPor: string) {
+export function saveHistoricoFechamentos(lista: SnapshotFechamentoPagamento[]) {
   if (typeof window === "undefined") return;
-  const atuais = loadFechamentosPagamento().filter((f) => f.competencia !== competencia);
-  localStorage.setItem(
-    PROSAUDE_STORAGE_KEYS.fechamentosPagamento,
-    JSON.stringify([...atuais, { competencia, fechadoEm: new Date().toISOString(), fechadoPor }]),
-  );
-}
-
-/** Invalida o fechamento de uma competência — chamado sempre que um comprovante novo ou uma
- *  ação (aprovação/recusa/etc.) muda o conjunto/status de documentos daquela competência, pois
- *  a classificação Adimplente/Inadimplente/Requer análise pode ter mudado (regra 2.5 do plano
- *  do Módulo de Relatórios: nenhum fechamento sobrevive a um lançamento posterior). */
-export function invalidarFechamentoPagamento(competencia: string) {
-  if (typeof window === "undefined") return;
-  const atuais = loadFechamentosPagamento().filter((f) => f.competencia !== competencia);
-  localStorage.setItem(PROSAUDE_STORAGE_KEYS.fechamentosPagamento, JSON.stringify(atuais));
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.historicoFechamentos, JSON.stringify(lista));
 }
 
 /** Observações excepcionais da GERDAB para o NURFI — ver `ObservacaoNurfi` (`mock-data.ts`).
@@ -543,6 +568,10 @@ export interface RegistroPlanilhaAssociacao {
   /** Novo campo (modelo oficial aprovado) — preservado entre envio, correção, reenvio e
    *  histórico/download de cada versão, exatamente como os demais campos da planilha. */
   operadora: string;
+  /** Fase 5 (ata 22/09/2026): modelo da ASSEFAZ traz `Nome do Plano` (categoria do plano) no lugar
+   *  de `Operadora do Plano`. Preenchido só em planilhas da ASSEFAZ; nas da ASSETRAN fica ausente
+   *  e vale `operadora`. Nunca preenchido pelo outro campo. */
+  nomePlano?: string;
   /** Novo campo (modelo oficial aprovado) — data em formato ISO (`AAAA-MM-DD`). Preservada por
    *  versão, mesmo tratamento de `operadora`. Não é a competência do envio (essa é
    *  Associação+Competência, identificando o envio como um todo — nunca uma coluna por linha). */
@@ -561,17 +590,34 @@ export interface DecisaoPlanilhaAssociacao {
   justificativa?: string;
 }
 
+/** Confirmação da conferência financeira (Fase 7, revisão): quais linhas (índices em `registros` desta
+ *  versão) a GERDAB manteve selecionadas. Append-only na versão — cada "Confirmar análise" é um novo
+ *  evento; a última é a vigente. O arquivo (`registros`) nunca é alterado por essa decisão. */
+export interface AnaliseFinanceiraPlanilha {
+  concluidaEm: string;
+  responsavel: string;
+  indicesConsiderados: number[];
+}
+
 export interface VersaoPlanilhaAssociacao {
   versao: number;
   enviadoEm: string;
   registros: RegistroPlanilhaAssociacao[];
   decisao?: DecisaoPlanilhaAssociacao;
+  /** Trilha das confirmações da conferência financeira desta versão (ver `AnaliseFinanceiraPlanilha`). */
+  analises?: AnaliseFinanceiraPlanilha[];
 }
+
+/** @deprecated Substituído pela conferência por linha (`AnaliseFinanceiraPlanilha`, Fase 7 revisão) —
+ *  mantido só para não quebrar dados antigos eventualmente salvos; não é mais escrito nem lido. */
+export type HabilitacaoTitularPlanilha = HabilitacaoRegistro & { cpfTitular: string };
 
 export interface PlanilhaAssociacao {
   id: string;
   associacao: string;
   competencia: string;
+  /** @deprecated Modelo antigo (habilitação por titular). Não é mais escrito nem lido. */
+  habilitacoes?: HabilitacaoTitularPlanilha[];
   /** Sempre em ordem cronológica — a última é a vigente. Nunca removida/reescrita. */
   versoes: VersaoPlanilhaAssociacao[];
 }
@@ -677,4 +723,241 @@ export function loadRequerimentosAssociacao(): RequerimentoAssociacao[] {
 export function saveRequerimentosAssociacao(requerimentos: RequerimentoAssociacao[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.requerimentosAssociacao, JSON.stringify(requerimentos));
+}
+
+/**
+ * Ressarcimento Retroativo (plano v3, ata 22/09/2026) — camada de persistência crua. A lógica de
+ * negócio vive em `ressarcimento-retroativo.ts` (mesma separação de `planilhas-associacao.ts`).
+ *
+ * **Decisões de domínios diferentes têm tipos discriminados separados** (nunca um mesmo tipo nos
+ * dois fluxos), todos com a mesma trilha de auditoria (`AuditoriaBase`, append-only):
+ *  - `DecisaoCompetencia` (`aprovado`/`negado`) → requerimento retroativo INDIVIDUAL do servidor;
+ *  - `HabilitacaoRegistro` (`habilitado`/`desabilitado`) → registro Titular+Competência de
+ *    planilha de Associação.
+ * A autorização financeira é UM único gate, conforme a origem — nunca os dois.
+ */
+export type OrigemRetroativo = "individual" | "associacao";
+
+/** Chave de um catálogo PROVISÓRIO (lista final ainda pendente com a stakeholder). */
+export type MotivoRessarcimento = string;
+
+export type DecisaoCompetencia = AuditoriaBase & {
+  dominio: "competencia_retroativa";
+  decisao: "aprovado" | "negado";
+};
+
+export type HabilitacaoRegistro = AuditoriaBase & {
+  dominio: "registro_planilha";
+  /** "habilitado" = habilitação EXPLÍCITA pela GERDAB (nunca o estado inicial: sem decisão o registro está em análise e não entra na Consolidação). */
+  decisao: "habilitado" | "desabilitado";
+};
+
+export type EventoApuracao = AuditoriaBase & {
+  dominio: "apuracao";
+  tipo: "valor_pago_registrado" | "valor_devido_validado" | "mes_ano_pagamento_corrigido" | "observacao_complementada" | "contracheque_conferido";
+  valorAnterior?: string;
+  valorNovo?: string;
+};
+
+export interface ComposicaoRegistroRetroativo {
+  beneficiario: string;
+  cpf: string;
+  vinculo: string;
+  /** Valor da cobrança/plano informado pela associação, sem juros — NÃO é o Valor Pago do relatório. */
+  valorCobranca: number;
+  /** Fase 6: `Nome do Plano` (ASSEFAZ) ou `Operadora do Plano` (ASSETRAN), conforme o modelo da associação. */
+  plano?: string;
+}
+
+/** Tipo de documento anexado a uma competência retroativa — identificação individual, SEM combinações
+ *  obrigatórias (casos retroativos podem ter naturezas diferentes; a apuração é manual pela GERDAB).
+ *  Não replica as regras documentais/IA do Módulo de Pagamento, mas não impede reaproveitá-las depois. */
+export type TipoDocumentoRetroativo =
+  | "boleto"
+  | "comprovante_pagamento"
+  | "recibo"
+  | "demonstrativo"
+  | "fatura_tecnica"
+  | "documento_motivo"
+  | "autorizacao"
+  | "outro";
+
+/** Arquivo + tipo documental + descrição (só quando aplicável, ex.: "Outro documento"). */
+export interface DocumentoRetroativo {
+  nome: string;
+  tipo: TipoDocumentoRetroativo;
+  descricao?: string;
+  /** Complementação documental (PROPOSTA a validar com a GERDAB): "original" = enviado na solicitação;
+   *  "complementar" = enviado depois, em resposta a um pedido da GERDAB. Ausente = original. */
+  origem?: "original" | "complementar";
+  anexadoEm?: string;
+  anexadoPor?: string;
+  /** LIMITAÇÃO DO PROTÓTIPO: conteúdo do arquivo como data URL (só para poder abrir o documento na
+   *  demonstração; em produção o arquivo vive em armazenamento próprio). Ausente = documento de demonstração. */
+  conteudo?: string;
+}
+
+/** Complementação documental — PROPOSTA funcional a validar com a GERDAB (não fechada na reunião).
+ *  Trilha append-only por competência: pedido da GERDAB → resposta do servidor. */
+export type EventoComplementacao = AuditoriaBase & {
+  dominio: "complementacao";
+  id: string;
+  tipo: "solicitada" | "recebida";
+  /** solicitada: o que precisa ser enviado/complementado. */
+  texto?: string;
+  /** recebida: nomes dos documentos enviados e id do pedido respondido. */
+  documentos?: string[];
+  respondeA?: string;
+};
+
+/** Notificação/indicador do fluxo retroativo (destino Portal do Servidor ou GERDAB). "Lida" nunca
+ *  significa "analisada"; a trilha de auditoria da competência é independente e nunca é apagada. */
+export interface NotificacaoRetroativo {
+  id: string;
+  destino: "servidor" | "gerdab";
+  solicitacaoId: string;
+  competenciaReferencia: string;
+  mensagem: string;
+  criadaEm: string;
+  lida: boolean;
+  lidaEm?: string;
+}
+
+export interface LinhaConsolidacaoRetroativo {
+  solicitacaoId: string;
+  competenciaReferencia: string;
+  matricula: string;
+  nome: string;
+  grupo: "ativo" | "inativo";
+  mesAnoPagamento: string;
+  valorPago: number;
+  valorDevido: number;
+  valorRessarcir: number;
+  observacao: string;
+  origem: OrigemRetroativo;
+  /** Ciclo operacional (classificação temporal) em que a competência ficou apta. */
+  cicloAptidao: string;
+}
+
+/** Snapshot IMUTÁVEL de uma consolidação destinada ao NURFI: consultas posteriores nunca recalculam. */
+export interface SnapshotConsolidacaoRetroativo {
+  id: string;
+  /** Ciclo operacional (AAAA-MM) da geração e sequência dentro do ciclo (pode haver mais de uma). */
+  ciclo: string;
+  sequencia: number;
+  geradoEm: string;
+  responsavel: string;
+  linhas: LinhaConsolidacaoRetroativo[];
+}
+
+export interface CompetenciaRetroativa {
+  /** "AAAA-MM" — competência de referência. */
+  competenciaReferencia: string;
+  /** Derivado (referência + 1 mês); só a GERDAB corrige, com `EventoApuracao`. */
+  mesAnoPagamento: string;
+  documentos: DocumentoRetroativo[];
+  /** Só origem associação: soma de `composicao` (valor da cobrança, sem juros). */
+  valorCobrancaInformado?: number;
+  dataEmissaoBoleto?: string;
+  vencimento?: string;
+  dataBaixa?: string;
+  /** Auxílio efetivamente recebido no contracheque — apurado pela GERDAB (nunca pelo servidor). */
+  valorPagoContracheque?: number;
+  /** Valor histórico devido — apurado/validado pela GERDAB; sem cálculo a partir do cadastro atual. */
+  valorDevido?: number;
+  valorDevidoValidado: boolean;
+  contrachequeConferido: boolean;
+  observacaoComplemento?: string;
+  /** Origem individual → `DecisaoCompetencia`; origem associação → `HabilitacaoRegistro`. */
+  decisoes: (DecisaoCompetencia | HabilitacaoRegistro)[];
+  apuracao: EventoApuracao[];
+  /** Complementação documental (proposta): pedidos da GERDAB e respostas do servidor, append-only. */
+  complementacoes?: EventoComplementacao[];
+  /** Origem associação: linhas de beneficiários que compõem o registro Titular+Competência (só detalhamento). */
+  composicao?: ComposicaoRegistroRetroativo[];
+}
+
+export interface SolicitacaoRetroativa {
+  id: string;
+  origem: OrigemRetroativo;
+  associacao?: string;
+  cpfTitular: string;
+  nomeTitular: string;
+  /** Um motivo por solicitação — SUPOSIÇÃO sinalizada (pendência: pode variar por competência?). */
+  motivo: MotivoRessarcimento;
+  justificativa: string;
+  autorizacaoExcepcional?: { instancia: string; referenciaDocumento: string };
+  criadaEm: string;
+  /** Origem associação: planilha retroativa enviada (`PlanilhaRetroativaOriginal`) que comprova este registro. */
+  arquivoId?: string;
+  competencias: CompetenciaRetroativa[];
+}
+
+/** Planilha retroativa enviada por uma Associação — fonte de comprovação dos registros Titular + Competência
+ *  que ela contém. LIMITAÇÃO DO PROTÓTIPO: o conteúdo é guardado como data URL só até um limite; sem conteúdo
+ *  (massa de demonstração ou arquivo grande) o download é uma reconstrução dos registros normalizados. */
+export interface PlanilhaRetroativaOriginal {
+  id: string;
+  associacao: string;
+  nome: string;
+  enviadoEm: string;
+  conteudo?: string;
+}
+
+export function loadPlanilhasRetroativasOriginais(): PlanilhaRetroativaOriginal[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(PROSAUDE_STORAGE_KEYS.planilhasRetroativasOriginais) ?? "[]") as PlanilhaRetroativaOriginal[];
+  } catch {
+    return [];
+  }
+}
+
+export function savePlanilhasRetroativasOriginais(p: PlanilhaRetroativaOriginal[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.planilhasRetroativasOriginais, JSON.stringify(p));
+}
+
+export function loadSolicitacoesRetroativas(): SolicitacaoRetroativa[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.solicitacoesRetroativas);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as SolicitacaoRetroativa[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSolicitacoesRetroativas(solicitacoes: SolicitacaoRetroativa[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.solicitacoesRetroativas, JSON.stringify(solicitacoes));
+}
+
+export function loadNotificacoesRetroativo(): NotificacaoRetroativo[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(PROSAUDE_STORAGE_KEYS.notificacoesRetroativo) ?? "[]") as NotificacaoRetroativo[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveNotificacoesRetroativo(n: NotificacaoRetroativo[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.notificacoesRetroativo, JSON.stringify(n));
+}
+
+export function loadConsolidacoesRetroativo(): SnapshotConsolidacaoRetroativo[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(PROSAUDE_STORAGE_KEYS.consolidacoesRetroativo) ?? "[]") as SnapshotConsolidacaoRetroativo[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveConsolidacoesRetroativo(c: SnapshotConsolidacaoRetroativo[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.consolidacoesRetroativo, JSON.stringify(c));
 }

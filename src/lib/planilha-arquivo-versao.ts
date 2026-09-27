@@ -8,7 +8,7 @@
  * modelo oficial aprovado** (`COLUNAS_MODELO_PLANILHA`, `planilhas-associacao.ts` — fonte única,
  * nunca duplicada aqui) — mesmas 9 colunas de `docs/modelo_envio_mensal_associacoes.xlsx`:
  * Servidor (Titular) | CPF do Titular | Beneficiário | CPF do Beneficiário | Vínculo | Valor
- * Mensal Individual (R$) | Operadora do Plano | Data do Pagamento | Observações. **Não inclui
+ * Mensal Individual (R$) | Operadora do Plano (ASSEFAZ: Nome do Plano) | Data do Pagamento | Observações. **Não inclui
  * `Status` nem `Motivo`** — essas duas colunas são resultado da validação/análise, não fazem
  * parte da planilha que a associação enviou, e continuam existindo só na interface
  * (`AnalisePlanilhaModal.tsx`), associadas à mesma versão. **Também não inclui `Competência`** —
@@ -37,7 +37,7 @@
  */
 import ExcelJS from "exceljs";
 import { formatCompetencia } from "./mock-data";
-import { COLUNAS_MODELO_PLANILHA, LARGURAS_MODELO_PLANILHA } from "./planilhas-associacao";
+import { getAssociacaoModelo, getColunasModelo, getLargurasModelo } from "./planilhas-associacao";
 import type { PlanilhaAssociacao, VersaoPlanilhaAssociacao } from "./prosaude-storage";
 
 function nomeAbaValido(titulo: string): string {
@@ -51,10 +51,13 @@ export async function buildArquivoVersaoBlob(
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(nomeAbaValido(`${planilha.associacao} v${versao.versao}`));
 
-  // Larguras idênticas ao modelo oficial aprovado (mesma fonte única — `planilhas-associacao.ts`).
-  sheet.columns = LARGURAS_MODELO_PLANILHA.map((width) => ({ width }));
+  // Colunas/larguras do modelo ordinário da associação (mesma fonte única — `planilhas-associacao.ts`):
+  // ASSEFAZ → "Nome do Plano"; ASSETRAN → "Operadora do Plano" (modelo aprovado, inalterado).
+  const colunas = getColunasModelo(planilha.associacao, "ordinario");
+  const ehAssefaz = getAssociacaoModelo(planilha.associacao) === "Assefaz";
+  sheet.columns = getLargurasModelo("ordinario").map((width) => ({ width }));
 
-  const ultimaColuna = String.fromCharCode(65 + COLUNAS_MODELO_PLANILHA.length - 1); // "I"
+  const ultimaColuna = String.fromCharCode(65 + colunas.length - 1); // "I"
 
   sheet.mergeCells(`A1:${ultimaColuna}1`);
   sheet.getCell("A1").value =
@@ -68,7 +71,7 @@ export async function buildArquivoVersaoBlob(
   sheet.getCell("A2").font = { size: 9, color: { argb: "FF6B7280" } };
 
   const linhaCabecalho = 4;
-  sheet.getRow(linhaCabecalho).values = [...COLUNAS_MODELO_PLANILHA];
+  sheet.getRow(linhaCabecalho).values = colunas;
   sheet.getRow(linhaCabecalho).font = { bold: true };
   sheet.getRow(linhaCabecalho).eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDDDDD" } };
@@ -88,7 +91,7 @@ export async function buildArquivoVersaoBlob(
       r.cpf,
       r.vinculo,
       r.valor,
-      r.operadora ?? "",
+      (ehAssefaz ? r.nomePlano : r.operadora) ?? "",
       r.dataPagamento ? new Date(r.dataPagamento) : "",
       "",
     ];

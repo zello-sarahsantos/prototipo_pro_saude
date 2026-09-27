@@ -11,6 +11,7 @@ import {
   X,
   FileCheck,
   BarChart3,
+  RefreshCcw,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -24,6 +25,7 @@ const baseItems = [
   { to: "/admin/servidores", icon: Users, label: "Servidores" },
   { to: "/admin/requerimentos", icon: ClipboardList, label: "Requerimentos" },
   { to: "/admin/comprovantes", icon: FileCheck, label: "Comprovantes" },
+  { to: "/admin/retroativos", icon: RefreshCcw, label: "Retroativos" },
   { to: "/admin/relatorios", icon: BarChart3, label: "Relatórios" },
   { to: "/admin/carga-inicial", icon: Upload, label: "Carga Inicial" },
 ];

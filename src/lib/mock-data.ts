@@ -324,6 +324,8 @@ export const servidoresList: ServidorListItem[] = [
   { matricula: "67890", cpf: "890.123.456-77", processoSEI: "00050.006666/2024-10", nome: "Patrícia Costa", cargo: "Pensionista Vitalício", operadora: "SulAmérica", associacao: "Assefaz", dependentes: 2, valorPlano: 2500, valorAuxilio: calcularReembolso(2500), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 99887-6655", email: "patricia.costa@detran.df.gov.br", ultimoReajuste: "01/01/2026", dataNascimento: "03/03/1950", situacaoBeneficiarioTitular: "Titular de pensão vitalícia" },
   // Individual, suspenso + inadimplente (coexistência de dimensões).
   { matricula: "78901", cpf: "234.567.890-99", processoSEI: "00050.007777/2024-10", nome: "Eduardo Nascimento", cargo: "Agente de Trânsito", operadora: "Amil", associacao: "—", dependentes: 0, valorPlano: 950, valorAuxilio: calcularReembolso(950), status: "suspenso", situacaoFinanceira: "inadimplente", telefone: "(61) 98123-9900", email: "eduardo.nascimento@detran.df.gov.br", ultimoReajuste: "01/01/2025", dataNascimento: "14/08/1998", situacaoBeneficiarioTitular: "Servidor efetivo ativo" },
+  // Individual, também no teto familiar (Fase 8 — massa para validar a lista com mais de 1 servidor).
+  { matricula: "89012", cpf: "345.789.012-66", processoSEI: "00050.008888/2024-10", nome: "Ana Beatriz Ferreira", cargo: "Analista de Trânsito", operadora: "SulAmérica", associacao: "—", dependentes: 4, valorPlano: 4300, valorAuxilio: calcularReembolso(4300), status: "ativo", situacaoFinanceira: "adimplente", telefone: "(61) 98555-2233", email: "ana.ferreira@detran.df.gov.br", ultimoReajuste: "01/01/2026", dataNascimento: "22/11/1975", situacaoBeneficiarioTitular: "Servidor efetivo ativo" },
 ];
 
 export const formatCurrency = (v: number) => {
@@ -699,21 +701,6 @@ export interface ConclusaoCompetencia {
   concluidoEm: string;
 }
 
-/**
- * Fechamento de Pagamento (GERDAB) de uma competência — conceito novo e distinto de
- * `ConclusaoCompetencia` (que é o Servidor dizendo "terminei de enviar meus comprovantes").
- * Aqui é a GERDAB dizendo "revisei o universo de servidores desta competência e vou gerar o
- * relatório para o NURFI" — ver seção 2.3-2.5 do plano do Módulo de Relatórios. Só é permitido
- * quando não há nenhum registro em "Requer análise" (ver `fechamento-pagamento.ts`), e é
- * invalidado automaticamente por qualquer novo comprovante/ação na competência (mesmo mecanismo
- * de `invalidarConclusaoCompetencia`).
- */
-export interface FechamentoPagamento {
-  competencia: string;
-  fechadoEm: string;
-  fechadoPor: string;
-}
-
 /** Observação excepcional e manual da GERDAB para o NURFI sobre um servidor inadimplente em uma
  *  competência — complementa (nunca substitui) os campos estruturados Situação/Motivo. */
 export interface ObservacaoNurfi {
@@ -795,7 +782,10 @@ export const comprovantes: Comprovante[] = [
     aprovacoes: [],
     dataEnvio: '2026-08-03T11:00:00Z',
   },
-  // Exemplo 4: retroativo aguardando analista
+  // Exemplo 4: retroativo aguardando analista — retroativo leve LEGADO, mantido só como referência
+  // histórica simulada (o legado não recebe mais envios novos; competências passadas passam a ser
+  // tratadas pelo Ressarcimento Retroativo, módulo novo — ver `ressarcimento-retroativo.ts`). Dado
+  // mockado: o status não foi alterado por causa da reorganização de telas/abas.
   {
     id: "comp004",
     arquivos: [{ nome: "recibo_maio_carlos_retroativo.pdf", documentos: [{ tipo: "recibo" }] }],

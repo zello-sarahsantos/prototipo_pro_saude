@@ -22,30 +22,32 @@ import {
 } from "@/lib/mock-data";
 import { getComprovantesUnificados } from "@/lib/prosaude-storage";
 import { getCompetenciasPendentes, getBeneficiariosFaltantes } from "@/lib/competencias-pendentes";
+import { getOrigemComprovacaoServidorLogado } from "@/lib/origem-comprovacao";
 import { getExtratoServidor } from "@/lib/fechamento-pagamento";
+import { ComprovacaoPelaAssociacaoAviso } from "@/components/ComprovacaoPelaAssociacaoAviso";
+import { AvisoComplementacaoRetroativa, RessarcimentoRetroativoBloco } from "@/components/RessarcimentoRetroativoBloco";
 
 export const Route = createFileRoute("/servidor/pagamentos/")({
   component: PagamentosHome,
 });
 
 // Servidores vinculados a associação enviam comprovação coletiva (mesma regra de /servidor/requerimento/novo)
-const associacao = servidorAtual.associacao !== "—" ? servidorAtual.associacao : null;
 
 function PagamentosHome() {
+  const associacao = getOrigemComprovacaoServidorLogado().associacao ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   const [detalhe, setDetalhe] = useState<{ comprovante: Comprovante; beneficiarioId?: string } | null>(null);
-  const [mostrarTodasPendentes, setMostrarTodasPendentes] = useState(false);
 
   const comprovantes = useMemo(() => getComprovantesUnificados(), [refreshKey]);
   const daCompetenciaAtual = comprovantes.filter((c) => c.competencia === competenciaAtual);
   const competenciasPendentes = useMemo(() => getCompetenciasPendentes(), [refreshKey]);
-  const pendentesExibidas = mostrarTodasPendentes ? competenciasPendentes : competenciasPendentes.slice(0, 3);
   const beneficiariosFaltantes = useMemo(() => getBeneficiariosFaltantes(competenciaAtual), [refreshKey]);
 
   // Grupo familiar sem comprovação coletiva (mesma regra usada em toda a tela acima) — usado
   // para casar cada comprovante com a competência a que ele pertence no Histórico de Comprovações.
   const grupo = beneficiariosPagamento.filter((b) => !b.associacao);
   const titular = beneficiariosPagamento.find((b) => b.parentesco === "Titular");
+
 
   // Histórico de Comprovações — evolução do antigo "Histórico de envios": em vez de listar
   // documentos soltos, resume por competência (reaproveita `getExtratoServidor`, a mesma fonte
@@ -87,16 +89,7 @@ function PagamentosHome() {
       </section>
 
       {associacao ? (
-        <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex gap-3 text-sm">
-          <ShieldAlert className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-primary">Você está vinculado à {associacao}</p>
-            <p className="text-muted-foreground mt-1">
-              A comprovação mensal é enviada coletivamente pela {associacao} — não é necessário
-              enviar comprovante individual.
-            </p>
-          </div>
-        </section>
+        <ComprovacaoPelaAssociacaoAviso associacao={associacao} />
       ) : (
         <Link
           to="/servidor/pagamentos/enviar"
@@ -107,49 +100,16 @@ function PagamentosHome() {
           </div>
           <div className="flex-1">
             <p className="font-semibold text-sm">Enviar comprovante de pagamento</p>
-            <p className="text-xs opacity-90">Boleto, recibo ou demonstrativo do plano de saúde</p>
+            <p className="text-xs opacity-90">Competência vigente ({formatCompetencia(competenciaAtual)}) — boleto, recibo ou demonstrativo</p>
           </div>
         </Link>
       )}
 
-      {competenciasPendentes.length > 0 && (
-        <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-            <h3 className="font-semibold text-destructive text-sm">
-              Competências pendentes ({competenciasPendentes.length})
-            </h3>
-          </div>
-          <div className="space-y-2">
-            {pendentesExibidas.map((c) => (
-              <div
-                key={c}
-                className="bg-card rounded-lg p-3 border border-border flex items-center justify-between gap-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{formatCompetencia(c)}</p>
-                  <p className="text-xs text-muted-foreground">Prazo encerrado.</p>
-                </div>
-                <Link
-                  to="/servidor/pagamentos/enviar"
-                  search={{ competencia: c }}
-                  className="text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 hover:bg-primary-light shrink-0"
-                >
-                  Enviar retroativo
-                </Link>
-              </div>
-            ))}
-          </div>
-          {competenciasPendentes.length > 3 && !mostrarTodasPendentes && (
-            <button
-              onClick={() => setMostrarTodasPendentes(true)}
-              className="text-xs font-medium text-destructive hover:underline"
-            >
-              Ver todas ({competenciasPendentes.length})
-            </button>
-          )}
-        </section>
-      )}
+      {/* Contexto 2 — QUALQUER competência anterior: um único bloco "Ressarcimento retroativo" (períodos
+          identificados pelo sistema + inclusão manual + acompanhamento). Contexto 1 (competência
+          vigente) é o card "Enviar comprovante de pagamento" acima. */}
+      {!associacao && <AvisoComplementacaoRetroativa key={refreshKey} cpfTitular={titular?.cpf} />}
+      {!associacao && <RessarcimentoRetroativoBloco competenciasIdentificadas={competenciasPendentes} cpfTitular={titular?.cpf} onAtualizado={refresh} />}
 
       {beneficiariosFaltantes.length > 0 && (
         <section className="rounded-xl border border-warning/40 bg-warning/5 p-4 space-y-3">
