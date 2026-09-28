@@ -98,6 +98,12 @@ No sistema real o navegador não deve enviar candidatos livres para a IA. O back
 
 As tabelas de negócio atuais do módulo de pagamentos continuam sendo a fonte oficial. A persistência de rastreabilidade da IA deve ser revisada pelo DBA antes de qualquer DDL em Oracle. Não use o SQLite de desenvolvimento como modelo de nomes ou estrutura do Oracle.
 
+Para a implementação Mule, use também:
+
+- [Contrato HTTP da IA](CONTRATO_HTTP_IA.md), com exemplos de chamada, consulta e falha;
+- [Proposta de DDL Oracle](oracle/001_prs_ia_integracao.sql), para avaliação do DBA;
+- o Swagger do serviço, que é a especificação executável do contrato: `http://host-da-ia/docs`.
+
 ## O que é versionado nesta branch
 
 - telas e contrato do portal para upload, consulta assíncrona, revisão e visão do analista;
