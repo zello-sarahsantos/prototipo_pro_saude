@@ -4,13 +4,13 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, RefreshCw } from "luc
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { tipoDocumentoArquivoLabels, tiposDoArquivo, type BeneficiarioPagamento, type CampoExtraido, type DocumentoDetectado } from "@/lib/mock-data";
 import {
-  getDivergenciaBoletoComprovante,
   getElegibilidade,
   getItensFinanceiros,
   operadoraDivergeDoCadastro,
   valorDivergeDoCadastro,
 } from "@/lib/comprovante-status";
 import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
+import { nomesIguais } from "@/lib/validacao-leitura";
 
 function naoIdentificado(campos: CampoExtraido[]): boolean {
   return campos.some((c) => c.valor.trim() === "");
@@ -83,7 +83,12 @@ export function ConferenciaBeneficiarios({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const todosResolvidos = gruposExtraidos.every((g) => !naoIdentificado(g.campos) && confirmados.has(g.beneficiarioId));
+  const todosResolvidos = gruposExtraidos.every((g) => {
+    const beneficiario = beneficiarios.find((b) => b.id === g.beneficiarioId);
+    const nome = g.campos.find((c) => c.chave === "nome")?.valor.trim();
+    const coberturaIncompativel = !!beneficiario && !!nome && !nomesIguais(nome, beneficiario.nome);
+    return !naoIdentificado(g.campos) && !coberturaIncompativel && confirmados.has(g.beneficiarioId);
+  });
 
   return (
     <div className="space-y-4">
@@ -119,13 +124,19 @@ export function ConferenciaBeneficiarios({
         {gruposExtraidos.map((grupo) => {
           const beneficiario = beneficiarios.find((b) => b.id === grupo.beneficiarioId);
           const incompleto = naoIdentificado(grupo.campos);
+          const campoNome = grupo.campos.find((c) => c.chave === "nome");
+          const nomeInformado = campoNome?.valor.trim() ?? "";
+          const nomeLidoPelaIA = campoNome?.leituraIA?.valor.trim() ?? (campoNome?.origem === 'ocr' ? nomeInformado : '');
+          const coberturaIncompativel = !!beneficiario && !!nomeInformado && !nomesIguais(nomeInformado, beneficiario.nome);
+          const leituraDivergente = !!beneficiario && !!nomeLidoPelaIA && !nomesIguais(nomeLidoPelaIA, beneficiario.nome);
           const confirmado = confirmados.has(grupo.beneficiarioId);
           const { decomposicao } = beneficiario
             ? getElegibilidade(pseudoComprovante, beneficiario)
             : { decomposicao: { itens: [], valorTotal: 0, valorElegivel: 0, valorNaoReembolsavel: 0 } };
-          const { divergente: boletoComprovanteDivergente } = beneficiario
-            ? getDivergenciaBoletoComprovante(pseudoComprovante, beneficiario)
-            : { divergente: false };
+          // O valor exibido neste cartão é individual. Não comparar com o total bruto do
+          // boleto/comprovante, pois isso gera falso positivo quando há mais de um beneficiário.
+          // A divergência correta é calculada abaixo contra o valor cadastrado da pessoa.
+          const boletoComprovanteDivergente = false;
           const valorDivergente = beneficiario
             ? valorDivergeDoCadastro(getItensFinanceiros(pseudoComprovante, beneficiario), beneficiario.valorCadastrado)
                 .divergente
@@ -159,6 +170,27 @@ export function ConferenciaBeneficiarios({
                 divergenciaBoletoComprovante={boletoComprovanteDivergente}
                 onChange={(campos) => onChangeGrupo(grupo.beneficiarioId, campos)}
               />
+
+              {coberturaIncompativel && (
+                <div className="bg-destructive/5 border border-destructive/30 rounded-lg p-3 text-xs">
+                  <p className="font-medium text-destructive flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Beneficiário divergente
+                  </p>
+                  <p className="mt-1 text-destructive/90">
+                    {campoNome?.origem === 'manual'
+                      ? <>Você informou “{nomeInformado}”, mas o cadastro deste envio está como “{beneficiario?.nome}”. A IA havia lido “{nomeLidoPelaIA || 'não identificado'}”.</>
+                      : <>A IA leu “{nomeLidoPelaIA}” no documento, mas este envio está associado a “{beneficiario?.nome}”.</>}
+                    Os dados não podem ser confirmados para este beneficiário.
+                  </p>
+                </div>
+              )}
+
+              {!coberturaIncompativel && leituraDivergente && campoNome?.origem === 'manual' && (
+                <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs">
+                  A IA leu “{nomeLidoPelaIA}” no documento. Você corrigiu para “{nomeInformado}”,
+                  que corresponde ao cadastro. O analista verá os dois valores para conferir.
+                </div>
+              )}
 
               {operadoraDivergente && !confirmado && (
                 <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs space-y-2">

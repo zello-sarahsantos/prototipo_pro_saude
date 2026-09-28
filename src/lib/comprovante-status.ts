@@ -8,7 +8,6 @@ import type {
   StatusComprovante,
   TipoDocumentoArquivo,
 } from "./mock-data";
-import { gerarCamposExtraidos, gerarItensFinanceiros } from "./ocr-mock";
 
 /** Campos (do comprovante inteiro, ou de 1 beneficiário específico em fatura técnica). */
 export function getCamposDoBeneficiario(
@@ -34,6 +33,7 @@ export function getItensFinanceiros(
   beneficiario: BeneficiarioPagamento,
 ): ItemFinanceiro[] {
   const todosIds = comprovante.beneficiarioIds;
+  // Itens familiares não constituem decomposição individual; aguardam atribuição explícita.
   for (const arquivo of comprovante.arquivos) {
     // `?? []` protege contra comprovantes persistidos antes da renomeação de `tipos` para
     // `documentos` (Etapa 3, ver `tiposDoArquivo`) — sem isso, um comprovante antigo no
@@ -42,10 +42,13 @@ export function getItensFinanceiros(
       .filter((d) => beneficiariosCobertosPeloDocumento(d, todosIds).includes(beneficiario.id))
       .map((d) => d.tipo);
     if (tiposQueCobrem.length === 0) continue;
-    const campos = gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.nome, tiposQueCobrem);
+    const individuais = arquivo.itensPorBeneficiario?.[beneficiario.id];
+    if (individuais?.length) return individuais;
+    if (todosIds.length > 1) continue;
+    const campos = arquivo.camposExtraidos ?? [];
     const campoValor = campos.find((c) => c.chave === "valor" && c.valor.trim() !== "");
     if (!campoValor) continue;
-    return gerarItensFinanceiros(beneficiario, arquivo.nome);
+    return arquivo.itensFinanceiros ?? [];
   }
   return [];
 }
@@ -98,7 +101,19 @@ export function operadoraDivergeDoCadastro(
   const campoOperadora = campos.find((c) => c.chave === "operadora");
   const operadoraExtraida = campoOperadora?.valor.trim();
   if (!operadoraExtraida) return { divergente: false };
-  return { divergente: operadoraExtraida !== operadoraCadastrada, operadoraExtraida };
+  const normalizar = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+  const identificada = normalizar(operadoraExtraida);
+  const cadastrada = normalizar(operadoraCadastrada);
+  // A forma curta de uma marca e sua razão social completa não bastam para
+  // afirmar mudança de operadora. Mantenha a conferência humana nesse caso.
+  const mesmaMarca = identificada === cadastrada ||
+    (cadastrada.length >= 4 && identificada.startsWith(cadastrada + ' ')) ||
+    (identificada.length >= 4 && cadastrada.startsWith(identificada + ' '));
+  const comparacao = campoOperadora?.origem === 'ocr' ? campoOperadora.comparacoesOperadora?.find(c =>
+    c.cadastro === operadoraCadastrada && c.identificada === operadoraExtraida) : undefined;
+  if (comparacao) return { divergente: comparacao.resultado === 'divergente' && !mesmaMarca, operadoraExtraida };
+  return { divergente: !mesmaMarca, operadoraExtraida };
 }
 
 /**
@@ -314,7 +329,7 @@ export function getDivergenciaBoletoComprovante(
       const documento = (arquivo.documentos ?? []).find((d) => d.tipo === tipo);
       if (!documento) continue;
       if (!beneficiariosCobertosPeloDocumento(documento, todosIds).includes(beneficiario.id)) continue;
-      const campos = gerarCamposExtraidos(beneficiario, comprovante.competencia, arquivo.nome, [tipo]);
+      const campos = arquivo.camposExtraidos ?? [];
       const campoValor = campos.find((c) => c.chave === "valor" && c.valor.trim() !== "");
       if (campoValor) return parseFloat(campoValor.valor);
     }
@@ -323,6 +338,9 @@ export function getDivergenciaBoletoComprovante(
 
   const valorBoleto = valorPorTipo("boleto");
   const valorComprovante = valorPorTipo("comprovante_pagamento");
-  const divergente = valorBoleto !== undefined && valorComprovante !== undefined && valorBoleto !== valorComprovante;
+  const recibo = comprovante.arquivos.find(a => a.documentos.some(d => d.tipo === 'comprovante_pagamento'));
+  const encargos = (recibo?.itensFinanceiros ?? []).filter(i => ['multa', 'juros'].includes(i.situacaoNaoReembolsavel ?? '')).reduce((s, i) => s + i.valor, 0);
+  const divergente = valorBoleto !== undefined && valorComprovante !== undefined
+    && Math.abs(Math.round(valorBoleto * 100) + Math.round(encargos * 100) - Math.round(valorComprovante * 100)) > 1;
   return { divergente, valorBoleto, valorComprovante };
 }

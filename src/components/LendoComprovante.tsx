@@ -7,6 +7,7 @@ const etapasLabel = ["Enviando arquivo", "Verificando legibilidade", "Extraindo 
 export function LendoComprovante({
   nomesArquivos,
   etapaAtual,
+  arquivosConcluidos = 0,
   concluido = false,
   falhouLegibilidade = false,
   onVoltar,
@@ -14,6 +15,7 @@ export function LendoComprovante({
   nomesArquivos: string[];
   /** Etapa em andamento (recebe o spinner) enquanto `concluido` e `falhouLegibilidade` forem falsos. */
   etapaAtual: EtapaLeitura;
+  arquivosConcluidos?: number;
   /** Todas as etapas concluídas com sucesso. */
   concluido?: boolean;
   /** A etapa de legibilidade (índice 1) falhou — interrompe o processamento. */
@@ -70,7 +72,8 @@ export function LendoComprovante({
       </div>
 
       <p className="text-xs text-muted-foreground px-1">
-        Isso leva só alguns segundos. A IA pré-preenche os campos — você confirma antes de enviar.
+        {nomesArquivos.length > 1 ? `${arquivosConcluidos} de ${nomesArquivos.length} documentos finalizados. ` : ''}
+        Os arquivos são enviados separadamente e acompanhados em paralelo. Cada leitura pode aguardar na fila da IA.
       </p>
     </div>
   );

@@ -1,3 +1,4 @@
+import { ResumoAnalise } from '@/components/ResumoAnalise';
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -19,6 +20,7 @@ import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
 import { AnalisePlanilhaModal } from "@/components/AnalisePlanilhaModal";
 import { DocPreview } from "@/components/DocPreview";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
+import { listarComprovantesTeste } from "@/lib/ia-cliente";
 import { DivergenciaAprovacaoModal } from "@/components/DivergenciaAprovacaoModal";
 import { getAdminRole } from "@/components/AdminLayout";
 import {
@@ -29,12 +31,14 @@ import {
   gerenteReferencia,
   tipoRequerimentoLabels,
   type Comprovante,
+  type CampoExtraido,
   type StatusComprovante,
   type AcaoComprovante,
   type TipoRequerimento,
 } from "@/lib/mock-data";
 import {
   getComprovantesUnificados,
+  importarComprovantesPagamentoTeste,
   updateComprovantePagamento,
   getBeneficiariosPagamentoAtual,
   atualizarValorCadastradoBeneficiario,
@@ -50,7 +54,6 @@ import {
 import { estaDentroDoPrazoRelatorio } from "@/lib/prazo-competencia";
 import {
   listarPlanilhasAssociacao,
-  garantirPlanilhaExemplo,
   statusAtualPlanilha,
   versaoVigente,
   type PlanilhaAssociacao,
@@ -61,6 +64,43 @@ export const Route = createFileRoute("/admin/comprovantes")({
 });
 
 type Tab = "comprovantes" | "retroativos" | "historico" | "planilhas";
+
+const rotuloCampo: Record<CampoExtraido['chave'], string> = {
+  nome: 'Nome', cpf: 'CPF', operadora: 'Operadora', competencia: 'Competência',
+  vencimento: 'Vencimento', valor: 'Valor', dataPagamento: 'Data do pagamento', pagador: 'Pagador',
+};
+
+function ComparacaoAlteracoes({ campos }: { campos: CampoExtraido[] }) {
+  const alterados = campos.filter(c => c.origem === 'manual');
+  if (!alterados.length) return null;
+  return (
+    <section className="rounded-xl border border-amber-300 bg-amber-50/70 p-4 space-y-3" aria-label="Alterações informadas pelo servidor">
+      <div>
+        <h3 className="text-sm font-semibold text-amber-950">Alterações informadas pelo servidor</h3>
+        <p className="text-xs text-amber-900">Compare a leitura da IA com o dado confirmado antes de decidir.</p>
+      </div>
+      {alterados.map(campo => (
+        <div key={campo.chave} className="rounded-lg border border-amber-200 bg-white p-3 space-y-2">
+          <p className="text-xs font-semibold">{rotuloCampo[campo.chave]}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <p className="text-[11px] text-muted-foreground">Leitura da IA</p>
+              <p className="text-sm break-words">{campo.leituraIA ? campo.leituraIA.valor || 'Não identificado' : 'Leitura original não preservada'}</p>
+              {campo.leituraIA && <p className="text-[11px] text-muted-foreground">Confiança: {campo.leituraIA.confianca}</p>}
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Informado pelo servidor</p>
+              <p className="text-sm font-medium break-words">{campo.valor || 'Não preenchido'}</p>
+            </div>
+          </div>
+          {(campo.leituraIA?.arquivoOrigem || campo.arquivoOrigem) && (
+            <p className="text-[11px] text-muted-foreground">Arquivo: {campo.leituraIA?.arquivoOrigem || campo.arquivoOrigem}</p>
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
 
 const statusPorTab: Record<Tab, StatusComprovante[]> = {
   comprovantes: ["em_analise"],
@@ -114,6 +154,7 @@ function Comprovantes() {
   const autor = isGerencia ? gerenteReferencia : analistaReferencia;
   const etapaAtual: "analista" | "gerencia" = isGerencia ? "gerencia" : "analista";
   const [refreshKey, setRefreshKey] = useState(0);
+  const [enviosDoBanco, setEnviosDoBanco] = useState<Comprovante[]>([]);
   const [tab, setTab] = useState<Tab>("comprovantes");
   const [openId, setOpenId] = useState<string | null>(null);
   const [subForm, setSubForm] = useState<{ beneficiarioId: string; tipo: SubFormTipo } | null>(null);
@@ -128,7 +169,21 @@ function Comprovantes() {
     justificativaServidor?: string;
   } | null>(null);
 
-  const todos = useMemo(() => getComprovantesUnificados(), [refreshKey]);
+  const todos = useMemo(() => {
+    const locais = getComprovantesUnificados();
+    const ids = new Set(locais.map(c => c.id));
+    return [...locais, ...enviosDoBanco.filter(c => !ids.has(c.id))];
+  }, [refreshKey, enviosDoBanco]);
+  useEffect(() => {
+    let ativo = true;
+    listarComprovantesTeste().then(envios => {
+      if (ativo) {
+        importarComprovantesPagamentoTeste(envios);
+        setEnviosDoBanco(envios);
+      }
+    }).catch(() => { /* Exemplos locais continuam disponíveis se o serviço de teste estiver offline. */ });
+    return () => { ativo = false; };
+  }, [refreshKey]);
   // Sempre o cadastro "atual" (seed + correções já aplicadas pela GERDAB) — nunca o seed puro,
   // para que uma divergência cadastral já resolvida não volte a aparecer em outro comprovante.
   const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [refreshKey]);
@@ -138,7 +193,7 @@ function Comprovantes() {
   // Aba "Planilhas - Associações" — garante o exemplo permanente (mesmo padrão de
   // `garantirExemploDocumentoEmAnalise`, idempotente) e lê as planilhas já persistidas.
   useEffect(() => {
-    garantirPlanilhaExemplo();
+    // A base de testes começa vazia; exemplos não são inseridos automaticamente.
     setRefreshKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -522,9 +577,11 @@ function Comprovantes() {
             </header>
 
             <div className="p-6 space-y-5">
+              <ResumoAnalise comprovante={cur} beneficiarios={beneficiariosAtuais} />
               <div className="space-y-2">
-                {cur.arquivos.map((a) => (
-                  <DocPreview key={a.nome} filename={a.nome} />
+                {cur.arquivos.map((a, index) => (
+                  <DocPreview key={`${a.nome}-${index}`} filename={a.nome}
+                    src={a.execucaoId ? `/api/ia/simulacao/envios/${encodeURIComponent(cur.id)}/arquivos/${index + 1}` : undefined} />
                 ))}
               </div>
 
@@ -567,6 +624,8 @@ function Comprovantes() {
                       <p className="text-sm font-semibold">{beneficiario?.nome}</p>
                       <ComprovanteStatusBadge status={cur.beneficiarioIds.length > 1 ? statusBeneficiario : cur.status} />
                     </div>
+
+                    <ComparacaoAlteracoes campos={campos} />
 
                     <CamposExtraidosForm
                       campos={campos}

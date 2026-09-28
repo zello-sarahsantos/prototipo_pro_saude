@@ -44,7 +44,7 @@ export function ArquivosAnexadosUpload({
   const multiplosBeneficiarios = beneficiarios.length > 1;
 
   function adicionarArquivo(file: File) {
-    const tiposDetectados = detectarTiposPeloNomeArquivo(file.name, tiposPermitidos);
+    const tiposDetectados: TipoDocumentoArquivo[] = [];
     const inicial = coberturaInicial(beneficiarios);
     onChange([...arquivos, { file, documentos: tiposDetectados.map((tipo) => ({ tipo, beneficiarioIds: inicial })) }]);
   }

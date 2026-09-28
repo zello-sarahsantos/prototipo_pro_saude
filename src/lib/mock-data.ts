@@ -393,9 +393,12 @@ export interface CampoExtraido {
   valor: string;
   origem: 'ocr' | 'manual';
   confianca: 'alta' | 'media' | 'nenhuma';
+  /** Leitura original, preservada na primeira edição do servidor. */
+  leituraIA?: { valor: string; confianca: 'alta' | 'media' | 'nenhuma'; arquivoOrigem?: string };
   /** Nome do arquivo (dentre os anexados ao envio) que originou este campo — permite ao
    *  Servidor/Analista/Gerência ver de qual documento cada informação veio. */
   arquivoOrigem?: string;
+  comparacoesOperadora?: { cadastro: string; identificada: string; resultado: 'compativel' | 'divergente' | 'inconclusivo'; justificativa: string }[];
 }
 
 /**
@@ -405,13 +408,14 @@ export interface CampoExtraido {
  * e Gerência (ver `getElegibilidade`/`getSituacaoNaoReembolsavel`, `comprovante-status.ts`).
  * No protótipo a detecção é por nome de arquivo; no sistema real seria pelo conteúdo do documento.
  */
-export type SituacaoNaoReembolsavel = 'odontologico' | 'multa' | 'taxa_administrativa' | 'juros';
+export type SituacaoNaoReembolsavel = 'odontologico' | 'multa' | 'taxa_administrativa' | 'juros' | 'iof';
 
 export const situacaoNaoReembolsavelLabels: Record<SituacaoNaoReembolsavel, string> = {
   odontologico: 'Assistência odontológica',
   multa: 'Multa',
   taxa_administrativa: 'Taxa administrativa',
   juros: 'Juros/encargos',
+  iof: 'IOF',
 };
 
 /**
@@ -467,6 +471,10 @@ export interface DocumentoDetectado {
  *  que é ao mesmo tempo Fatura Técnica e Comprovante de Pagamento), cada um com sua própria
  *  cobertura de beneficiários. */
 export interface ArquivoAnexado {
+  execucaoId?: string;
+  camposExtraidos?: CampoExtraido[];
+  itensFinanceiros?: ItemFinanceiro[];
+  itensPorBeneficiario?: Record<string, ItemFinanceiro[]>;
   nome: string;
   documentos: DocumentoDetectado[];
 }
@@ -647,7 +655,7 @@ export const statusComprovanteCore: Record<StatusComprovante, { bg: string; fg: 
 export interface BeneficiarioPagamento {
   id: string;
   nome: string;
-  parentesco: 'Titular' | 'Cônjuge' | 'Filho';
+  parentesco: 'Titular' | 'Cônjuge' | 'Filho' | 'Beneficiário';
   /** Só presente no `Titular` do grupo — é a unidade de classificação do Fechamento de
    *  Pagamento (`fechamento-pagamento.ts`): o Fechamento classifica **servidores** (titulares),
    *  não cada dependente isoladamente. Identificador ilustrativo deste cenário do Módulo de

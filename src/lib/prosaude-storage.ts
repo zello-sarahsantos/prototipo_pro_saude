@@ -1,7 +1,9 @@
+import { personasDocumentos } from './personas-documentos';
 import {
   comprovantes as comprovantesSeed,
   beneficiariosPagamento,
   type BeneficiarioPagamento,
+  type CampoExtraido,
   type Comprovante,
   type ConclusaoCompetencia,
   type BeneficiarioDispensado,
@@ -22,6 +24,19 @@ export const PROSAUDE_STORAGE_KEYS = {
   planilhasAssociacao: "prosaude_planilhas_associacao",
   requerimentosAssociacao: "prosaude_requerimentos_associacao",
 } as const;
+
+function prepararBaseLimpaDeTeste() {
+  if (typeof window === 'undefined') return;
+  const marcador = 'prosaude_limpeza_analises_20260928_v1';
+  if (localStorage.getItem(marcador)) return;
+  const chaves = [PROSAUDE_STORAGE_KEYS.comprovantesPagamento, PROSAUDE_STORAGE_KEYS.competenciasConcluidas,
+    PROSAUDE_STORAGE_KEYS.fechamentosPagamento, PROSAUDE_STORAGE_KEYS.observacoesNurfi,
+    PROSAUDE_STORAGE_KEYS.observacoesGerdab, PROSAUDE_STORAGE_KEYS.planilhasAssociacao];
+  localStorage.setItem(marcador + '_backup', JSON.stringify(Object.fromEntries(chaves.map(k => [k, localStorage.getItem(k)]))));
+  chaves.forEach(k => localStorage.removeItem(k));
+  localStorage.setItem(marcador, 'concluida');
+}
+prepararBaseLimpaDeTeste();
 
 export type TitularCadastroPlano = {
   operadora: string;
@@ -101,6 +116,35 @@ export function loadComprovantesPagamento(): Comprovante[] {
   }
 }
 
+/** Disponibiliza envios do banco ao fluxo local de análise sem sobrescrever decisões já feitas. */
+export function importarComprovantesPagamentoTeste(envios: Comprovante[]) {
+  if (typeof window === 'undefined') return;
+  const atuais = loadComprovantesPagamento();
+  const porId = new Map(atuais.map(c => [c.id, c]));
+  const sincronizarCampos = (locais: CampoExtraido[], banco: CampoExtraido[]) => locais.map(campo => {
+    const atual = banco.find(c => c.chave === campo.chave);
+    if (!atual) return campo;
+    if (campo.origem === 'ocr' && atual.origem === 'ocr' && campo.valor === atual.valor)
+      return { ...campo, confianca: atual.confianca };
+    if (campo.origem === 'manual' && campo.leituraIA && atual.leituraIA?.valor === campo.leituraIA.valor)
+      return { ...campo, leituraIA: { ...campo.leituraIA, confianca: atual.leituraIA.confianca } };
+    return campo;
+  });
+  for (const remoto of envios) {
+    const local = porId.get(remoto.id);
+    if (!local) { porId.set(remoto.id, remoto); continue; }
+    porId.set(remoto.id, {
+      ...local,
+      camposExtraidos: sincronizarCampos(local.camposExtraidos, remoto.camposExtraidos),
+      gruposExtraidos: local.gruposExtraidos?.map(grupo => ({
+        ...grupo,
+        campos: sincronizarCampos(grupo.campos, remoto.gruposExtraidos?.find(g => g.beneficiarioId === grupo.beneficiarioId)?.campos ?? []),
+      })),
+    });
+  }
+  localStorage.setItem(PROSAUDE_STORAGE_KEYS.comprovantesPagamento, JSON.stringify([...porId.values()]));
+}
+
 /**
  * Persiste um novo comprovante. Como isso altera o conjunto de documentos da competência,
  * também: (1) remove a dispensa de "continuar sem comprovante" de qualquer beneficiário
@@ -138,10 +182,7 @@ function limparSolicitacaoComplementar(beneficiarioId: string, competencia: stri
  * já que toda ação do Servidor/Analista/Gerência é persistida ali).
  */
 export function getComprovantesUnificados(): Comprovante[] {
-  const persistidos = loadComprovantesPagamento();
-  const idsPersistidos = new Set(persistidos.map((c) => c.id));
-  const seedNaoSobreposto = comprovantesSeed.filter((c) => !idsPersistidos.has(c.id));
-  return [...seedNaoSobreposto, ...persistidos];
+  return loadComprovantesPagamento();
 }
 
 /**
@@ -341,7 +382,7 @@ export function atualizarValorCadastradoBeneficiario(beneficiarioId: string, nov
  *  correção cadastral feita pela GERDAB se reflita imediatamente em toda a aplicação. */
 export function getBeneficiariosPagamentoAtual(): BeneficiarioPagamento[] {
   const overrides = loadValoresCadastradosBeneficiarios();
-  return beneficiariosPagamento.map((b) =>
+  return [...beneficiariosPagamento, ...personasDocumentos.flatMap(p => p.beneficiarios)].map((b) =>
     overrides[b.id] !== undefined ? { ...b, valorCadastrado: overrides[b.id] } : b,
   );
 }

@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, HelpCircle, PenLine } from "lucide-react";
+import { nomesIguais, nomeAbreviadoCompativel } from '@/lib/validacao-leitura';
 import { formatCurrency, situacaoNaoReembolsavelLabels, type CampoExtraido } from "@/lib/mock-data";
 import type { DecomposicaoValor } from "@/lib/comprovante-status";
 
@@ -57,7 +58,10 @@ export function CamposExtraidosForm({
   const editarCampo = (chave: CampoExtraido["chave"], valor: string) => {
     if (!onChange) return;
     onChange(
-      campos.map((c) => (c.chave === chave ? { ...c, valor, origem: "manual" as const } : c)),
+      campos.map((c) => (c.chave === chave ? {
+        ...c, valor, origem: "manual" as const,
+        leituraIA: c.leituraIA ?? { valor: c.valor, confianca: c.confianca, arquivoOrigem: c.arquivoOrigem },
+      } : c)),
     );
   };
 
@@ -118,12 +122,13 @@ export function CamposExtraidosForm({
           valorCadastrado !== undefined &&
           !naoIdentificado &&
           decomposicaoValor !== undefined &&
+          decomposicaoValor.itens.length > 0 &&
           decomposicaoValor.valorElegivel !== valorCadastrado;
         const pagadorDivergente =
           campo.chave === "pagador" &&
           nomeTitular !== undefined &&
           !naoIdentificado &&
-          campo.valor !== nomeTitular;
+          !nomesIguais(campo.valor, nomeTitular);
         return (
         <div key={campo.chave} className="space-y-1">
           <div className="flex items-center justify-between">
@@ -152,7 +157,7 @@ export function CamposExtraidosForm({
                   className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                   style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
                 >
-                  <AlertTriangle className="h-3 w-3" /> Divergente
+                  <AlertTriangle className="h-3 w-3" /> {nomeTitular && nomeAbreviadoCompativel(campo.valor, nomeTitular) ? 'Abreviação — conferir' : 'Divergente'}
                 </span>
               )}
               {campo.chave === "valor" && divergenciaBoletoComprovante && (
@@ -192,6 +197,16 @@ export function CamposExtraidosForm({
           {campo.arquivoOrigem && (
             <p className="text-[10px] text-muted-foreground pl-0.5">Origem: {campo.arquivoOrigem}</p>
           )}
+          {readOnly && campo.origem === 'manual' && campo.leituraIA && (
+            <p className="text-xs text-muted-foreground pl-0.5">
+              IA: {campo.leituraIA.valor || 'Não identificado'} (confiança {campo.leituraIA.confianca})
+              {' → '}Servidor: {campo.valor || 'Não preenchido'}
+              {campo.leituraIA.arquivoOrigem ? ` · ${campo.leituraIA.arquivoOrigem}` : ''}
+            </p>
+          )}
+          {campo.chave === 'operadora' && campo.origem === 'ocr' && campo.comparacoesOperadora?.filter(c => c.identificada === campo.valor).map(c => (
+            <p key={c.cadastro} className="text-xs text-muted-foreground">Comparação com {c.cadastro}: {c.resultado === 'compativel' ? 'compatível' : c.resultado === 'inconclusivo' ? 'conferência necessária' : 'divergente'}. {c.justificativa}</p>
+          ))}
         </div>
         );
       })}

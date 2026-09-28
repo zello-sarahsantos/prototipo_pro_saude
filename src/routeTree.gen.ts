@@ -23,6 +23,7 @@ import { Route as AssociacaoUploadRouteImport } from './routes/associacao.upload
 import { Route as AssociacaoNovaInclusaoRouteImport } from './routes/associacao.nova-inclusao'
 import { Route as AdminRequerimentosRouteImport } from './routes/admin.requerimentos'
 import { Route as AdminParametrosRouteImport } from './routes/admin.parametros'
+import { Route as AdminIaTesteRouteImport } from './routes/admin.ia-teste'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as AdminComprovantesRouteImport } from './routes/admin.comprovantes'
 import { Route as AdminCargaInicialRouteImport } from './routes/admin.carga-inicial'
@@ -115,6 +116,11 @@ const AdminRequerimentosRoute = AdminRequerimentosRouteImport.update({
 const AdminParametrosRoute = AdminParametrosRouteImport.update({
   id: '/parametros',
   path: '/parametros',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminIaTesteRoute = AdminIaTesteRouteImport.update({
+  id: '/ia-teste',
+  path: '/ia-teste',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
@@ -253,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
   '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/ia-teste': typeof AdminIaTesteRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
@@ -291,6 +298,7 @@ export interface FileRoutesByTo {
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
   '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/ia-teste': typeof AdminIaTesteRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
@@ -330,6 +338,7 @@ export interface FileRoutesById {
   '/admin/carga-inicial': typeof AdminCargaInicialRoute
   '/admin/comprovantes': typeof AdminComprovantesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/ia-teste': typeof AdminIaTesteRoute
   '/admin/parametros': typeof AdminParametrosRoute
   '/admin/requerimentos': typeof AdminRequerimentosRoute
   '/associacao/nova-inclusao': typeof AssociacaoNovaInclusaoRoute
@@ -370,6 +379,7 @@ export interface FileRouteTypes {
     | '/admin/carga-inicial'
     | '/admin/comprovantes'
     | '/admin/dashboard'
+    | '/admin/ia-teste'
     | '/admin/parametros'
     | '/admin/requerimentos'
     | '/associacao/nova-inclusao'
@@ -408,6 +418,7 @@ export interface FileRouteTypes {
     | '/admin/carga-inicial'
     | '/admin/comprovantes'
     | '/admin/dashboard'
+    | '/admin/ia-teste'
     | '/admin/parametros'
     | '/admin/requerimentos'
     | '/associacao/nova-inclusao'
@@ -446,6 +457,7 @@ export interface FileRouteTypes {
     | '/admin/carga-inicial'
     | '/admin/comprovantes'
     | '/admin/dashboard'
+    | '/admin/ia-teste'
     | '/admin/parametros'
     | '/admin/requerimentos'
     | '/associacao/nova-inclusao'
@@ -582,6 +594,13 @@ declare module '@tanstack/react-router' {
       path: '/parametros'
       fullPath: '/admin/parametros'
       preLoaderRoute: typeof AdminParametrosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/ia-teste': {
+      id: '/admin/ia-teste'
+      path: '/ia-teste'
+      fullPath: '/admin/ia-teste'
+      preLoaderRoute: typeof AdminIaTesteRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/dashboard': {
@@ -745,6 +764,7 @@ interface AdminRouteChildren {
   AdminCargaInicialRoute: typeof AdminCargaInicialRoute
   AdminComprovantesRoute: typeof AdminComprovantesRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminIaTesteRoute: typeof AdminIaTesteRoute
   AdminParametrosRoute: typeof AdminParametrosRoute
   AdminRequerimentosRoute: typeof AdminRequerimentosRoute
   AdminRelatoriosDocumentacaoRoute: typeof AdminRelatoriosDocumentacaoRoute
@@ -761,6 +781,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminCargaInicialRoute: AdminCargaInicialRoute,
   AdminComprovantesRoute: AdminComprovantesRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  AdminIaTesteRoute: AdminIaTesteRoute,
   AdminParametrosRoute: AdminParametrosRoute,
   AdminRequerimentosRoute: AdminRequerimentosRoute,
   AdminRelatoriosDocumentacaoRoute: AdminRelatoriosDocumentacaoRoute,

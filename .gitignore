@@ -81,3 +81,7 @@ out/
 *.sw?
 
 .wrangler/
+# O serviço IA é mantido no repositório próprio. Esta cópia local pode conter
+# banco, documentos e credenciais de teste e nunca deve ir para o protótipo.
+services/ia/
+__pycache__/
