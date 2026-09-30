@@ -188,7 +188,9 @@ export function marcarPendenciaSistemaAtendida(id: string) {
 export function marcarPendenciaDocumentalAtendida(pendencia: PendenciaDocumental) {
   if (pendencia.origem === "sistema") {
     marcarPendenciaSistemaAtendida(pendencia.id);
-    const solicitacaoAberta = loadObservacoesGerdab()
+    // Fecha todas as solicitações em aberto do documento+beneficiário (automática inicial e
+    // reiterações): o envio atende a pendência inteira, e nenhuma delas deve reaparecer como aviso.
+    loadObservacoesGerdab()
       .filter(
         (o) =>
           o.tipo === "solicitacao_documento" &&
@@ -196,8 +198,7 @@ export function marcarPendenciaDocumentalAtendida(pendencia: PendenciaDocumental
           o.documento === pendencia.documento &&
           !o.atendidaEm,
       )
-      .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
-    if (solicitacaoAberta) marcarObservacaoAtendida(solicitacaoAberta.id);
+      .forEach((o) => marcarObservacaoAtendida(o.id));
   } else {
     marcarObservacaoAtendida(pendencia.id);
   }
@@ -253,7 +254,15 @@ export function getPendenciasDocumentaisDoServidor(
         o.tipo === "solicitacao_documento" &&
         o.servidorMatricula === servidorMatricula &&
         o.destino === destino &&
-        !o.atendidaEm,
+        !o.atendidaEm &&
+        // Uma pendência automática em aberto já gera o aviso (com prazo/consequência); as
+        // solicitações registradas para o mesmo beneficiário+documento (a automática inicial
+        // e eventuais reiterações) são só rastreabilidade e não geram um segundo aviso.
+        !deSistema.some(
+          (p) =>
+            p.dependenteId === (o.beneficiarioId && o.beneficiarioId !== "titular" ? o.beneficiarioId : undefined) &&
+            p.documento === o.documento,
+        ),
     )
     .map((o) => ({
       id: o.id,
