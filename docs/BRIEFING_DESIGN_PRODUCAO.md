@@ -1,13 +1,22 @@
 # Briefing de Design e Diretrizes Visuais para Produção — Sistema Pró-Saúde
 
-> ## Status: **Aprovado para Implementação em Produção**
+> ## Status: **Aprovado para Implementação em Produção, com 5 novos pontos pendentes de decisão (Fases 0–11)**
 > Todas as pendências de Design System identificadas na primeira versão deste documento foram
 > resolvidas e aprovadas pelo responsável pelo produto. As decisões estão registradas inline, em
-> cada seção afetada, e resumidas no **Log de decisões desta rodada** logo abaixo. A partir desta
-> versão, nenhuma das ocorrências antigas de "A validar" listadas ali permanece em aberto como
-> decisão de design — o que resta documentado como pendência é exclusivamente **negócio/escopo
-> futuro** (reservado ou fora de escopo nesta entrega), nunca uma decisão visual a critério do
-> desenvolvedor.
+> cada seção afetada, e resumidas no **Log de decisões desta rodada** logo abaixo. Nenhuma das
+> ocorrências antigas de "A validar" daquela rodada permanece em aberto.
+>
+> **Auditoria de 30/09/2026 (Fases 0–11 — Ressarcimento Retroativo e evoluções do Módulo de
+> Relatórios):** essa rodada trouxe várias telas novas, cujos padrões visuais já confirmados foram
+> incorporados diretamente às seções abaixo. Ela também encontrou **5 divergências visuais reais
+> entre telas, ainda sem decisão** (E4, E7, E8, E9, E12 — ver **Log de achados — Fases 0–11**, logo
+> após o log original) — diferente da rodada anterior, elas não foram resolvidas unilateralmente
+> aqui, e continuam em aberto até decisão do responsável pelo produto. Os demais 10 itens
+> encontrados (E1, E2, E3, E5, E6, E10, E11, E13, E14, E15) já foram incorporados como parte do
+> Design System — sem pendência de decisão, por serem reaproveitamento direto de padrões já
+> aprovados (dois deles, E1 e E6, foram inicialmente registrados por engano como "padrão novo" numa
+> auditoria de qualidade posterior de 30/09/2026 e já corrigidos aqui: ambos já existiam no
+> protótipo antes destas fases) ou variantes sem divergência real entre telas.
 
 > **Propósito deste documento:** eliminar divergências visuais entre o protótipo aprovado e a
 > implementação em produção. Na entrega anterior houve divergência de tipografia/fonte em relação
@@ -48,6 +57,36 @@ que não existe nele): **não aplicável nesta entrega**. Nenhuma tela do protó
 a produção reproduz o padrão real (spinner + texto descritivo), e introduzir skeleton exigiria uma
 decisão nova e explícita, fora desta entrega — não é uma lacuna de especificação, é ausência de
 requisito.
+
+---
+
+## Log de achados — Fases 0–11 (Ressarcimento Retroativo e evoluções do Módulo de Relatórios)
+
+> Auditoria de 30/09/2026, extraída diretamente do código das telas novas/alteradas por essas
+> fases (Ressarcimento Retroativo do Servidor e das Associações, Fila de análise, Consolidação,
+> Histórico de Relatórios, conferência das planilhas, Fechamento automático, Servidores no Teto).
+> Os itens abaixo **incrementam** o documento — nada do conteúdo anterior foi removido ou
+> reescrito. Itens marcados **"Pendente de decisão"** são divergências reais encontradas entre
+> telas e **não foram resolvidas unilateralmente aqui** — aguardam decisão do responsável pelo
+> produto, no mesmo espírito do Log de decisões original.
+
+| # | Tema | Situação encontrada | Seções afetadas |
+|---|---|---|---|
+| E1 | Botão positivo (verde sólido) | **Correção (auditoria de 30/09/2026): não é padrão novo.** `bg-success text-success-foreground rounded-md px-4 py-2` já existia antes das Fases 0–11 em pelo menos 5 arquivos (`admin.requerimentos.tsx`, `admin.comprovantes.tsx`, `admin.servidores.$id.tsx`, `DivergenciaAprovacaoModal.tsx`, `AnaliseRequerimentoAssociacaoModal.tsx`). O que é novo é só a centralização numa constante compartilhada para as telas de Retroativo — constante que, ao centralizar, introduziu um desvio real do pareamento de token já estabelecido (ver E15). Documentado como reaproveitamento em §10.6. | §10.6, §25 |
+| E2 | Botão compacto com `text-xs` | Novo — variante de botão com texto 12px (menor que os 14px já documentados), usada nas ações de conferência de planilha e da Fila de Retroativos. Documentada como variante compacta adicional (§10.1). | §10.1, §25 |
+| E3 | Seção expansível (acordeão) | Componente novo, sem equivalente documentado antes — cabeçalho numerado + resumo + chevron rotativo, usado no detalhe de solicitações retroativas e de planilhas. Documentado em §12.4. | §12.4, §25 |
+| E4 | Card/seção com `rounded-lg` + `shadow-sm` | Novo — variante mais "densa" do card padrão (que é `rounded-xl` + `shadow-card`), usada nas telas de conferência de Retroativo/Planilhas. **Pendente de decisão:** é uma variante intencional para telas de análise, ou deveria ser padronizada para o card oficial? | §12.1, §12.4, §27 |
+| E5 | Barra de ação contextual | Novo — barra com contagem de seleção + botões de ação (`rounded-md border border-border bg-muted/30 px-4 py-2.5`), usada na conferência de planilha. Documentada em §12.5. | §12.5, §25 |
+| E6 | Tingimento de linha por estado | **Correção (auditoria de 30/09/2026): não é convenção nova.** O tingimento a 5% de opacidade (`bg-primary/5`, `bg-success/5`, `bg-warning/5`) já era usado antes das Fases 0–11 em cards selecionáveis, banners e opções de formulário (nunca catalogado no briefing). O que é novo é só a aplicação dessa mesma convenção em **linhas de tabela**, para indicar estado sem badge por linha. Documentado em §13. | §13, §25 |
+| E7 | Status do Retroativo/Planilhas em texto simples, não em badge/pílula | O restante da aplicação usa sempre `StatusBadge` (pílula + ponto) para status; as telas de Retroativo e de conferência de planilha exibem o estado como texto colorido simples, sem pílula. **Pendente de decisão:** unificar num badge de pílula (padrão do resto do app) ou manter texto simples como variante própria deste módulo? | §14, §27 |
+| E8 | Sétimo par de cor de badge (roxo), não documentado | Já existente no código antes destas fases, mas nunca catalogado: os status legados `retroativo_aguardando_*`/`retroativo_devolvido` usam um par de cor roxo em hex literal (`#ede9fe`/`#6d28d9`), fora dos 6 pares oficiais da §4.3. **Pendente de decisão:** formalizar como 7º token oficial (`--status-retroativo-*`) ou tratar como cor legada, não reproduzir em telas novas? | §14, §27 |
+| E9 | Confirmação via `window.confirm()` nativo do navegador | "Gerar relatório" (Fechamento de Pagamento) usa o diálogo nativo do navegador, não o modal estilizado da aplicação (§16). **Pendente de decisão:** essa ação deveria usar o modal padrão da aplicação (como "Confirmar análise?", §16.2) em vez do `confirm()` nativo, que não é estilizável e varia por navegador/SO? | §16, §27 |
+| E10 | Diálogo de confirmação compacto | Novo — variante mais simples do modal padrão (sem header/footer `sticky` separados), usada em "Confirmar análise?". Documentada como sub-variante em §16.2 — reaproveita a base do modal já documentado (overlay 30%, `rounded-2xl`, `shadow-elevated`), não é um componente novo do zero. | §16.2, §25 |
+| E11 | Convenção "borda tracejada = recurso exclusivo do protótipo" | Novo padrão emergente, consistente em 2 pontos (botão "Restaurar dados de demonstração" e controle "Data simulada"): borda tracejada sinaliza um recurso que não existe em produção. Documentado em §17.5. | §17.5, §25 |
+| E12 | Campo de busca do Teto Familiar com `rounded-lg` | O padrão de input documentado (§11.1) é `rounded-md`; o campo de busca novo de Servidores no Teto Familiar usa `rounded-lg`. **Pendente de decisão:** ajustar para `rounded-md` (padrão) ou é uma exceção aceita? | §11.1, §27 |
+| E13 | Recorrência do uso de cores literais (`slate-*`) em vez de tokens | A divergência já registrada na §11.5/§27 para `associacao.upload.tsx` **se repete** em `associacao.retroativo.tsx` (tela nova desta rodada), com a mesma classe `border-slate-200 hover:bg-slate-50`. A decisão já fechada (usar tokens semânticos) se estende a este arquivo — sem necessidade de nova decisão, só de registro. | §11.5, §27 |
+| E14 | Checkbox nativo | Já existia no protótipo antes destas fases (seleção de beneficiários, formulários), mas nunca havia sido documentado. Ficou mais central agora (conferência de planilhas, seleção em lote da Consolidação). Documentado em §11.8 como registro do padrão já em uso — não é elemento novo. | §11.8, §25 |
+| E15 | Pareamento de token no botão positivo (constante nova) | **Desvio real de uma convenção já estabelecida** — não é só uma nota semântica. Em todo o protótipo (5 arquivos, ver E1), o botão verde sólido sempre pareou `bg-success` com `text-success-foreground`. A nova constante compartilhada (`ui-botoes.ts`, usada nas telas de Retroativo) usa `bg-success text-primary-foreground` em vez disso. Como os dois tokens têm hoje o mesmo valor `oklch(0.99 0 0)`, não há diferença visual perceptível agora — mas produção deve implementar com `text-success-foreground`, alinhado ao restante do sistema, não copiar a constante nova literalmente. | §10.6 |
 
 ---
 
@@ -401,6 +440,12 @@ bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hove
 - Tamanhos alternativos de padding vistos: `px-3 py-2` (compacto), `px-3 py-1.5` (mais compacto,
   em contexto de tabela/inline), `px-6 py-2.5` / `px-8 py-3` (grande, ação de destaque de tela,
   ex.: "Enviar para análise da GERDAB").
+- **Variante compacta com texto `text-xs` (12px)** — encontrada nas telas de conferência de
+  planilha e na Fila de análise de Retroativos: `text-xs font-medium rounded-md px-3 py-1.5
+  transition` (base compartilhada, com `bg-primary text-primary-foreground hover:bg-primary-light`
+  para o primário e `border border-border hover:bg-muted` para o secundário). É uma variante a
+  mais do botão compacto já documentado acima — mesma família visual, só com o texto reduzido para
+  12px em vez de 14px, usada quando várias ações ficam lado a lado numa barra estreita (ver §12.5).
 - Variante em pílula (`rounded-full`): usada nos 3 links de requerimento recorrente da Área da
   Associação (HU02) — `bg-primary text-primary-foreground rounded-full shadow-card
   hover:bg-primary-light`. **É uma variante intencional**, não um erro — pedida explicitamente
@@ -451,6 +496,28 @@ Produção reproduz exclusivamente o padrão real (ícone `Loader2` girando + te
 seção 10.5 acima). Introduzir skeleton exigiria uma decisão nova e explícita em rodada futura — não
 é uma lacuna de especificação visual desta entrega.
 
+### 10.6 Botão positivo (decisão financeira favorável) — reaproveitamento, já existia antes das Fases 0–11
+
+```
+bg-success text-success-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90
+```
+**Não é uma variante nova** — esta combinação (verde sólido) já aparecia em pelo menos 5 arquivos
+do protótipo antes das Fases 0–11 (`admin.requerimentos.tsx`, `admin.comprovantes.tsx`,
+`admin.servidores.$id.tsx`, `DivergenciaAprovacaoModal.tsx`, `AnaliseRequerimentoAssociacaoModal.tsx`),
+sempre com o pareamento `bg-success text-success-foreground`. As telas do Ressarcimento Retroativo
+reaproveitam essa mesma variante para decisões financeiras positivas distintas da ação primária de
+navegação/prosseguir (ex.: "Autorizar competência", "Habilitar"). Segue a mesma hierarquia de cor já
+observada em todo o protótipo: azul = ação principal/prosseguir; **verde = decisão positiva**;
+vermelho = decisão negativa; neutro = consulta ou apoio — laranja nunca é cor de botão, só
+estado/atenção (badges, textos).
+
+**Divergência pontual encontrada na centralização deste botão (auditoria de 30/09/2026 — ver Log de
+achados E15):** a nova constante compartilhada criada para as telas de Retroativo usa
+`text-primary-foreground` em vez do `text-success-foreground` sempre usado nos 5 arquivos
+anteriores. Hoje os dois tokens têm o mesmo valor OKLCH (`oklch(0.99 0 0)`, branco quase puro), sem
+diferença visual perceptível — mas produção deve implementar com `text-success-foreground` (como já
+é feito no restante do sistema), não replicar a constante nova literalmente.
+
 ---
 
 ## 11. Inputs, selects, buscas, campos de data e uploads
@@ -462,6 +529,11 @@ border border-input rounded-md px-3 py-2 text-sm bg-background focus:outline-non
 ```
 Fundo `--background` (não `--card`), borda no token `--input` (mesmo valor de `--border`), foco com
 anel de 2px na cor `--ring` e remoção do outline nativo do navegador.
+
+**Divergência encontrada (Fase 8, pendente de decisão — ver Log de achados E12):** o campo de busca
+de Servidores no Teto Familiar (Visões Gerenciais) usa `rounded-lg` (12px) em vez do `rounded-md`
+(8px) documentado acima como padrão de todo input. É um caso isolado — todos os demais inputs
+novos das Fases 0–11 seguem o padrão `rounded-md` normalmente.
 
 ### 11.2 Select
 
@@ -514,6 +586,11 @@ group` (substituindo `border-slate-200`/`hover:bg-slate-50` pelos tokens `--bord
 cores literais desta tela não estabelecem padrão para produção; a especificação oficial do
 componente de upload é a classe acima, com tokens semânticos.
 
+**Achado desta rodada (ver Log de achados E13):** a mesma divergência de cores literais
+(`border-slate-200 hover:bg-slate-50`) reaparece em `associacao.retroativo.tsx` (tela nova do
+Ressarcimento Retroativo das Associações). A decisão acima já cobre este caso — produção usa os
+tokens semânticos também nesta tela, sem necessidade de nova decisão.
+
 ### 11.6 Label de campo
 
 Sempre acima do campo (nunca ao lado), como um `<span>` separado:
@@ -526,6 +603,19 @@ Sempre acima do campo (nunca ao lado), como um `<span>` separado:
 Mensagem de erro em bloco separado abaixo do campo (não borda vermelha no próprio input, nas telas
 inspecionadas): `text-xs text-destructive` ou bloco `bg-destructive/10 text-destructive text-xs p-3
 rounded-lg` para mensagens mais destacadas.
+
+### 11.8 Checkbox — padrão já em uso, documentado nesta rodada
+
+```
+<input type="checkbox" className="h-4 w-4" />
+```
+Checkbox nativo do navegador, sem estilização customizada (sem componente próprio de checkbox).
+Já existia no protótipo antes das Fases 0–11 (seleção de beneficiários em formulários de
+requerimento), mas nunca havia sido catalogado neste documento. Ficou mais central nas telas novas
+de conferência de planilha (seleção linha a linha, título e cada dependente) e de seleção em lote
+da Consolidação de Retroativos. Sempre `h-4 w-4` (16px), sem cor customizada — usa a aparência
+nativa do navegador/SO, no mesmo espírito da decisão já registrada para `<select>` (§11.2) e campos
+de data (§11.4): não introduzir componente customizado sem necessidade funcional específica.
 
 ---
 
@@ -565,6 +655,51 @@ valor grande (`text-2xl font-bold`). Ex.: cartões "Total de Registros", "Válid
 Quando o indicador é clicável (leva a uma lista filtrada — requisito de rastreabilidade do próprio
 domínio de negócio), ele é um `<button>` com `text-left hover:opacity-80`, não um link estilizado
 diferente — o hover é só uma leve redução de opacidade, sem mudança de cor de fundo.
+
+### 12.4 Seção expansível (acordeão) — novo componente (Fases 0–11)
+
+```
+<div className="rounded-lg border border-border bg-card shadow-sm">
+  <button className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-muted/40 transition rounded-lg">
+    <span className="flex-1 min-w-0">
+      <span className="block text-lg font-semibold">{numero}. {titulo}</span>
+      <span className="block text-sm mt-0.5 text-muted-foreground">{resumo}</span>
+    </span>
+    <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform" />
+  </button>
+  <div className="px-5 pb-5 pt-1 space-y-4 border-t border-border">...</div>
+</div>
+```
+Componente novo: cabeçalho numerado (`{numero}. {titulo}`) + linha de resumo do estado atual +
+ícone `ChevronDown` (lucide) que gira 180° quando a seção está aberta (`rotate-180`). O corpo
+permanece sempre montado no DOM, só oculto via `hidden` quando fechado — preserva o que já foi
+preenchido dentro, mesmo com a seção recolhida. Quando o resumo precisa chamar atenção, o texto
+usa `text-warning font-medium` em vez de `text-muted-foreground` — laranja é sempre estado/atenção,
+nunca cor de botão (mesma regra da §10). Usado no detalhe de solicitações do Ressarcimento
+Retroativo e no fluxo de planilhas das associações.
+
+**Nota de radius/sombra (ver Log de achados E4, pendente de decisão):** este componente usa
+`rounded-lg` (12px) + `shadow-sm` (sombra cinza genérica do Tailwind), **diferente** do card padrão
+da aplicação (`rounded-xl` 16px + `shadow-card`, com tom de cor de marca — §12.1/§9). Não foi
+tratado aqui como erro a corrigir silenciosamente — é uma variante visual real, mais "densa", usada
+consistentemente nas telas de análise/conferência destas fases. Fica registrado para decisão: manter
+como variante própria dessas telas, ou uniformizar com o card oficial.
+
+### 12.5 Barra de ação contextual — novo padrão (Fases 0–11)
+
+```
+<div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 px-4 py-2.5">
+  <span className="text-sm">{n} de {total} linha(s) selecionada(s)</span>
+  <button className="...">Selecionar todos</button>
+  <button className="...">Limpar seleção</button>
+  <button className="... ml-auto">Confirmar análise</button>
+</div>
+```
+Barra horizontal (`flex-wrap`) que combina uma contagem de seleção com os botões de ação
+relacionados, com fundo `--muted` a 30% de opacidade e borda `--border` — mais discreta que um card
+(sem sombra). Usada na conferência de planilhas para agrupar "Selecionar todos" / "Limpar seleção" /
+"Confirmar análise" (ou "Editar seleção") num único bloco visual, com o botão principal empurrado
+para a direita via `ml-auto`.
 
 ---
 
@@ -614,7 +749,22 @@ aproximadamente, com `overflow-x-auto` como rede de segurança abaixo disso.
 
 **Estado vazio de tabela:** uma única linha (`<tr>`) com `colSpan` cobrindo todas as colunas,
 texto centralizado (`text-center text-muted-foreground`), às vezes com um ícone acompanhando (ex.:
-`XCircle`, `FileWarning`) antes do texto.
+`XCircle`, `FileWarning`) antes do texto. **Confirmado reutilizado sem alteração** nas telas novas
+de Histórico (Retroativo e Fechamento), com os ícones `FileClock`/`XCircle` — não é um padrão novo.
+
+**Tingimento de linha por estado — aplicação nova de uma convenção já existente:** o tingimento a 5%
+de opacidade de uma cor semântica (`bg-primary/5`, `bg-success/5`, `bg-warning/5`) **não é um token
+ou padrão novo** — já era usado antes das Fases 0–11 em cards selecionáveis, banners e opções de
+formulário (ex.: `admin.servidores.$id.tsx`, `primeiro-acesso.tsx`, `login.tsx`), só nunca havia
+sido catalogado neste documento. O que é novo é a aplicação dessa mesma convenção **em linha de
+tabela** (`<tr>`), vista pela primeira vez nas tabelas de conferência do Ressarcimento Retroativo e
+das planilhas, para indicar o estado da linha sem precisar de um badge por linha:
+- `bg-primary/5` — linha marcada/selecionada (em edição).
+- `bg-success/5` — linha já confirmada/considerada numa análise concluída.
+- `bg-warning/5` — linha com pendência/inválida.
+- `opacity-50` (sem tingimento de cor) — linha excluída da composição financeira.
+Esse tingimento é aplicado direto no `<tr>` (`border-t border-border ${tingimento}`), mantendo o
+divisor padrão de linha (§13) — é um reforço visual adicional, não substitui o `border-t`.
 
 ---
 
@@ -646,6 +796,26 @@ empilhado; foi simplificada para texto colorido discreto, ver `docs/MODULO_RELAT
 independentemente do que está sendo contado (é um indicador de "atenção necessária", não de
 categoria).
 
+**Sétimo par de cor, não documentado antes (achado desta auditoria, ver Log de achados E8) —
+pendente de decisão:** os status legados de retroativo leve (`retroativo_aguardando_aprovacao` e
+os 3 aliases mais antigos, `retroativo_devolvido`) usam um par de cor **roxo**, em hex literal
+(`#ede9fe` de fundo / `#6d28d9` de texto), fora dos 6 pares oficiais da §4.3. Esse par já existia no
+protótipo antes das Fases 0–11 (é do fluxo de retroativo histórico), mas nunca havia sido
+catalogado neste documento — e continua visível hoje no Histórico de Comprovações. Fica registrado
+para decisão: formalizar como um 7º token oficial de status, ou tratar como cor legada que produção
+não precisa reproduzir para telas novas (o mesmo tratamento já dado à Variante A de tabela, §13).
+
+**Status do Ressarcimento Retroativo e da conferência de planilhas em texto simples, sem pílula
+(achado desta auditoria, ver Log de achados E7) — pendente de decisão:** diferente de todo o
+restante da aplicação (que sempre usa o `StatusBadge` em pílula para indicar status), as telas do
+Ressarcimento Retroativo e da conferência de planilhas exibem o estado atual como **texto colorido
+simples** (`<span className="font-medium">`), sem fundo, sem pílula e sem o ponto sólido — por
+exemplo, "Habilitado para ressarcimento" / "Não habilitado" / "Em análise" no detalhe de uma
+competência retroativa, ou o resumo textual da fila ("2 em análise · 1 autorizada"). Isso é
+consistente dentro do próprio módulo (todas as suas telas fazem igual), mas diverge do padrão de
+pílula usado em todo o resto do sistema. Fica registrado para decisão: unificar num badge de pílula
+(como o resto do app) ou manter texto simples como variante própria deste módulo.
+
 ---
 
 ## 15. Abas
@@ -666,6 +836,8 @@ px-4 py-2(.5) text-sm font-medium border-b-2 (-mb-px) transition
 ---
 
 ## 16. Modais
+
+### 16.1 Modal padrão
 
 Padrão único, repetido em pelo menos 5 modais diferentes (edição de dados, análise de documento,
 etc.):
@@ -692,6 +864,34 @@ etc.):
 - Header e footer são `sticky` dentro do modal quando o conteúdo pode rolar (`max-h-[90vh]
   overflow-y-auto`), garantindo que título e ações de confirmação permaneçam visíveis mesmo com
   conteúdo longo.
+
+### 16.2 Diálogo de confirmação compacto — sub-variante (Fases 0–11)
+
+```
+<div className="fixed inset-0 bg-foreground/30 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true">
+  <div className="bg-card rounded-2xl shadow-elevated max-w-md w-full p-6 space-y-4">
+    <h2 className="text-lg font-semibold">Confirmar análise?</h2>
+    ...resumo em lista...
+    <div className="flex justify-end gap-2">...botões...</div>
+  </div>
+</div>
+```
+Reaproveita a mesma base do modal padrão (overlay 30% de `--foreground`, painel `rounded-2xl
+shadow-elevated`), mas **sem** a estrutura de header/footer `sticky` separados — título, conteúdo e
+botões ficam num único bloco `p-6`, adequado para confirmações curtas que não precisam rolar. Usado
+em "Confirmar análise?" (conferência de planilha). Não é um componente novo do zero, é uma
+sub-variante mais simples do modal já documentado em §16.1 — usar a versão com header/footer
+`sticky` quando o conteúdo puder ser longo, e esta versão compacta quando for um resumo curto antes
+de uma confirmação.
+
+**Divergência encontrada — pendente de decisão (ver Log de achados E9):** a ação "Gerar relatório"
+(Fechamento de Pagamento e Consolidação de Retroativos) e "Restaurar dados de demonstração" (recurso
+exclusivo do protótipo, §17.5) usam o diálogo **nativo do navegador** (`window.confirm`), não o
+modal estilizado da aplicação. O `confirm()` nativo não é estilizável e varia de aparência por
+navegador/sistema operacional — para "Restaurar dados de demonstração" isso é irrelevante (o recurso
+não existe em produção), mas para "Gerar relatório", que é uma ação real de produção, fica
+registrado para decisão: produção deveria usar o diálogo de confirmação compacto acima (§16.2) em
+vez do `confirm()` nativo?
 
 ---
 
@@ -736,6 +936,20 @@ código-fonte além do registro do componente.
 
 **Decisão registrada:** manter o comportamento visual atualmente existente — o padrão default da
 biblioteca `sonner`, sem criação de customização adicional nesta entrega.
+
+### 17.5 Convenção "borda tracejada = recurso exclusivo do protótipo" — novo padrão (Fases 0–11)
+
+```
+border border-dashed border-border rounded-md px-2.5 py-1(.5) text-xs text-muted-foreground
+```
+Padrão novo e consistente, encontrado em dois pontos distintos: o botão "Restaurar dados de
+demonstração" (Ressarcimento Retroativo) e o controle "Data simulada" (Fechamento de Pagamento).
+Ambos são recursos que existem **só no protótipo**, para fins de teste/demonstração, e nunca
+existirão em produção. A borda tracejada, junto com um texto `title`/rótulo explícito avisando
+que é "recurso exclusivo do protótipo", funciona como um sinalizador visual consistente desse tipo
+de controle. **Produção não deve reproduzir nenhum dos dois controles em si** (não são requisito
+funcional — ver `docs/MODULO_PAGAMENTO.md`/`docs/MODULO_RELATORIOS.md`), mas a convenção fica
+registrada aqui caso apareça um caso equivalente no futuro.
 
 ---
 
@@ -960,6 +1174,15 @@ diferença visual reforça essa distinção para quem usa o sistema.
 | Breadcrumb | Navegação contextual (Relatórios → X) | `text-xs text-muted-foreground` + link `hover:text-primary hover:underline` | Condicional via query param | — | `admin.servidores.index.tsx` | Confirmado (sem componente isolado) |
 | Ação de exportação | Todas as telas de relatório (HU03-HU08) | Botão secundário "Exportar ▾" + menu com 2 itens (PDF/Excel) | Loading com `Loader2` + texto mudado | — | `ExportarRelatorio.tsx` | Confirmado |
 | Toast | Mensagens de sistema | Padrão default da biblioteca `sonner` | — | — | `__root.tsx` (`<Toaster />`) | **Aprovado para produção** (manter padrão default, sem customização adicional) |
+| Botão positivo (verde sólido) | Decisões financeiras favoráveis (existia antes; reaproveitado no Ressarcimento Retroativo) | `bg-success text-success-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90` | — | — | `admin.requerimentos.tsx`, `admin.comprovantes.tsx`, `DivergenciaAprovacaoModal.tsx`, entre outros | Confirmado — já existia; constante nova das telas de Retroativo tem desvio pontual de token (E15) |
+| Botão compacto `text-xs` | Ações lado a lado em barra estreita | `text-xs font-medium rounded-md px-3 py-1.5` (primário/neutro) | — | — | conferência de planilhas, Fila de Retroativos | Confirmado — novo (Fases 0–11) |
+| Checkbox | Seleção de linha/item | `<input type="checkbox" className="h-4 w-4" />`, nativo | — | — | conferência de planilhas, Consolidação, formulários de requerimento | Confirmado — já existia, documentado nesta rodada |
+| Seção expansível (acordeão) | Detalhe de solicitações retroativas, planilhas | `rounded-lg border border-border bg-card shadow-sm` + chevron rotativo | Corpo sempre montado, só oculto | — | Ressarcimento Retroativo, Planilhas | Confirmado — novo (Fases 0–11); radius/sombra pendente de decisão (E4) |
+| Barra de ação contextual | Seleção em lote (conferência de planilha) | `rounded-md border border-border bg-muted/30 px-4 py-2.5` | Contagem + botões, `ml-auto` no principal | `flex-wrap` | Planilhas — conferência | Confirmado — novo (Fases 0–11) |
+| Diálogo de confirmação compacto | Confirmações curtas | Base do modal padrão, sem header/footer sticky, `p-6` único | — | `max-w-md` | "Confirmar análise?" | Confirmado — novo (Fases 0–11), sub-variante do modal (§16.1) |
+| Tingimento de linha por estado | Tabelas de conferência (Retroativo/Planilhas) | `bg-primary/5` (selecionada) / `bg-success/5` (confirmada) / `bg-warning/5` (inválida) / `opacity-50` (excluída) | — | — | conferência de planilhas | Confirmado — convenção já existente, nova só em linha de tabela |
+| Status em texto simples (sem pílula) | Ressarcimento Retroativo, conferência de planilhas | `<span className="font-medium">` com cor semântica | — | — | Fila de Retroativos, detalhe de competência | Pendente de decisão (E7) — diverge do `StatusBadge` em pílula |
+| Convenção "borda tracejada = protótipo" | Controles exclusivos do protótipo | `border border-dashed border-border rounded-md px-2.5 py-1(.5)` | — | — | "Restaurar dados de demonstração", "Data simulada" | Confirmado — novo (Fases 0–11); não reproduzir em produção |
 
 ---
 
@@ -1005,6 +1228,10 @@ protótipo rodando e o ambiente de produção lado a lado):
       desabilitado.
 - [ ] **Mensagens de erro/sucesso:** cor `--destructive`/`--success` (ou tokens de status
       correspondentes), nunca vermelho/verde genéricos de framework.
+- [ ] **Telas do Ressarcimento Retroativo e conferência de planilhas:** confirmar com o
+      responsável pelo produto, antes de implementar, como as 5 divergências pendentes desta
+      rodada foram decididas (E4, E7, E8, E9, E12 — ver Log de achados — Fases 0–11) — não
+      implementar por suposição enquanto não houver decisão registrada.
 
 ---
 
@@ -1075,3 +1302,24 @@ algo visualmente diferente do restante do sistema:
     Um desenvolvedor que não tiver acesso ao histórico de decisões (`docs/MODULO_RELATORIOS.md`)
     poderia reintroduzir esse item "para completude", contrariando uma decisão de UX já testada e
     revertida.
+11. **(Fases 0–11) Cores Tailwind literais reaparecem em `associacao.retroativo.tsx`** — mesma
+    divergência já registrada no item 1 acima para `associacao.upload.tsx` (`border-slate-200`,
+    `hover:bg-slate-50`), agora também numa tela nova. A decisão já fechada (usar tokens
+    semânticos) se estende a este arquivo (ver Log de achados E13) — sem necessidade de nova
+    decisão, só de atenção na implementação.
+12. **(Fases 0–11, pendente de decisão) Status do Ressarcimento Retroativo em texto simples, não em
+    badge/pílula** — um desenvolvedor acostumado ao padrão do resto do sistema (§14, `StatusBadge`
+    sempre em pílula) tenderia a "corrigir" isso introduzindo pílulas onde o protótipo atual usa
+    texto simples, ou vice-versa, sem uma decisão explícita registrada. Ver Log de achados E7 —
+    aguardando decisão do responsável pelo produto antes de produção replicar qualquer um dos dois
+    caminhos como padrão definitivo.
+13. **(Fases 0–11, pendente de decisão) `window.confirm()` nativo em vez do modal estilizado** —
+    "Gerar relatório" usa o diálogo nativo do navegador; um desenvolvedor que reproduzisse
+    literalmente entregaria uma caixa de diálogo com aparência de sistema operacional, destoante de
+    todo o resto da aplicação (que usa o modal com overlay/`rounded-2xl`/`shadow-elevated` — §16).
+    Ver Log de achados E9.
+14. **(Fases 0–11, achado, não documentado antes) Sétimo par de cor de status (roxo, hex literal)**
+    — um desenvolvedor que só consultasse a §4.3 (6 pares oficiais) não saberia reproduzir a cor
+    usada pelos status legados de retroativo (`#ede9fe`/`#6d28d9`), hoje ainda visível no Histórico
+    de Comprovações. Ver Log de achados E8 — pendente de decisão sobre formalizar como token ou
+    tratar como cor legada.
