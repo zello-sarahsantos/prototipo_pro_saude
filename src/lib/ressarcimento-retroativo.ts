@@ -101,7 +101,8 @@ export const OBSERVACAO_POR_MOTIVO: Record<string, string> = {
 
 /** Observação final = texto do sistema (por motivo) + complemento opcional da GERDAB. */
 export function gerarObservacao(solicitacao: SolicitacaoRetroativa, competencia: CompetenciaRetroativa): string {
-  const base = OBSERVACAO_POR_MOTIVO[solicitacao.motivo] ?? OBSERVACAO_POR_MOTIVO.outros;
+  // Origem associação não informa motivo no envio: observação genérica do sistema (+ complemento da GERDAB).
+  const base = solicitacao.motivo ? (OBSERVACAO_POR_MOTIVO[solicitacao.motivo] ?? OBSERVACAO_POR_MOTIVO.outros) : "Ressarcimento retroativo.";
   const complemento = competencia.observacaoComplemento?.trim();
   return complemento ? `${base} ${complemento}` : base;
 }
@@ -279,8 +280,8 @@ export interface NovaSolicitacaoInput {
   associacao?: string;
   cpfTitular: string;
   nomeTitular: string;
-  motivo: MotivoRessarcimento;
-  justificativa: string;
+  motivo?: MotivoRessarcimento;
+  justificativa?: string;
   autorizacaoExcepcional?: { instancia: string; referenciaDocumento: string };
   competencias: NovaCompetenciaInput[];
   /** Origem associação: planilha retroativa enviada (comprovação). */
@@ -293,10 +294,13 @@ export interface NovaSolicitacaoInput {
  */
 export function criarSolicitacaoRetroativa(input: NovaSolicitacaoInput): SolicitacaoRetroativa {
   if (!input.cpfTitular.trim() || !input.nomeTitular.trim()) throw new Error("Titular obrigatório.");
-  if (!input.motivo) throw new Error("Motivo obrigatório.");
-  if (!input.justificativa.trim()) throw new Error("Justificativa obrigatória.");
-  if (input.motivo === "autorizacao_excepcional" && (!input.autorizacaoExcepcional?.instancia.trim() || !input.autorizacaoExcepcional?.referenciaDocumento.trim())) {
-    throw new Error("Autorização excepcional exige a instância autorizadora e a referência ao ato/documento.");
+  // Motivo e justificativa são exigidos só na origem individual (Portal do Servidor); a Associação não os informa.
+  if (input.origem === "individual") {
+    if (!input.motivo) throw new Error("Motivo obrigatório.");
+    if (!input.justificativa?.trim()) throw new Error("Justificativa obrigatória.");
+    if (input.motivo === "autorizacao_excepcional" && (!input.autorizacaoExcepcional?.instancia.trim() || !input.autorizacaoExcepcional?.referenciaDocumento.trim())) {
+      throw new Error("Autorização excepcional exige a instância autorizadora e a referência ao ato/documento.");
+    }
   }
   if (input.origem === "associacao" && !input.associacao) throw new Error("Origem associação exige a associação.");
   // Proteção defensiva (a elegibilidade real é barrada antes, no Portal — `origem-comprovacao.ts`):
@@ -348,7 +352,7 @@ export function criarSolicitacaoRetroativa(input: NovaSolicitacaoInput): Solicit
     cpfTitular: input.cpfTitular,
     nomeTitular: input.nomeTitular,
     motivo: input.motivo,
-    justificativa: input.justificativa.trim(),
+    justificativa: input.justificativa?.trim(),
     autorizacaoExcepcional: input.autorizacaoExcepcional,
     criadaEm: new Date().toISOString(),
     arquivoId: input.arquivoId,

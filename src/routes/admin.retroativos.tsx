@@ -270,8 +270,14 @@ function SolicitacaoView({ s, responsavel, onVoltar, onMudou }: { s: Solicitacao
           )}
           <span className="text-xs text-muted-foreground">Origem: {origemRotulo(s)}</span>
         </div>
-        <p className="text-sm"><span className="text-muted-foreground">Motivo:</span> {MOTIVOS_RESSARCIMENTO[s.motivo] ?? s.motivo} <span className="text-muted-foreground">· Enviada em</span> {dataCurta(s.criadaEm)}</p>
-        <p className="text-sm"><span className="text-muted-foreground">Justificativa:</span> {s.justificativa}</p>
+        {s.motivo ? (
+          <>
+            <p className="text-sm"><span className="text-muted-foreground">Motivo:</span> {MOTIVOS_RESSARCIMENTO[s.motivo] ?? s.motivo} <span className="text-muted-foreground">· Enviada em</span> {dataCurta(s.criadaEm)}</p>
+            <p className="text-sm"><span className="text-muted-foreground">Justificativa:</span> {s.justificativa}</p>
+          </>
+        ) : (
+          <p className="text-sm"><span className="text-muted-foreground">Enviada em</span> {dataCurta(s.criadaEm)}</p>
+        )}
         {s.autorizacaoExcepcional && (
           <p className="text-sm"><span className="text-muted-foreground">Autorização excepcional:</span> {s.autorizacaoExcepcional.instancia} — {s.autorizacaoExcepcional.referenciaDocumento}</p>
         )}

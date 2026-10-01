@@ -883,9 +883,10 @@ export interface SolicitacaoRetroativa {
   associacao?: string;
   cpfTitular: string;
   nomeTitular: string;
-  /** Um motivo por solicitação — SUPOSIÇÃO sinalizada (pendência: pode variar por competência?). */
-  motivo: MotivoRessarcimento;
-  justificativa: string;
+  /** Origem individual: um motivo por solicitação — SUPOSIÇÃO sinalizada (pendência: pode variar por competência?).
+   *  Origem associação: não há motivo nem justificativa no envio da planilha. */
+  motivo?: MotivoRessarcimento;
+  justificativa?: string;
   autorizacaoExcepcional?: { instancia: string; referenciaDocumento: string };
   criadaEm: string;
   /** Origem associação: planilha retroativa enviada (`PlanilhaRetroativaOriginal`) que comprova este registro. */

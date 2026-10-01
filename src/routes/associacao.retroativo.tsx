@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Download, FileSpreadsheet, Info, Upload } from "lucide-react";
-import { Field, FormError, inputCls } from "@/components/Stepper";
+import { Field, inputCls } from "@/components/Stepper";
 import { formatCompetencia, formatCurrency } from "@/lib/mock-data";
-import { temPeloMenosNPalavras } from "@/lib/validation-pagamento";
 import {
   getAssociacaoModelo,
   getColunasModelo,
@@ -15,7 +14,7 @@ import {
 import { enviarRetroativoAssociacao, lerPlanilhaRetroativa, listarEnviosPlanilhaAssociacao, obterArquivoPlanilhaOriginal, type ResultadoLeituraRetroativa } from "@/lib/planilha-retroativa";
 import { lerArquivoComoDataUrl } from "@/lib/retroativo-fluxo";
 import { PlanilhaCompleta } from "@/components/PlanilhaRetroativaVisao";
-import { estaAutorizada, getEstadoCompetencia, getSolicitacoesRetroativas, MOTIVOS_RESSARCIMENTO, type CompetenciaRetroativa, type SolicitacaoRetroativa } from "@/lib/ressarcimento-retroativo";
+import { estaAutorizada, getEstadoCompetencia, getSolicitacoesRetroativas, type CompetenciaRetroativa, type SolicitacaoRetroativa } from "@/lib/ressarcimento-retroativo";
 
 export const Route = createFileRoute("/associacao/retroativo")({
   component: AssociacaoRetroativo,
@@ -29,15 +28,10 @@ export const Route = createFileRoute("/associacao/retroativo")({
  * habilitação do titular + competência pela GERDAB, depois de apurada.
  *
  * O seletor de associação simula a associação autenticada (em produção ela é fixada pelo login);
- * motivo/justificativa por envio seguem o motor da Fase 1 (motivo único por envio é suposição
- * sinalizada, pendência com a stakeholder).
+ * a associação não informa motivo nem justificativa no envio: só baixa o modelo e envia a planilha.
  */
 function AssociacaoRetroativo() {
   const [associacao, setAssociacao] = useState<AssociacaoModelo>("Assefaz");
-  const [motivo, setMotivo] = useState("");
-  const [justificativa, setJustificativa] = useState("");
-  const [instancia, setInstancia] = useState("");
-  const [referenciaAto, setReferenciaAto] = useState("");
   const [nomeArquivo, setNomeArquivo] = useState("");
   const [arquivoAtual, setArquivoAtual] = useState<File | null>(null);
   const [lendo, setLendo] = useState(false);
@@ -48,9 +42,6 @@ function AssociacaoRetroativo() {
   const inputArquivo = useRef<HTMLInputElement>(null);
 
   const rotuloPlano = ROTULO_PLANO_POR_ASSOCIACAO[associacao];
-  const excepcional = motivo === "autorizacao_excepcional";
-  const justificativaOk = temPeloMenosNPalavras(justificativa);
-  const motivoOk = !!motivo && justificativaOk && (!excepcional || (instancia.trim() !== "" && referenciaAto.trim() !== ""));
   const arquivoOk = !!resultado && resultado.estruturaValida && resultado.erros.length === 0 && resultado.registros.length > 0;
 
   function limparArquivo() {
@@ -90,16 +81,13 @@ function AssociacaoRetroativo() {
   }
 
   async function enviar() {
-    if (!arquivoOk || !motivoOk || !resultado) return;
+    if (!arquivoOk || !resultado) return;
     // Protótipo: guarda o conteúdo do arquivo (até um limite) para poder baixar o original depois.
     const arquivo = arquivoAtual ? { nome: arquivoAtual.name, conteudo: await lerArquivoComoDataUrl(arquivoAtual) } : undefined;
     const criadas = enviarRetroativoAssociacao({
       arquivo,
       associacao,
       registros: resultado.registros,
-      motivo,
-      justificativa,
-      autorizacaoExcepcional: excepcional ? { instancia: instancia.trim(), referenciaDocumento: referenciaAto.trim() } : undefined,
     });
     setEnviado(criadas.reduce((n, s) => n + s.competencias.length, 0));
     limparArquivo();
@@ -155,40 +143,8 @@ function AssociacaoRetroativo() {
           </button>
         </div>
 
-        <div className="space-y-4">
-          <p className="text-sm font-semibold">2. Informe o motivo</p>
-          <Field label="Motivo do ressarcimento" required>
-            <select value={motivo} onChange={(e) => setMotivo(e.target.value)} className={inputCls}>
-              <option value="">Selecione…</option>
-              {Object.entries(MOTIVOS_RESSARCIMENTO).map(([chave, rotulo]) => (
-                <option key={chave} value={chave}>{rotulo}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label={motivo === "outros" ? "Descreva o motivo" : "Justificativa"} required>
-            <textarea
-              value={justificativa}
-              onChange={(e) => setJustificativa(e.target.value)}
-              rows={3}
-              placeholder="Explique o motivo do envio (mínimo 3 palavras)…"
-              className={inputCls}
-            />
-            {justificativa.trim() !== "" && !justificativaOk && <FormError message="Informe ao menos 3 palavras." />}
-          </Field>
-          {excepcional && (
-            <div className="grid sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 p-3">
-              <Field label="Instância autorizadora" required>
-                <input value={instancia} onChange={(e) => setInstancia(e.target.value)} className={inputCls} />
-              </Field>
-              <Field label="Referência ao ato/documento autorizativo" required>
-                <input value={referenciaAto} onChange={(e) => setReferenciaAto(e.target.value)} className={inputCls} />
-              </Field>
-            </div>
-          )}
-        </div>
-
         <div className="space-y-3">
-          <p className="text-sm font-semibold">3. Envie a planilha preenchida</p>
+          <p className="text-sm font-semibold">2. Envie a planilha preenchida</p>
           <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-8 text-center cursor-pointer hover:bg-slate-50 transition">
             <Upload className="h-6 w-6 text-slate-400" />
             <span className="text-sm text-slate-600">{nomeArquivo || "Selecione o arquivo .xlsx (modelo retroativo)"}</span>
@@ -282,13 +238,12 @@ function AssociacaoRetroativo() {
           <div className="flex justify-end">
             <button
               onClick={enviar}
-              disabled={!arquivoOk || !motivoOk}
+              disabled={!arquivoOk}
               className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Enviar retroativo
             </button>
           </div>
-          {arquivoOk && !motivoOk && <p className="text-xs text-amber-700 text-right">Preencha o motivo e a justificativa (passo 2) para enviar.</p>}
         </section>
       )}
 

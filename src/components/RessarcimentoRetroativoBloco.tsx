@@ -312,7 +312,7 @@ export function RessarcimentoRetroativoBloco({
                   className="rounded-lg border border-border p-3 space-y-1.5"
                 >
                   <p className="text-sm font-medium">
-                    {MOTIVOS_RESSARCIMENTO[sol.motivo] ?? sol.motivo}
+                    {sol.motivo ? (MOTIVOS_RESSARCIMENTO[sol.motivo] ?? sol.motivo) : "Ressarcimento retroativo"}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Enviada em{" "}

@@ -113,8 +113,6 @@ export function garantirMassaDemonstracaoRetroativos() {
     arquivoId: arqAssetran,
     cpfTitular: "567.890.123-44",
     nomeTitular: "Carlos Pereira",
-    motivo: "mudanca_faixa_etaria",
-    justificativa: "Mudança de faixa etária em fevereiro.",
     competencias: ["2026-02", "2026-03", "2026-04", "2026-05"].map((c) => ({
       competenciaReferencia: c,
       dataEmissaoBoleto: `${c}-01`, vencimento: `${c}-10`, dataBaixa: `${c}-09`,
@@ -180,8 +178,6 @@ export function garantirMassaDemonstracaoRetroativos() {
     arquivoId: arqAssefaz,
     cpfTitular: "345.678.901-22",
     nomeTitular: "Maria Oliveira",
-    motivo: "mudanca_faixa_etaria",
-    justificativa: "Reajuste por faixa etária aplicado retroativamente pela associação.",
     competencias: [
       {
         competenciaReferencia: "2025-10",
@@ -209,8 +205,6 @@ export function garantirMassaDemonstracaoRetroativos() {
     arquivoId: arqAssefaz,
     cpfTitular: "890.123.456-77",
     nomeTitular: "Patrícia Costa",
-    motivo: "outros",
-    justificativa: "Pensão reativada com pagamentos retroativos da associação.",
     competencias: [
       {
         competenciaReferencia: "2026-04",
@@ -245,8 +239,6 @@ export function garantirMassaDemonstracaoRetroativos() {
     arquivoId: arqAssetran,
     cpfTitular: "678.901.234-55",
     nomeTitular: "Roberto Santos",
-    motivo: "inclusao_dependente",
-    justificativa: "Inclusão de cônjuge com efeito retroativo.",
     competencias: [
       {
         competenciaReferencia: "2026-03",

@@ -252,9 +252,6 @@ export interface EnvioRetroativoAssociacaoInput {
   arquivo?: { nome: string; conteudo?: string };
   associacao: string;
   registros: RegistroRetroativoConsolidado[];
-  motivo: MotivoRessarcimento;
-  justificativa: string;
-  autorizacaoExcepcional?: { instancia: string; referenciaDocumento: string };
 }
 
 /**
@@ -277,9 +274,6 @@ export function enviarRetroativoAssociacao(input: EnvioRetroativoAssociacaoInput
       associacao: input.associacao,
       cpfTitular: regs[0].cpfTitular,
       nomeTitular: regs[0].nomeTitular,
-      motivo: input.motivo,
-      justificativa: input.justificativa,
-      autorizacaoExcepcional: input.autorizacaoExcepcional,
       arquivoId,
       competencias: regs
         .sort((a, b) => a.competencia.localeCompare(b.competencia))
