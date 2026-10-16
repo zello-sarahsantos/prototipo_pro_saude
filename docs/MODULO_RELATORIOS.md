@@ -1959,6 +1959,16 @@ rota precisou ser nomeado com a convenção "não aninhada" do TanStack Router
 pelo par `getStatusFechamentoAutomatico` (estado, nunca persistido) + este novo snapshot
 (conteúdo, persistido e imutável).
 
+### 3.31 Relatório NUPLA e novo Dashboard GERDAB
+
+O Relatório de Movimentações do Pró-Saúde (NUPLA, `/admin/relatorios/nupla`), o novo Dashboard
+GERDAB, o tema escuro e o sino de notificações do Admin estão documentados em
+`docs/DASHBOARD_GERDAB_NUPLA_TEMA_NOTIFICACOES.md`. A camada de exportação (`relatorio-export*.ts`)
+ganhou os campos opcionais `gruposCabecalho`, `notas` e `nomeAba`, sem efeito sobre os relatórios
+existentes.
+
+---
+
 ## 4. Fora de escopo (decisão explícita, registrada desde já)
 
 - ~~Ressarcimentos/retroativos — motor de cálculo, casos especiais e tela administrativa
