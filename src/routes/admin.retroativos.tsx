@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, ChevronDown, ExternalLink, Search } from "lucide-react";
 import { BTN_NEGATIVO, BTN_NEUTRO, BTN_POSITIVO, BTN_PRIMARIO } from "@/lib/ui-botoes";
@@ -48,6 +48,10 @@ import {
 } from "@/lib/ressarcimento-retroativo";
 
 export const Route = createFileRoute("/admin/retroativos")({
+  // `origem` (Dashboard): recorta a Fila para as solicitações do Servidor ou das Associações.
+  validateSearch: (search: Record<string, unknown>): { origem?: "individual" | "associacao" } => ({
+    origem: search.origem === "individual" || search.origem === "associacao" ? search.origem : undefined,
+  }),
   component: AnaliseRetroativos,
 });
 
@@ -130,7 +134,10 @@ function AnaliseRetroativos() {
     return true;
   };
 
+  const search = Route.useSearch();
+  const navigate = useNavigate();
   const linhas = solicitacoes
+    .filter((s) => !search.origem || s.origem === search.origem)
     .filter((s) => {
       const alvo = busca.trim().toLowerCase();
       return !alvo || s.nomeTitular.toLowerCase().includes(alvo) || s.cpfTitular.toLowerCase().includes(alvo);
@@ -145,7 +152,7 @@ function AnaliseRetroativos() {
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-5">
       <header>
-        <h1 className="text-2xl font-bold">Ressarcimento Retroativo</h1>
+        <h1 className="text-2xl font-bold">Ressarcimento de meses anteriores</h1>
         <p className="text-sm text-muted-foreground">Fila de análise por competência — cada competência é decidida individualmente.</p>
       </header>
       <RetroativosNav ativa="fila" />
@@ -179,6 +186,14 @@ function AnaliseRetroativos() {
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome ou CPF" className="border border-border rounded-md pl-8 pr-3 py-2 bg-background text-sm" />
             </div>
           </div>
+
+          {search.origem && (
+            <div className="flex flex-wrap items-center gap-2 text-sm" role="status">
+              <span className="text-muted-foreground">Filtro aplicado:</span>
+              <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">Origem: {search.origem === "individual" ? "Servidor" : "Associações"}</span>
+              <button type="button" onClick={() => navigate({ to: "/admin/retroativos", search: {} })} className="text-xs text-primary hover:underline">Limpar filtro</button>
+            </div>
+          )}
 
           {nAtualizadas > 0 && (
             <p className="text-sm" role="status">
@@ -415,7 +430,7 @@ function CompetenciaView({ s, c, responsavel, onMudou, onFechar }: { s: Solicita
   // Resumos de cada seção (leitura rápida sem abrir).
   const resumoComprovacao = individual
     ? `${c.documentos.length} documento${c.documentos.length === 1 ? "" : "s"} apresentado${c.documentos.length === 1 ? "" : "s"}${pedidoPendente ? " · complementação solicitada" : ""}`
-    : `${assocMaiusc} — planilha retroativa${planilha ? ` · ${planilha.nome}` : ""}`;
+    : `${assocMaiusc} — planilha de meses anteriores${planilha ? ` · ${planilha.nome}` : ""}`;
   const resumoApuracao = divergente
     ? "Divergência na apuração"
     : salvo
@@ -446,7 +461,7 @@ function CompetenciaView({ s, c, responsavel, onMudou, onFechar }: { s: Solicita
           {ROTULO_STATUS[status]}{status === "complementacao_recebida" ? " — requer nova análise" : ""}
         </span>
         <span className="text-sm text-muted-foreground">
-          Ciclos — apresentação {ciclos.apresentacao}{ciclos.analise ? ` · análise ${ciclos.analise}` : ""}{ciclos.aptidao ? ` · apta em ${ciclos.aptidao}` : ""}
+          Competências — apresentação {formatCompetencia(ciclos.apresentacao)}{ciclos.analise ? ` · análise ${formatCompetencia(ciclos.analise)}` : ""}{ciclos.aptidao ? ` · apta em ${formatCompetencia(ciclos.aptidao)}` : ""}
         </span>
         <button onClick={onFechar} className={`ml-auto ${BTN_NEUTRO}`}>Fechar</button>
       </header>

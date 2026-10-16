@@ -74,7 +74,7 @@ function Landing() {
         <div className="mt-8 grid gap-3 md:grid-cols-3 text-sm">
           <InfoCard icon={<ClipboardCheck className="h-4 w-4" />} title="Regras de cadastro" text="Campos dos requerimentos foram aproximados dos modelos oficiais, sem replicar o layout SEI." />
           <InfoCard icon={<LockKeyhole className="h-4 w-4" />} title="Segurança de parâmetros" text="Teto e percentual não ficam visíveis para analistas comuns." />
-          <InfoCard icon={<TimerReset className="h-4 w-4" />} title="Evolutivas marcadas" text="Upload de comprovantes, reajustes, retroativos e OCR ficam sinalizados como Fase 2." />
+          <InfoCard icon={<TimerReset className="h-4 w-4" />} title="Evolutivas marcadas" text="Upload de comprovantes, reajustes, ressarcimentos de meses anteriores e OCR ficam sinalizados como Fase 2." />
         </div>
       </main>
     </div>

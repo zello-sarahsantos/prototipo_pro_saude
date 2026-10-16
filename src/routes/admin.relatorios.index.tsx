@@ -5,6 +5,7 @@ import {
   FolderCheck,
   Users2,
   PieChart,
+  Activity,
   RefreshCcw,
   ArrowRight,
 } from "lucide-react";
@@ -79,7 +80,7 @@ function VisaoGeralRelatorios() {
             <RefreshCcw className="h-4 w-4" />
           </div>
           <div>
-            <p className="font-medium text-sm">Ressarcimento Retroativo</p>
+            <p className="font-medium text-sm">Ressarcimento de meses anteriores</p>
             <p className="text-xs text-muted-foreground">
               Análise, consolidação e histórico dos ressarcimentos retroativos.</p>
           </div>
@@ -156,6 +157,24 @@ function VisaoGeralRelatorios() {
             <p className="font-medium text-sm">Visões Gerenciais</p>
             <p className="text-xs text-muted-foreground">
               Operadora, faixa etária e situação atual em relação ao teto familiar.
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-auto" />
+        </div>
+      </Link>
+
+      <Link
+        to="/admin/relatorios/nupla"
+        className="block bg-card rounded-xl border border-border shadow-card p-4 hover:border-primary transition"
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Activity className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="font-medium text-sm">Movimentações do Pró-Saúde — NUPLA</p>
+            <p className="text-xs text-muted-foreground">
+              Movimentações concluídas por período, modalidade de pagamento e vínculo (dados demonstrativos).
             </p>
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-auto" />

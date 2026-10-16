@@ -14,6 +14,9 @@ import { ExportarRelatorio } from "@/components/ExportarRelatorio";
 import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
 export const Route = createFileRoute("/admin/relatorios/documentacao")({
+  validateSearch: (search: Record<string, unknown>): { status?: StatusDocumentoPendente } => ({
+    status: search.status === "aguardando_envio" || search.status === "aguardando_analise" || search.status === "aprovado" ? search.status : undefined,
+  }),
   component: DocumentacaoEPendencias,
 });
 
@@ -46,7 +49,8 @@ type FiltroStatus = "todos" | StatusDocumentoPendente;
  */
 function DocumentacaoEPendencias() {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [filtro, setFiltro] = useState<FiltroStatus>("todos");
+  const search = Route.useSearch();
+  const [filtro, setFiltro] = useState<FiltroStatus>(search.status ?? "todos");
 
   useEffect(() => {
     garantirSolicitacoesAutomaticas(servidorAtual.matricula);

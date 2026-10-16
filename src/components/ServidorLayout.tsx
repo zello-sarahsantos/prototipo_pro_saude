@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { Home, FileText, Users, CreditCard, ClipboardList, Plus } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
+import { AlternarTema } from "@/components/AlternarTema";
 import { getCompetenciasPendentes } from "@/lib/competencias-pendentes";
 
 export function ServidorLayout() {
@@ -18,7 +19,10 @@ export function ServidorLayout() {
             <p className="text-xs opacity-80">DETRAN • Pró-Saúde</p>
             <h1 className="text-base font-semibold">Portal do Servidor</h1>
           </div>
-          <NotificationBell />
+          <div className="flex items-center gap-2">
+            <AlternarTema />
+            <NotificationBell />
+          </div>
         </div>
       </header>
 

@@ -89,7 +89,7 @@ function Consolidacao() {
     linhas: linhas,
     grupo: aba,
     filtrosAplicados: [...(mesAnoPagamento ? [`Mês/Ano de Pagamento: ${formatCompetencia(mesAnoPagamento)}`] : []), "PRÉVIA para conferência — não é o relatório oficial"],
-    nomeArquivoBase: `pro-saude_ressarcimento_retroativo_previa_${aba === "ativo" ? "ativos" : "inativos"}${mesAnoPagamento ? `_${mesAnoPagamento}` : ""}`,
+    nomeArquivoBase: `pro-saude_ressarcimento_meses_anteriores_previa_${aba === "ativo" ? "ativos" : "inativos"}${mesAnoPagamento ? `_${mesAnoPagamento}` : ""}`,
     tituloExtra: "prévia",
   });
 
@@ -110,8 +110,8 @@ function Consolidacao() {
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-5">
       <header>
-        <h1 className="text-2xl font-bold">Ressarcimento Retroativo</h1>
-        <p className="text-sm text-muted-foreground">Consolidação — ciclo operacional vigente: {cicloAtual}.</p>
+        <h1 className="text-2xl font-bold">Ressarcimento de meses anteriores</h1>
+        <p className="text-sm text-muted-foreground">Consolidação — competência vigente: {formatCompetencia(cicloAtual)}.</p>
       </header>
       <RetroativosNav ativa="consolidacao" />
 

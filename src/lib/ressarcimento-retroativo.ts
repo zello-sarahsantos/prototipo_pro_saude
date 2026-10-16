@@ -89,20 +89,20 @@ export const TAMANHO_MAXIMO_DESCRICAO_DOCUMENTO = 80;
 
 /** Regra determinística motivo → texto do sistema (redação provisória, a validar). */
 export const OBSERVACAO_POR_MOTIVO: Record<string, string> = {
-  comprovante_pagamento: "Ressarcimento retroativo — apresentação de comprovante de pagamento.",
-  inclusao_dependente: "Ressarcimento retroativo — inclusão de dependente.",
-  reinclusao_dependente: "Ressarcimento retroativo — reinclusão de dependente.",
-  declaracao_escolaridade: "Ressarcimento retroativo — apresentação de declaração de escolaridade.",
-  declaracao_irpf: "Ressarcimento retroativo — apresentação de declaração de Imposto de Renda.",
-  mudanca_faixa_etaria: "Ressarcimento retroativo — mudança de faixa etária.",
-  autorizacao_excepcional: "Ressarcimento retroativo — autorização excepcional.",
-  outros: "Ressarcimento retroativo — outro motivo aplicável.",
+  comprovante_pagamento: "Ressarcimento de meses anteriores — apresentação de comprovante de pagamento.",
+  inclusao_dependente: "Ressarcimento de meses anteriores — inclusão de dependente.",
+  reinclusao_dependente: "Ressarcimento de meses anteriores — reinclusão de dependente.",
+  declaracao_escolaridade: "Ressarcimento de meses anteriores — apresentação de declaração de escolaridade.",
+  declaracao_irpf: "Ressarcimento de meses anteriores — apresentação de declaração de Imposto de Renda.",
+  mudanca_faixa_etaria: "Ressarcimento de meses anteriores — mudança de faixa etária.",
+  autorizacao_excepcional: "Ressarcimento de meses anteriores — autorização excepcional.",
+  outros: "Ressarcimento de meses anteriores — outro motivo aplicável.",
 };
 
 /** Observação final = texto do sistema (por motivo) + complemento opcional da GERDAB. */
 export function gerarObservacao(solicitacao: SolicitacaoRetroativa, competencia: CompetenciaRetroativa): string {
   // Origem associação não informa motivo no envio: observação genérica do sistema (+ complemento da GERDAB).
-  const base = solicitacao.motivo ? (OBSERVACAO_POR_MOTIVO[solicitacao.motivo] ?? OBSERVACAO_POR_MOTIVO.outros) : "Ressarcimento retroativo.";
+  const base = solicitacao.motivo ? (OBSERVACAO_POR_MOTIVO[solicitacao.motivo] ?? OBSERVACAO_POR_MOTIVO.outros) : "Ressarcimento de meses anteriores.";
   const complemento = competencia.observacaoComplemento?.trim();
   return complemento ? `${base} ${complemento}` : base;
 }
@@ -255,9 +255,9 @@ export function getCompetenciasJaSolicitadas(cpfTitular: string): Set<string> {
 export function validarCompetenciaRetroativa(competencia: string, jaSelecionadas: Iterable<string>, jaSolicitadas: Set<string>): string | undefined {
   if (!FORMATO_COMPETENCIA.test(competencia)) return "Selecione o mês e o ano.";
   if (competencia >= competenciaAtual) {
-    return `Só competências anteriores a ${formatCompetencia(competenciaAtual)} podem ser solicitadas como retroativas.`;
+    return `Só competências anteriores a ${formatCompetencia(competenciaAtual)} podem ser solicitadas como ressarcimento de meses anteriores.`;
   }
-  if (jaSolicitadas.has(competencia)) return "Essa competência já possui solicitação retroativa.";
+  if (jaSolicitadas.has(competencia)) return "Essa competência já possui solicitação de ressarcimento de meses anteriores.";
   if ([...jaSelecionadas].includes(competencia)) return "Essa competência já foi adicionada.";
   return undefined;
 }
@@ -307,7 +307,7 @@ export function criarSolicitacaoRetroativa(input: NovaSolicitacaoInput): Solicit
   // titular vinculado a Associação responsável não tem retroativo individual.
   if (input.origem === "individual") {
     const responsavel = getAssociacaoResponsavelPorCpf(input.cpfTitular);
-    if (responsavel) throw new Error(`Titular vinculado à ${responsavel}: o ressarcimento retroativo é enviado pela Associação, não pelo Portal do Servidor.`);
+    if (responsavel) throw new Error(`Titular vinculado à ${responsavel}: o ressarcimento de meses anteriores é enviado pela Associação, não pelo Portal do Servidor.`);
   }
   if (input.competencias.length === 0) throw new Error("Informe ao menos uma competência.");
 
@@ -449,7 +449,7 @@ function exigirOrigem(s: SolicitacaoRetroativa, esperada: OrigemRetroativo, acao
   if (s.origem !== esperada) {
     throw new Error(
       esperada === "individual"
-        ? `${acao} só se aplica a requerimento retroativo individual; registros de associação usam habilitar/desabilitar.`
+        ? `${acao} só se aplica a ressarcimento de meses anteriores individual; registros de associação usam habilitar/desabilitar.`
         : `${acao} só se aplica a registros de planilha de associação; requerimentos individuais usam aprovar/negar.`,
     );
   }

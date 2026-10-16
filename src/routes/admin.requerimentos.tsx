@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { requerimentos, analistaReferencia, gerenteReferencia } from "@/lib/mock-data";
+import { requerimentos, analistaReferencia, gerenteReferencia, formatCompetencia } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getAdminRole } from "@/components/AdminLayout";
 import { FileText, X, Eye, ZoomIn, ClipboardList } from "lucide-react";
@@ -17,6 +17,12 @@ import { RequerimentoAssociacaoStatusBadge } from "@/components/RequerimentoAsso
 import { AnaliseRequerimentoAssociacaoModal } from "@/components/AnaliseRequerimentoAssociacaoModal";
 
 export const Route = createFileRoute("/admin/requerimentos")({
+  // Filtros vindos do Dashboard: tipo (rótulo do requerimento) e status.
+  validateSearch: (search: Record<string, unknown>): { tipo?: string; status?: string; competencia?: string } => ({
+    tipo: typeof search.tipo === "string" ? search.tipo : undefined,
+    competencia: typeof search.competencia === "string" && /^\d{4}-\d{2}$/.test(search.competencia) ? search.competencia : undefined,
+    status: ["pendente", "analise", "aprovado", "rejeitado"].includes(search.status as string) ? (search.status as string) : undefined,
+  }),
   component: Fila,
 });
 
@@ -52,8 +58,9 @@ function DocPreview({ filename }: { filename: string }) {
 function Fila() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [mode, setMode] = useState<ModalMode>(null);
-  const [filtroTipo, setFiltroTipo] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("");
+  const search = Route.useSearch();
+  const [filtroTipo, setFiltroTipo] = useState(search.tipo ?? "");
+  const [filtroStatus, setFiltroStatus] = useState(search.status ?? "");
 
   const cur = requerimentos.find((r) => r.id === openId);
 
@@ -160,6 +167,12 @@ function Fila() {
             setReqAssocAberto(null);
           }}
         />
+      )}
+
+      {search.competencia && (
+        <p className="text-xs text-muted-foreground" role="status">
+          Referência do Dashboard: solicitações recebidas em <strong>{formatCompetencia(search.competencia)}</strong>. O filtro por competência ainda não se aplica a esta lista.
+        </p>
       )}
 
       <div className="bg-card rounded-xl border border-border shadow-card p-4 flex flex-col sm:flex-row gap-3">

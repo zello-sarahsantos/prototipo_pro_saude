@@ -94,7 +94,11 @@ export function buildRelatorioPdfBlob<T>(spec: RelatorioExportSpec<T>): Blob {
   y += 3;
   doc.setTextColor(0, 0, 0);
 
-  const head = [spec.colunas.map((c) => c.header)];
+  const head: (string | { content: string; colSpan: number; styles?: Record<string, unknown> })[][] = [];
+  if (spec.gruposCabecalho && spec.gruposCabecalho.length > 0) {
+    head.push(spec.gruposCabecalho.map((g) => ({ content: g.rotulo, colSpan: g.span, styles: { halign: "center" } })));
+  }
+  head.push(spec.colunas.map((c) => c.header));
   const body = spec.linhas.map((linha) =>
     spec.colunas.map((c) => formatarValorExport(c.valor(linha), c.tipo)),
   );
@@ -130,6 +134,24 @@ export function buildRelatorioPdfBlob<T>(spec: RelatorioExportSpec<T>): Blob {
       }
     },
   });
+
+  if (spec.notas && spec.notas.length > 0) {
+    const ultimo = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
+    let yn = (ultimo?.finalY ?? y) + 6;
+    doc.setFont("times", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(70, 70, 70);
+    spec.notas.forEach((n) => {
+      const linhas = doc.splitTextToSize(n, larguraPagina - MARGEM * 2) as string[];
+      if (yn + linhas.length * 4 > alturaPagina - 16) {
+        doc.addPage();
+        yn = 20;
+      }
+      doc.text(linhas, MARGEM, yn);
+      yn += linhas.length * 4 + 1;
+    });
+    doc.setTextColor(0, 0, 0);
+  }
 
   const totalPaginas = doc.getNumberOfPages();
   for (let p = 1; p <= totalPaginas; p++) {

@@ -14,6 +14,8 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AdminNotificationBell } from "@/components/AdminNotificationBell";
+import { AlternarTema } from "@/components/AlternarTema";
 
 // "Comprovantes" fica disponível para Analista e Gerência — a Gerência sempre tem, no
 // mínimo, as mesmas permissões do Analista (regra do Módulo de Pagamento).
@@ -25,7 +27,7 @@ const baseItems = [
   { to: "/admin/servidores", icon: Users, label: "Servidores" },
   { to: "/admin/requerimentos", icon: ClipboardList, label: "Requerimentos" },
   { to: "/admin/comprovantes", icon: FileCheck, label: "Comprovantes" },
-  { to: "/admin/retroativos", icon: RefreshCcw, label: "Retroativos" },
+  { to: "/admin/retroativos", icon: RefreshCcw, label: "Ressarcimentos de meses anteriores" },
   { to: "/admin/relatorios", icon: BarChart3, label: "Relatórios" },
   { to: "/admin/carga-inicial", icon: Upload, label: "Carga Inicial" },
 ];
@@ -58,19 +60,27 @@ export function AdminLayout() {
             <h1 className="text-sm font-semibold">Pró-Saúde Admin</h1>
           </div>
         </div>
-        <button onClick={() => setOpen(!open)} className="p-2 rounded-md hover:bg-sidebar-accent" aria-label="Abrir menu">
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <AdminNotificationBell />
+          <AlternarTema />
+          <button onClick={() => setOpen(!open)} className="p-2 rounded-md hover:bg-sidebar-accent" aria-label="Abrir menu">
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </header>
 
       <aside className={`${open ? "block" : "hidden"} lg:flex lg:w-64 bg-sidebar text-sidebar-foreground flex-col lg:min-h-screen lg:sticky lg:top-0 z-30`}>
         <div className="hidden lg:block px-6 py-6 border-b border-sidebar-border">
           <div className="flex items-center gap-2">
             <Shield className="h-6 w-6" />
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-xs opacity-70">DETRAN • GERDAB</p>
               <h1 className="text-base font-semibold">Pró-Saúde Admin</h1>
             </div>
+          </div>
+          <div className="mt-3 -ml-2 flex items-center gap-1">
+            <AdminNotificationBell />
+            <AlternarTema />
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">

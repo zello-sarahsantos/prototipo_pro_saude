@@ -8,6 +8,10 @@ import { getHistoricoFechamentos } from "@/lib/fechamento-pagamento";
 import type { SnapshotFechamentoPagamento } from "@/lib/prosaude-storage";
 
 export const Route = createFileRoute("/admin/relatorios/pagamentos_/historico")({
+  // Parâmetro vindo do Dashboard (Últimos relatórios gerados): abre direto o snapshot indicado.
+  validateSearch: (search: Record<string, unknown>): { relatorio?: string } => ({
+    relatorio: typeof search.relatorio === "string" && search.relatorio ? search.relatorio : undefined,
+  }),
   component: HistoricoFechamentos,
 });
 
@@ -21,8 +25,9 @@ type FiltroVinculo = "todos" | "ativo" | "inativo";
  * (Adimplente/Inadimplente) — "Requer análise" nunca aparece num relatório gerado.
  */
 function HistoricoFechamentos() {
-  const [aberto, setAberto] = useState<string | null>(null);
+  const { relatorio } = Route.useSearch();
   const snapshots = useMemo(() => getHistoricoFechamentos(), []);
+  const [aberto, setAberto] = useState<string | null>(() => (relatorio && snapshots.some((x) => x.id === relatorio) ? relatorio : null));
   const snap = snapshots.find((s) => s.id === aberto);
 
   return (

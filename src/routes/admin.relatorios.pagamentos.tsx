@@ -26,6 +26,11 @@ import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
 import type { StatusPlanilhaAssociacao } from "@/lib/planilhas-associacao";
 
 export const Route = createFileRoute("/admin/relatorios/pagamentos")({
+  // Parâmetros vindos do Dashboard: competência (AAAA-MM) e aba (classificação).
+  validateSearch: (search: Record<string, unknown>): { competencia?: string; aba?: ClassificacaoFechamento } => ({
+    competencia: typeof search.competencia === "string" && /^\d{4}-\d{2}$/.test(search.competencia) ? search.competencia : undefined,
+    aba: search.aba === "adimplente" || search.aba === "inadimplente" || search.aba === "requer_analise" ? search.aba : undefined,
+  }),
   component: FechamentoDePagamento,
 });
 
@@ -65,10 +70,16 @@ function FechamentoDePagamento() {
   const isGerencia = role === "gerencia";
   const fechadoPorReferencia = isGerencia ? "Erandir / Gerência" : "Rebeca / Luciana";
 
+  const search = Route.useSearch();
   const [competencia, setCompetencia] = useState(
-    competenciasParaFechamento[competenciasParaFechamento.length - 1],
+    search.competencia ?? competenciasParaFechamento[competenciasParaFechamento.length - 1],
   );
-  const [tab, setTab] = useState<ClassificacaoFechamento>("adimplente");
+  // A competência pedida pela URL pode estar além das conhecidas (ex.: ciclo vigente no Dashboard).
+  const opcoesCompetencia = useMemo(
+    () => [...new Set([...competenciasParaFechamento, competencia])].sort(),
+    [competencia],
+  );
+  const [tab, setTab] = useState<ClassificacaoFechamento>(search.aba ?? "adimplente");
   const [filtroVinculo, setFiltroVinculo] = useState<FiltroVinculo>("todos");
   const [obsRascunho, setObsRascunho] = useState<Record<string, string>>({});
   const [, forceUpdate] = useState(0);
@@ -88,7 +99,7 @@ function FechamentoDePagamento() {
   const resumo = useMemo(() => getResumoFechamento(competencia), [competencia, versaoMassa]);
 
   // Fase 9 — Data simulada (RECURSO EXCLUSIVO DO PROTÓTIPO, ver `dias-uteis.ts`): não existe
-  // calendário oficial de feriados nem um jeito de "avançar o tempo" de verdade nesta demonstração,
+  // um jeito de "avançar o tempo" de verdade nesta demonstração (o calendário de feriados é o de `dias-uteis.ts`),
   // então esse controle deixa a GERDAB simular "hoje" para observar o fechamento automático
   // (2º/3º dia útil) em datas diferentes da data real. Em produção não há nada equivalente — o
   // fechamento reage à data real do servidor, sem nenhum controle manual de data.
@@ -290,7 +301,7 @@ function FechamentoDePagamento() {
               }}
               className="border border-border rounded-md px-3 py-2 bg-card text-sm"
             >
-              {competenciasParaFechamento.map((c) => (
+              {opcoesCompetencia.map((c) => (
                 <option key={c} value={c}>
                   {formatCompetencia(c)}
                 </option>
@@ -385,7 +396,7 @@ function FechamentoDePagamento() {
         </div>
         {statusFechamento.direcionamentoSeRecebidoAgora.direcionadoAoCicloSeguinte && (
           <p className="text-xs text-muted-foreground mt-2">
-            Na data de referência atual, um novo registro desta competência já seria direcionado ao ciclo
+            Na data de referência atual, um novo registro desta competência já seria direcionado à competência
             seguinte ({formatCompetencia(statusFechamento.direcionamentoSeRecebidoAgora.competenciaDestino)}) —
             indicador só informativo; o envio do servidor ainda não aplica esse direcionamento de fato
             (pendência sinalizada, não implementada nesta fase).

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   X,
@@ -47,6 +47,7 @@ import {
   getListaStatusBeneficiario,
 } from "@/lib/comprovante-status";
 import { estaDentroDoPrazoRelatorio } from "@/lib/prazo-competencia";
+import { ROTULO_SITUACAO_COMPROVANTES, statusDaSituacaoComprovantes, type SituacaoComprovantes } from "@/lib/dashboard-gerdab";
 import {
   listarPlanilhasAssociacao,
   garantirPlanilhaExemplo,
@@ -66,7 +67,16 @@ function resumoConferencia(p: PlanilhaAssociacao): string {
   return `${analise.indicesConsiderados.length} de ${validos} linhas consideradas`;
 }
 
+/** Parâmetros de URL (Dashboard e demais atalhos): `competencia` (AAAA-MM), `situacao` (grupo de status
+ *  do Dashboard) e `aba`. Sem parâmetros a tela se comporta exatamente como antes. */
+type SearchComprovantes = { competencia?: string; situacao?: SituacaoComprovantes; aba?: "comprovantes" | "historico" | "planilhas" };
+
 export const Route = createFileRoute("/admin/comprovantes")({
+  validateSearch: (search: Record<string, unknown>): SearchComprovantes => ({
+    competencia: typeof search.competencia === "string" && /^\d{4}-\d{2}$/.test(search.competencia) ? search.competencia : undefined,
+    situacao: search.situacao === "aguardando" || search.situacao === "validados" || search.situacao === "devolvidos" ? search.situacao : undefined,
+    aba: search.aba === "comprovantes" || search.aba === "historico" || search.aba === "planilhas" ? search.aba : undefined,
+  }),
   component: Comprovantes,
 });
 
@@ -120,7 +130,9 @@ function Comprovantes() {
   const autor = isGerencia ? gerenteReferencia : analistaReferencia;
   const etapaAtual: "analista" | "gerencia" = isGerencia ? "gerencia" : "analista";
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<Tab>("comprovantes");
+  const search = Route.useSearch();
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<Tab>(search.aba ?? (search.situacao && search.situacao !== "aguardando" ? "historico" : "comprovantes"));
   const [openId, setOpenId] = useState<string | null>(null);
   const [subForm, setSubForm] = useState<{ beneficiarioId: string; tipo: SubFormTipo } | null>(null);
   const [comentario, setComentario] = useState("");
@@ -139,7 +151,13 @@ function Comprovantes() {
   // para que uma divergência cadastral já resolvida não volte a aparecer em outro comprovante.
   const beneficiariosAtuais = useMemo(() => getBeneficiariosPagamentoAtual(), [refreshKey]);
   const cur = todos.find((c) => c.id === openId) ?? null;
-  const filtrados = todos.filter((c) => statusPorTab[tab].includes(c.status));
+  // Filtro vindo da URL (Dashboard): grupo de situação (substitui o filtro de status da aba) e competência.
+  const filtrados = todos.filter(
+    (c) =>
+      (search.situacao ? statusDaSituacaoComprovantes(search.situacao).includes(c.status) : statusPorTab[tab].includes(c.status)) &&
+      (!search.competencia || c.competencia === search.competencia),
+  );
+  const temFiltroUrl = !!(search.situacao || search.competencia);
 
   // Aba "Planilhas - Associações" — garante o exemplo permanente (mesmo padrão de
   // `garantirExemploDocumentoEmAnalise`, idempotente) e lê as planilhas já persistidas.
@@ -373,7 +391,10 @@ function Comprovantes() {
         ).map(([value, label]) => (
           <button
             key={value}
-            onClick={() => setTab(value)}
+            onClick={() => {
+              setTab(value);
+              if (search.situacao) navigate({ to: "/admin/comprovantes", search: { competencia: search.competencia, aba: value } });
+            }}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
               tab === value ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
@@ -382,6 +403,15 @@ function Comprovantes() {
           </button>
         ))}
       </div>
+
+      {tab !== "planilhas" && temFiltroUrl && (
+        <div className="flex flex-wrap items-center gap-2 text-sm" role="status">
+          <span className="text-muted-foreground">Filtro aplicado:</span>
+          {search.competencia && <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">Competência {formatCompetencia(search.competencia)}</span>}
+          {search.situacao && <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">{ROTULO_SITUACAO_COMPROVANTES[search.situacao]}</span>}
+          <button type="button" onClick={() => navigate({ to: "/admin/comprovantes", search: {} })} className="text-xs text-primary hover:underline">Limpar filtro</button>
+        </div>
+      )}
 
       {tab !== "planilhas" && (
         <div className="space-y-3">

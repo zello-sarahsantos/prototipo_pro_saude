@@ -326,8 +326,8 @@ export async function obterArquivoPlanilhaOriginal(id: string): Promise<{ blob: 
   const ExcelJS = (await import("exceljs")).default;
   const colunas = getColunasModelo(p.associacao, "retroativo");
   const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet(`${p.associacao} retroativo`.slice(0, 31));
-  sheet.getCell("A1").value = `Envio retroativo — ${p.associacao.toUpperCase()} — enviado em ${new Date(p.enviadoEm).toLocaleDateString("pt-BR")}`;
+  const sheet = wb.addWorksheet(`${p.associacao} meses anteriores`.slice(0, 31));
+  sheet.getCell("A1").value = `Envio de meses anteriores — ${p.associacao.toUpperCase()} — enviado em ${new Date(p.enviadoEm).toLocaleDateString("pt-BR")}`;
   sheet.getCell("A2").value = "Reconstrução dos registros normalizados, gerada pelo protótipo — o arquivo literal enviado não está armazenado.";
   sheet.getRow(LINHA_CABECALHO_MODELO).values = colunas;
   sheet.getRow(LINHA_CABECALHO_MODELO).font = { bold: true };

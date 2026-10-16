@@ -186,7 +186,7 @@ function SolicitarRessarcimentoRetroativo() {
         <CheckCircle2 className="h-14 w-14 text-success mx-auto mt-6" />
         <h2 className="text-lg font-semibold">Solicitação enviada</h2>
         <p className="text-sm text-muted-foreground">
-          Sua solicitação de ressarcimento retroativo com {competencias.length}{" "}
+          Sua solicitação de ressarcimento de meses anteriores com {competencias.length}{" "}
           {competencias.length === 1 ? "competência" : "competências"} foi enviada para análise da
           GERDAB. Cada competência será analisada individualmente.
         </p>
@@ -204,7 +204,7 @@ function SolicitarRessarcimentoRetroativo() {
         <ArrowLeft className="h-4 w-4" /> Pagamentos
       </Link>
       <div>
-        <h2 className="text-lg font-semibold">Ressarcimento retroativo</h2>
+        <h2 className="text-lg font-semibold">Ressarcimento de meses anteriores</h2>
         <p className="text-sm text-muted-foreground">
           Solicite o ressarcimento de uma ou mais competências anteriores em um único pedido. Titular: {titular.nome}.
         </p>

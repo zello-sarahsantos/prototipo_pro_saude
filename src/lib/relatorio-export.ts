@@ -58,6 +58,14 @@ export interface RelatorioExportSpec<T> {
    *  o documento se refere, algo que não se aplica a relatórios administrativos agregados. */
   identificacao?: { label: string; valor: string }[];
   colunas: ColunaExport<T>[];
+  /** Cabeçalho agrupado opcional (linha acima dos cabeçalhos das colunas): cada item cobre `span`
+   *  colunas consecutivas, na ordem; a soma dos `span` deve ser igual a `colunas.length`. Rótulo
+   *  vazio = célula sem título (ex.: a coluna de descrição). Usado pelo Relatório NUPLA. */
+  gruposCabecalho?: { rotulo: string; span: number }[];
+  /** Nome da aba no XLSX; se omitido, deriva do título (máx. 31 caracteres). */
+  nomeAba?: string;
+  /** Notas explicativas impressas abaixo da tabela (PDF) e em linhas após o total (XLSX). */
+  notas?: string[];
   /** Linhas já filtradas exatamente como exibidas na tela — nunca só a página visual atual. */
   linhas: T[];
   linhaTotal?: LinhaTotalExport;

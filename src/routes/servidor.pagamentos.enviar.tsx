@@ -273,7 +273,7 @@ function EnviarComprovante() {
               <option value={competenciaAtual}>{formatCompetencia(competenciaAtual)} (aberta)</option>
               {/* Revisão (integração com o Ressarcimento Retroativo): o envio ordinário não abre mais
                   competências passadas para escolha livre — o novo módulo é a única porta de entrada
-                  para elas (`/servidor/retroativo/novo`, via o bloco "Ressarcimento retroativo" em
+                  para elas (`/servidor/retroativo/novo`, via o bloco "Ressarcimento de meses anteriores" em
                   `servidor.pagamentos.index.tsx`). A única exceção é completar um envio retroativo
                   LEGADO já existente (ex.: "Anexar documento complementar" de um registro antigo),
                   quando a competência chega travada por link — nunca escolhida aqui. */}
@@ -287,7 +287,7 @@ function EnviarComprovante() {
               </p>
             ) : (
               <p className="text-xs text-muted-foreground mt-1">
-                Para uma competência anterior, use o Ressarcimento Retroativo, no menu Pagamentos.
+                Para uma competência anterior, use o Ressarcimento de meses anteriores, no menu Pagamentos.
               </p>
             )}
             {/* Ciclo de destino efetivo — mostrado antes da confirmação do envio (não só no resumo
@@ -300,8 +300,8 @@ function EnviarComprovante() {
                 }`}
               >
                 {direcionadoAoCicloSeguinte
-                  ? `${formatCompetencia(competenciaAtual)} já encerrou automaticamente (a partir do 3º dia útil) — este envio será registrado no ciclo seguinte: ${formatCompetencia(competenciaEfetiva)}.`
-                  : `Este envio será registrado em ${formatCompetencia(competenciaEfetiva)} (ciclo vigente).`}
+                  ? `${formatCompetencia(competenciaAtual)} já encerrou automaticamente (a partir do 3º dia útil) — este envio será registrado na competência seguinte: ${formatCompetencia(competenciaEfetiva)}.`
+                  : `Este envio será registrado em ${formatCompetencia(competenciaEfetiva)} (competência vigente).`}
               </p>
             )}
           </div>
@@ -446,8 +446,8 @@ function EnviarComprovante() {
               }`}
             >
               {direcionadoAoCicloSeguinte
-                ? `Atenção: ${formatCompetencia(competenciaAtual)} já encerrou automaticamente — este envio será registrado no ciclo seguinte (${formatCompetencia(competenciaEfetiva)}), não na competência aberta originalmente.`
-                : `Este envio será registrado em ${formatCompetencia(competenciaEfetiva)} (ciclo vigente).`}
+                ? `Atenção: ${formatCompetencia(competenciaAtual)} já encerrou automaticamente — este envio será registrado na competência seguinte (${formatCompetencia(competenciaEfetiva)}), não na competência aberta originalmente.`
+                : `Este envio será registrado em ${formatCompetencia(competenciaEfetiva)} (competência vigente).`}
             </div>
           )}
           <StepNav

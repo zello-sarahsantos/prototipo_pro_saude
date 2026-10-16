@@ -111,9 +111,9 @@ function AssociacaoRetroativo() {
   return (
     <div className="p-4 sm:p-8 max-w-5xl mx-auto space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold">Envio retroativo</h1>
+        <h1 className="text-2xl font-bold">Envio de meses anteriores</h1>
         <p className="text-sm text-slate-600">
-          Envie a planilha retroativa da associação, com uma linha por beneficiário e por mês de referência.
+          Envie a planilha de meses anteriores da associação, com uma linha por beneficiário e por mês de referência.
         </p>
       </header>
 
@@ -128,7 +128,7 @@ function AssociacaoRetroativo() {
         </Field>
 
         <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 space-y-3">
-          <p className="text-sm font-semibold">1. Baixe o modelo retroativo da {associacao.toUpperCase()}</p>
+          <p className="text-sm font-semibold">1. Baixe o modelo de meses anteriores da {associacao.toUpperCase()}</p>
           <p className="text-xs text-slate-600">
             Colunas: {getColunasModelo(associacao, "retroativo").join(" | ")}. A coluna <strong>Valor</strong> é o valor da
             cobrança/plano da linha, sem juros. O <strong>Mês/Ano de Referência</strong> vai como texto <strong>MM/AAAA</strong>.
@@ -139,7 +139,7 @@ function AssociacaoRetroativo() {
             disabled={baixando}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium disabled:opacity-60"
           >
-            <Download className="h-4 w-4" /> {baixando ? "Gerando modelo…" : "Baixar Modelo Retroativo (.xlsx)"}
+            <Download className="h-4 w-4" /> {baixando ? "Gerando modelo…" : "Baixar Modelo de meses anteriores (.xlsx)"}
           </button>
         </div>
 
@@ -147,13 +147,13 @@ function AssociacaoRetroativo() {
           <p className="text-sm font-semibold">2. Envie a planilha preenchida</p>
           <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-8 text-center cursor-pointer hover:bg-slate-50 transition">
             <Upload className="h-6 w-6 text-slate-400" />
-            <span className="text-sm text-slate-600">{nomeArquivo || "Selecione o arquivo .xlsx (modelo retroativo)"}</span>
+            <span className="text-sm text-slate-600">{nomeArquivo || "Selecione o arquivo .xlsx (modelo de meses anteriores)"}</span>
             <input
               ref={inputArquivo}
               type="file"
               accept=".xlsx"
               className="sr-only"
-              aria-label="Arquivo da planilha retroativa"
+              aria-label="Arquivo da planilha de meses anteriores"
               onChange={(e) => aoEscolherArquivo(e.target.files?.[0])}
             />
           </label>
@@ -241,7 +241,7 @@ function AssociacaoRetroativo() {
               disabled={!arquivoOk}
               className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Enviar retroativo
+              Enviar meses anteriores
             </button>
           </div>
         </section>
@@ -250,7 +250,7 @@ function AssociacaoRetroativo() {
       {enviado !== null && (
         <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 flex gap-2" role="status">
           <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-          Envio retroativo registrado: {enviado} registro(s) por titular e mês em análise pela GERDAB.
+          Envio de meses anteriores registrado: {enviado} registro(s) por titular e mês em análise pela GERDAB.
         </div>
       )}
 
@@ -259,7 +259,7 @@ function AssociacaoRetroativo() {
           <h2 className="text-lg font-semibold">Planilhas enviadas — {associacao}</h2>
         </div>
         {planilhas.length === 0 ? (
-          <p className="px-6 py-6 text-sm text-slate-500 text-center">Nenhuma planilha retroativa enviada por {associacao}.</p>
+          <p className="px-6 py-6 text-sm text-slate-500 text-center">Nenhuma planilha de meses anteriores enviada por {associacao}.</p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {planilhas.map(({ planilha, titulares, competencias }) => (

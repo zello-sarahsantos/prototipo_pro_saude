@@ -12,8 +12,8 @@ export const Route = createFileRoute("/servidor/inicio")({
 
 function Inicio() {
   // Fix #5 — RN03: competência X paga na folha X+1
-  const competenciaAtual = "abril/2026";
-  const folhaPagamento = "maio/2026";
+  const competenciaAtual = "Abril/2026";
+  const folhaPagamento = "Maio/2026";
   const [showModalImportado, setShowModalImportado] = useState(true);
   const [solicitacoesVersion, setSolicitacoesVersion] = useState(0);
 

@@ -256,7 +256,7 @@ function classificarTitularNaCompetencia(
         classificacao: "inadimplente",
         valor: titular.valorCadastrado,
         situacao: "Suspender",
-        motivo: retroativoNovo.justificativaNegado ?? "Ressarcimento retroativo não autorizado pela GERDAB.",
+        motivo: retroativoNovo.justificativaNegado ?? "Ressarcimento de meses anteriores não autorizado pela GERDAB.",
         statusComprovante: "retroativo_recusado",
         ultimaAcaoEm: retroativoNovo.ultimaAtualizacaoEm,
         composicaoGrupo,

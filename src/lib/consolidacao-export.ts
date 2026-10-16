@@ -16,7 +16,7 @@ export function montarSpecConsolidacao(params: {
 }): RelatorioExportSpec<LinhaConsolidacaoRetroativo> {
   const rotulo = params.grupo === "ativo" ? "Ativos" : "Inativos";
   return {
-    titulo: `Ressarcimento Retroativo — Consolidação — ${rotulo}${params.tituloExtra ? ` (${params.tituloExtra})` : ""}`,
+    titulo: `Ressarcimento de meses anteriores — Consolidação — ${rotulo}${params.tituloExtra ? ` (${params.tituloExtra})` : ""}`,
     origem: "Relatórios",
     filtrosAplicados: params.filtrosAplicados,
     colunas: [

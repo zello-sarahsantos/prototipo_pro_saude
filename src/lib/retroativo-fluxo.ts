@@ -120,13 +120,13 @@ export function marcarNotificacoesLidas(destino: NotificacaoRetroativo["destino"
 export function solicitarComplementacao(solicitacaoId: string, competencia: string, texto: string, responsavel: string) {
   if (!texto.trim()) throw new Error("Informe o que precisa ser enviado ou complementado.");
   const atualizada = alterarCompetencia(solicitacaoId, competencia, (s, c) => {
-    if (s.origem !== "individual") throw new Error("Complementação documental é tratada, nesta rodada, só no retroativo individual do servidor.");
+    if (s.origem !== "individual") throw new Error("Complementação documental é tratada, nesta rodada, só no ressarcimento de meses anteriores individual do servidor.");
     if (getEstadoCompetencia(s.origem, c) !== "aguardando_analise") throw new Error("A competência já possui decisão; não é possível solicitar complementação.");
     if (getSituacaoComplementacao(c) === "aguardando") throw new Error("Já existe uma solicitação de complementação pendente para esta competência.");
     const e: EventoComplementacao = { ...novaAuditoria(responsavel), dominio: "complementacao", id: `compl-${Date.now()}`, tipo: "solicitada", texto: texto.trim() };
     return { ...c, complementacoes: anexarEvento(c.complementacoes ?? [], e) };
   });
-  notificar("servidor", solicitacaoId, competencia, `GERDAB solicitou complementação do ressarcimento retroativo de ${formatCompetencia(competencia)}: ${texto.trim()}`);
+  notificar("servidor", solicitacaoId, competencia, `GERDAB solicitou complementação do ressarcimento de meses anteriores de ${formatCompetencia(competencia)}: ${texto.trim()}`);
   return atualizada;
 }
 
@@ -142,7 +142,7 @@ export function enviarComplementacao(solicitacaoId: string, competencia: string,
     return { nome: d.nome, tipo: d.tipo, descricao, conteudo: d.conteudo, origem: "complementar", anexadoEm: agora, anexadoPor: autor };
   });
   const atualizada = alterarCompetencia(solicitacaoId, competencia, (s, c) => {
-    if (s.origem !== "individual") throw new Error("Complementação documental só se aplica ao retroativo individual.");
+    if (s.origem !== "individual") throw new Error("Complementação documental só se aplica ao ressarcimento de meses anteriores individual.");
     if (getSituacaoComplementacao(c) !== "aguardando") throw new Error("Não há solicitação de complementação pendente para esta competência.");
     const pedido = [...(c.complementacoes ?? [])].reverse().find((e) => e.tipo === "solicitada")!;
     const e: EventoComplementacao = { ...novaAuditoria(autor), dominio: "complementacao", id: `compl-${Date.now()}`, tipo: "recebida", documentos: novos.map((d) => d.nome), respondeA: pedido.id };

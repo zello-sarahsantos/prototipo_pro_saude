@@ -33,7 +33,7 @@ export async function buildRelatorioXlsxBlob<T>(spec: RelatorioExportSpec<T>): P
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Pró-Saúde";
   workbook.created = new Date();
-  const sheet = workbook.addWorksheet(nomeAbaValido(spec.titulo));
+  const sheet = workbook.addWorksheet(nomeAbaValido(spec.nomeAba ?? spec.titulo));
 
   const totalColunas = spec.colunas.length;
 
@@ -75,6 +75,23 @@ export async function buildRelatorioXlsxBlob<T>(spec: RelatorioExportSpec<T>): P
   mergeCentralizada(`Gerado em: ${formatarDataHoraGeracao()}`, linhaAtual, false, 10);
   linhaAtual += 2; // linha em branco antes do cabeçalho da tabela
 
+  if (spec.gruposCabecalho && spec.gruposCabecalho.length > 0) {
+    let col = 1;
+    spec.gruposCabecalho.forEach((g) => {
+      if (g.span > 1) sheet.mergeCells(linhaAtual, col, linhaAtual, col + g.span - 1);
+      for (let k = 0; k < g.span; k++) {
+        const c = sheet.getCell(linhaAtual, col + k);
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDDDDD" } };
+        c.border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+      }
+      const cell = sheet.getCell(linhaAtual, col);
+      cell.value = g.rotulo;
+      cell.font = { name: "Times New Roman", size: 10, bold: true };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      col += g.span;
+    });
+    linhaAtual++;
+  }
   const linhaCabecalho = linhaAtual;
   spec.colunas.forEach((coluna, i) => {
     const cell = sheet.getCell(linhaCabecalho, i + 1);
@@ -120,6 +137,19 @@ export async function buildRelatorioXlsxBlob<T>(spec: RelatorioExportSpec<T>): P
       cell.font = { name: "Times New Roman", size: 10, bold: true };
       cell.alignment = { horizontal: coluna?.align ?? "right" };
       cell.border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+    });
+  }
+
+  if (spec.notas && spec.notas.length > 0) {
+    ultimaLinha += 2;
+    spec.notas.forEach((n) => {
+      sheet.mergeCells(ultimaLinha, 1, ultimaLinha, totalColunas);
+      const c = sheet.getCell(ultimaLinha, 1);
+      c.value = n;
+      c.font = { name: "Times New Roman", size: 9, italic: true };
+      c.alignment = { wrapText: true, vertical: "top" };
+      sheet.getRow(ultimaLinha).height = 28;
+      ultimaLinha++;
     });
   }
 

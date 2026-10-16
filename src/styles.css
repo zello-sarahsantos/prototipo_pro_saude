@@ -134,6 +134,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.18 0.02 250);
   --foreground: oklch(0.96 0.01 240);
   --card: oklch(0.22 0.03 250);
@@ -142,9 +143,78 @@
   --popover-foreground: oklch(0.96 0.01 240);
   --primary: oklch(0.6 0.13 250);
   --primary-foreground: oklch(0.15 0.02 250);
+  --primary-light: oklch(0.68 0.12 250);
+  --primary-dark: oklch(0.2 0.06 250);
+  --secondary: oklch(0.27 0.03 250);
+  --secondary-foreground: oklch(0.94 0.01 240);
+  --muted: oklch(0.26 0.03 250);
+  --muted-foreground: oklch(0.72 0.03 250);
+  --accent: oklch(0.3 0.04 250);
+  --accent-foreground: oklch(0.96 0.01 240);
+
+  --success: oklch(0.68 0.15 150);
+  --success-foreground: oklch(0.15 0.02 250);
+  --warning: oklch(0.76 0.15 65);
+  --warning-foreground: oklch(0.15 0.02 250);
+  --destructive: oklch(0.66 0.2 25);
+  --destructive-foreground: oklch(0.15 0.02 250);
+  --info: oklch(0.68 0.12 235);
+  --info-foreground: oklch(0.15 0.02 250);
+
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.68 0.12 250);
+
+  --status-pendente-bg: oklch(0.3 0.05 70);
+  --status-pendente-fg: oklch(0.85 0.12 75);
+  --status-aprovado-bg: oklch(0.28 0.05 150);
+  --status-aprovado-fg: oklch(0.82 0.13 150);
+  --status-rejeitado-bg: oklch(0.29 0.06 25);
+  --status-rejeitado-fg: oklch(0.82 0.12 25);
+  --status-inativo-bg: oklch(0.28 0.01 250);
+  --status-inativo-fg: oklch(0.78 0.02 250);
+  --status-analise-bg: oklch(0.31 0.06 55);
+  --status-analise-fg: oklch(0.82 0.13 60);
+  --status-suspenso-bg: oklch(0.29 0.05 300);
+  --status-suspenso-fg: oklch(0.82 0.1 300);
+
+  --sidebar: oklch(0.2 0.05 250);
+  --sidebar-foreground: oklch(0.96 0.01 240);
+  --sidebar-primary: oklch(0.6 0.13 250);
+  --sidebar-primary-foreground: oklch(0.15 0.02 250);
+  --sidebar-accent: oklch(0.28 0.06 250);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(0.3 0.05 250);
+  --sidebar-ring: oklch(0.68 0.12 250);
+
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
+
+/* Tema escuro — cores fixas (paleta Tailwind) usadas em telas antigas, sem token equivalente.
+   Mapeadas aqui uma única vez para não editar dezenas de componentes. */
+.dark .bg-white { background-color: var(--card); }
+.dark .bg-slate-50 { background-color: oklch(0.25 0.025 250); }
+.dark .bg-slate-800, .dark .bg-slate-900 { background-color: oklch(0.14 0.02 250); }
+.dark .bg-gray-400 { background-color: oklch(0.5 0.02 250); }
+.dark .bg-blue-50 { background-color: oklch(0.27 0.06 250); }
+.dark .bg-amber-50 { background-color: oklch(0.29 0.05 75); }
+.dark .bg-green-50, .dark .bg-green-100 { background-color: oklch(0.28 0.05 150); }
+.dark .bg-red-50 { background-color: oklch(0.29 0.06 25); }
+.dark .text-slate-900 { color: oklch(0.96 0.01 240); }
+.dark .text-slate-700, .dark .text-slate-600 { color: oklch(0.82 0.02 250); }
+.dark .text-slate-500, .dark .text-slate-400 { color: oklch(0.72 0.03 250); }
+.dark .text-slate-300 { color: oklch(0.8 0.02 250); }
+.dark .text-blue-800, .dark .text-blue-700 { color: oklch(0.8 0.1 250); }
+.dark .text-amber-800, .dark .text-amber-700, .dark .text-amber-600, .dark .text-orange-600 { color: oklch(0.84 0.12 75); }
+.dark .text-green-800, .dark .text-green-700, .dark .text-green-600 { color: oklch(0.8 0.13 150); }
+.dark .text-red-700, .dark .text-red-600 { color: oklch(0.8 0.12 25); }
+.dark .border-slate-100, .dark .border-slate-200, .dark .divide-slate-100 > :not(:last-child), .dark .divide-slate-50 > :not(:last-child) { border-color: var(--border); }
+.dark .border-slate-700, .dark .border-slate-800 { border-color: oklch(1 0 0 / 18%); }
+.dark .border-blue-200 { border-color: oklch(0.4 0.08 250); }
+.dark .border-amber-200, .dark .border-amber-100 { border-color: oklch(0.42 0.08 75); }
+.dark .border-red-200, .dark .border-red-100 { border-color: oklch(0.42 0.1 25); }
+.dark .pendency-banner { background: oklch(0.3 0.05 85); color: oklch(0.88 0.1 90); border-left-color: oklch(0.75 0.16 90); }
 
 @layer base {
   * {
@@ -171,4 +241,120 @@
     gap: 0.5rem;
     align-items: flex-start;
   }
+}
+
+/* ── Dashboard GERDAB — tokens visuais do protótipo aprovado (Claude Design) ────────────────────
+   Escopados em `.gd` para não alterar o restante do sistema. Os valores do tema escuro seguem o
+   protótipo e entram quando a classe `.dark` for aplicada ao <html>. */
+.gd {
+  --gd-bg: #f5f7fa;
+  --gd-card: #ffffff;
+  --gd-border: #e3e7ee;
+  --gd-text: #14213d;
+  --gd-muted: #5b6577;
+  --gd-primary: #1b4f8a;
+  --gd-primary-soft: #e8eff8;
+  --gd-on-primary: #ffffff;
+  --gd-amber: #b45309;
+  --gd-amber-soft: #fef3c7;
+  --gd-red: #b91c1c;
+  --gd-red-soft: #fee2e2;
+  --gd-green: #15803d;
+  --gd-green-soft: #dcfce7;
+  --gd-track: #e8ecf2;
+  color: var(--gd-text);
+  line-height: normal; /* o protótipo usa o line-height padrão da fonte */
+}
+.dark .gd {
+  --gd-bg: #0d1420;
+  --gd-card: #151e2c;
+  --gd-border: #263244;
+  --gd-text: #e6ebf2;
+  --gd-muted: #9aa6b9;
+  --gd-primary: #8ab8ee;
+  --gd-primary-soft: #1c2d45;
+  --gd-on-primary: #0d1420;
+  --gd-amber: #f5b454;
+  --gd-amber-soft: #3a2a12;
+  --gd-red: #f29393;
+  --gd-red-soft: #3d1b1d;
+  --gd-green: #72d39d;
+  --gd-green-soft: #143323;
+  --gd-track: #223047;
+}
+.gd a { color: var(--gd-primary); text-decoration: none; }
+.gd a:hover { text-decoration: underline; }
+@keyframes gd-alt-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Dashboard GERDAB — linguagem de interação compartilhada ─────────────────────────────────────
+   Normal → hover (elevação discreta + borda azul) → selecionado (borda + fundo azulado + halo).
+   Listas: só mudança suave de fundo (sem elevação). */
+.gd { --gd-bar: #0f2d52; --gd-hover: #e9eef5; }
+.dark .gd { --gd-bar: #8ab8ee; --gd-hover: #1f2c40; }
+
+/* Barra superior institucional de 3 px: desenhada no próprio fundo do cartão (sem pseudo-elemento nem
+   overflow), assim os cantos arredondados são preservados e nada bloqueia a área clicável. */
+.gd .gd-bar {
+  background-image: linear-gradient(var(--gd-bar), var(--gd-bar)) !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% 4px !important;
+  background-position: top left !important;
+}
+
+/* Cartões e indicadores clicáveis. */
+.gd .gd-clk {
+  position: relative;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background-color 180ms ease;
+}
+/* Ao subir 2 px no hover, a borda inferior sairia de baixo do ponteiro e o clique se perderia: esta faixa
+   invisível mantém, sob o ponteiro, a mesma área clicável do cartão antes da elevação. */
+.gd .gd-clk::after,
+.gd .gd-sec-head::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+}
+.gd .gd-sec-head { position: relative; }
+@media (hover: hover) {
+  .gd .gd-clk:hover { border-color: var(--gd-primary) !important; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(10, 22, 40, 0.12); }
+  .gd .gd-opt:hover { background-color: var(--gd-hover) !important; }
+  .gd .gd-row:hover { background-color: var(--gd-hover); }
+  .gd .gd-sec:has(.gd-sec-head:hover) { border-color: var(--gd-primary); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(10, 22, 40, 0.12); }
+}
+.gd .gd-clk[data-sel="true"] {
+  border-color: var(--gd-primary) !important;
+  background-color: var(--gd-primary-soft) !important;
+  box-shadow: 0 0 0 3px var(--gd-primary-soft), 0 4px 12px rgba(10, 22, 40, 0.1) !important;
+}
+
+/* Opções compactas (status, abas, filtros): fundo no hover; borda azul quando selecionadas. */
+.gd .gd-opt { cursor: pointer; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
+.gd .gd-opt[data-sel="true"] { border-color: var(--gd-primary) !important; background-color: var(--gd-primary-soft) !important; }
+
+/* Linhas de listas e tabelas: só o fundo muda. Cursor de clique apenas se a linha inteira for clicável. */
+.gd .gd-row { cursor: default; transition: background-color 180ms ease; }
+.gd .gd-row[data-click] { cursor: pointer; }
+
+.gd .gd-sec { transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+
+.gd a:focus-visible,
+.gd button:focus-visible,
+.gd select:focus-visible,
+.gd input:focus-visible,
+.gd [tabindex]:focus-visible {
+  outline: 2px solid var(--gd-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gd .gd-clk, .gd .gd-opt, .gd .gd-row, .gd .gd-sec { transition: none; }
+  .gd .gd-clk:hover, .gd .gd-sec:has(.gd-sec-head:hover) { transform: none; }
 }

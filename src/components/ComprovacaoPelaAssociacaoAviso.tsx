@@ -9,8 +9,8 @@ export function ComprovacaoPelaAssociacaoAviso({ associacao }: { associacao: str
       <div>
         <p className="font-semibold text-primary">Você está vinculado à {associacao}</p>
         <p className="text-muted-foreground mt-1">
-          A comprovação mensal e o ressarcimento retroativo são enviados pela {associacao} — não é necessário
-          enviar comprovante nem solicitar ressarcimento retroativo individualmente.
+          A comprovação mensal e o ressarcimento de meses anteriores são enviados pela {associacao} — não é necessário
+          enviar comprovante nem solicitar ressarcimento de meses anteriores individualmente.
         </p>
       </div>
     </section>

@@ -11,7 +11,7 @@ export function RetroativosNav({ ativa }: { ativa: "fila" | "consolidacao" | "hi
     { chave: "historico", to: "/admin/relatorios/consolidacoes", rotulo: "Histórico" },
   ] as const;
   return (
-    <nav className="flex flex-wrap items-center gap-1 border-b border-border" aria-label="Ressarcimento retroativo">
+    <nav className="flex flex-wrap items-center gap-1 border-b border-border" aria-label="Ressarcimento de meses anteriores">
       {itens.map((i) => (
         <Link
           key={i.chave}
@@ -28,7 +28,7 @@ export function RetroativosNav({ ativa }: { ativa: "fila" | "consolidacao" | "hi
       <button
         type="button"
         onClick={() => {
-          if (window.confirm("Restaurar os dados de demonstração do Ressarcimento Retroativo? (recurso só do protótipo; apaga o que foi gerado nesta área)")) {
+          if (window.confirm("Restaurar os dados de demonstração do Ressarcimento de meses anteriores? (recurso só do protótipo; apaga o que foi gerado nesta área)")) {
             restaurarMassaDemonstracaoRetroativos();
             window.location.reload();
           }

@@ -7,9 +7,16 @@
  * automático (sem botão manual, reabertura ou override). A competência **não** é considerada
  * encerrada no início do 2º dia útil.
  *
- * **Limitação técnica do protótipo (NÃO é regra de negócio):** não há calendário oficial de
- * feriados; "dia útil" aqui é apenas segunda a sexta, só para demonstração. Em produção a regra
- * deve considerar o calendário institucional/oficial aplicável.
+ * **Dia útil** = segunda a sexta que não seja feriado nacional nem distrital do DF (calendário
+ * abaixo, único para todo o sistema — Dashboard, Fechamento, envio do servidor, prazo do relatório
+ * e Ressarcimentos de meses anteriores usam estas funções, nunca um cálculo próprio). Feriados
+ * considerados: 01/01, Sexta-feira Santa, 21/04 (Tiradentes e aniversário de Brasília), 01/05,
+ * 07/09, 12/10, 02/11, 15/11, 20/11, 30/11 (Dia do Evangélico, DF) e 25/12. Carnaval e Corpus
+ * Christi são pontos facultativos e não são descontados.
+ *
+ * **Limitação do protótipo (NÃO é regra de negócio):** o calendário é uma lista fixa para
+ * demonstração; em produção deve ser substituído pelo calendário institucional oficial
+ * (decretos de ponto facultativo e feriados móveis locais).
  *
  * Premissa de mapeamento a confirmar na Fase 9: a competência `C` (mês de referência) fecha ao
  * fim do 2º dia útil do mês **seguinte** a `C` — coerente com a ata (competência de junho é paga
@@ -18,9 +25,46 @@
  */
 import { PROSAUDE_STORAGE_KEYS } from "./prosaude-storage";
 
+/** Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher) — base da Sexta-feira Santa. */
+function domingoDePascoa(ano: number): Date {
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(ano, mes - 1, dia);
+}
+
+/** Feriados nacionais e do DF do ano (formato `"AAAA-MM-DD"`). */
+const FERIADOS_FIXOS: [number, number][] = [[1, 1], [4, 21], [5, 1], [9, 7], [10, 12], [11, 2], [11, 15], [11, 20], [11, 30], [12, 25]];
+const cacheFeriados = new Map<number, Set<string>>();
+
+function chaveDia(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function getFeriados(ano: number): Set<string> {
+  const emCache = cacheFeriados.get(ano);
+  if (emCache) return emCache;
+  const pascoa = domingoDePascoa(ano);
+  const sextaSanta = new Date(ano, pascoa.getMonth(), pascoa.getDate() - 2);
+  const set = new Set<string>([
+    ...FERIADOS_FIXOS.map(([m, d]) => chaveDia(new Date(ano, m - 1, d))),
+    chaveDia(sextaSanta),
+  ]);
+  cacheFeriados.set(ano, set);
+  return set;
+}
+
+export function isFeriado(data: Date): boolean {
+  return getFeriados(data.getFullYear()).has(chaveDia(data));
+}
+
 export function isDiaUtil(data: Date): boolean {
   const d = data.getDay();
-  return d !== 0 && d !== 6;
+  return d !== 0 && d !== 6 && !isFeriado(data);
 }
 
 /** N-ésimo dia útil (1-based) do mês (`mes` 1–12). */

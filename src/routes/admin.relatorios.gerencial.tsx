@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2, UserCog, Users } from "lucide-react";
 import { formatCurrency, regrasProSaude } from "@/lib/mock-data";
 import {
@@ -29,6 +29,12 @@ function VisoesGerenciais() {
   const porFaixaEtaria = getConsolidadoPorFaixaEtaria();
   const teto = getSituacaoTeto();
   const totalTitulares = porOperadora.reduce((soma, o) => soma + o.titulares, 0);
+
+  // Âncora vinda do Dashboard (`#servidores-no-teto-familiar`): leva direto à seção já existente.
+  useEffect(() => {
+    const id = window.location.hash.replace("#", "");
+    if (id) document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, []);
 
   // Fase 8 — único filtro hoje na tela (busca por nome/matrícula), aplicado só sobre a lista de
   // Servidores no Teto Familiar. Filtragem client-side sobre `teto.servidoresNoTeto`, sem tocar
@@ -308,7 +314,7 @@ function VisoesGerenciais() {
       </section>
 
       {/* Teto familiar — indicador complementar, fotografia atual */}
-      <section className="bg-card rounded-xl border border-border shadow-card p-5">
+      <section id="servidores-no-teto-familiar" className="bg-card rounded-xl border border-border shadow-card p-5 scroll-mt-4">
         <div className="flex items-start justify-between gap-3 mb-1">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-primary" />

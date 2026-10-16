@@ -44,7 +44,7 @@ export const regrasProSaude = {
   faseAtual: "Fase 1 — Módulo de Cadastro",
   fases: [
     { nome: "Fase 1", modulo: "Cadastro", status: "Em prototipação", escopo: "Servidores, dependentes, requerimentos, carga inicial, teto e validação GERDAB." },
-    { nome: "Fase 2", modulo: "Comprovação", status: "Evolutiva", escopo: "Upload de comprovantes/planilhas, OCR, retroativos, reajustes e alteração de valor." },
+    { nome: "Fase 2", modulo: "Comprovação", status: "Evolutiva", escopo: "Upload de comprovantes/planilhas, OCR, ressarcimentos de meses anteriores, reajustes e alteração de valor." },
     { nome: "Fase 3", modulo: "Relatórios e integrações", status: "Evolutiva", escopo: "Relatório mensal ao NURFI, SEI, FIG e notificações." },
   ],
 };
@@ -237,7 +237,7 @@ export const documentosServidor: DocumentoBeneficiario[] = [
   // Titular — João da Silva
   { id: "doc1", beneficiarioId: "titular", nome: "RG", arquivo: "rg_joao_silva.pdf", dataEnvio: "10/01/2024", visualizavel: true },
   { id: "doc2", beneficiarioId: "titular", nome: "Comprovante de Residência", arquivo: "comprovante_residencia_joao.pdf", dataEnvio: "10/01/2024", visualizavel: true },
-  { id: "doc3", beneficiarioId: "titular", nome: "Contracheque", arquivo: "contracheque_joao_abril2026.pdf", dataEnvio: "05/04/2026", competencia: "abril/2026", visualizavel: true },
+  { id: "doc3", beneficiarioId: "titular", nome: "Contracheque", arquivo: "contracheque_joao_abril2026.pdf", dataEnvio: "05/04/2026", competencia: "Abril/2026", visualizavel: true },
   { id: "doc4", beneficiarioId: "titular", nome: "Termo de Responsabilidade", arquivo: "termo_responsabilidade_joao.docx", dataEnvio: "10/01/2024", visualizavel: false },
   // Dependente d1 — Ana da Silva (Cônjuge)
   { id: "doc5", beneficiarioId: "d1", nome: "Certidão de Casamento", arquivo: "certidao_casamento_ana.pdf", dataEnvio: "10/01/2024", visualizavel: true },

@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { servidoresList, formatCurrency, statusLabels, type ServidorListItem, type SituacaoFinanceira } from "@/lib/mock-data";
+import { regrasProSaude, servidoresList, formatCurrency, statusLabels, type ServidorListItem, type SituacaoFinanceira } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Search, Settings, ChevronDown, BellRing, Copy, Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
+import { SITUACOES_TITULAR } from "@/lib/form-options";
+import { slugSituacaoTitular } from "@/lib/dashboard-gerdab";
 import { ExportarRelatorio } from "@/components/ExportarRelatorio";
 import type { RelatorioExportSpec } from "@/lib/relatorio-export";
 
@@ -10,8 +12,11 @@ export const Route = createFileRoute("/admin/servidores/")({
   // `origem: "relatorios"` é passado só pelo link do card "Beneficiários / Contratos" em
   // `/admin/relatorios` — mostra um breadcrumb de contexto, sem duplicar tela/dados/lógica. O
   // acesso normal pelo menu "Servidores" não passa esse parâmetro e a tela fica como sempre foi.
-  validateSearch: (search: Record<string, unknown>): { origem?: "relatorios" } => ({
+  // `situacao` (slug da Situação do Beneficiário Titular) e `teto=atingido` vêm do Panorama do Dashboard.
+  validateSearch: (search: Record<string, unknown>): { origem?: "relatorios"; situacao?: string; teto?: "atingido" } => ({
     origem: search.origem === "relatorios" ? "relatorios" : undefined,
+    situacao: typeof search.situacao === "string" ? search.situacao : undefined,
+    teto: search.teto === "atingido" ? "atingido" : undefined,
   }),
   component: Servidores,
 });
@@ -162,22 +167,26 @@ function Servidores() {
         !filtroSituacaoFinanceira || s.situacaoFinanceira === filtroSituacaoFinanceira;
       const matchPendencia =
         !somentePendencia || s.status === "pendente" || s.status === "alerta";
+      const matchSituacaoTitular = !search.situacao || slugSituacaoTitular(s.situacaoBeneficiarioTitular) === search.situacao;
+      const matchTeto = !search.teto || s.valorPlano >= regrasProSaude.tetoFamiliar;
       return (
         matchBusca &&
         matchStatus &&
         matchAssociacao &&
         matchOperadora &&
         matchSituacaoFinanceira &&
-        matchPendencia
+        matchPendencia &&
+        matchSituacaoTitular &&
+        matchTeto
       );
     });
-  }, [busca, filtroStatus, filtroAssociacao, filtroOperadora, filtroSituacaoFinanceira, somentePendencia]);
+  }, [busca, filtroStatus, filtroAssociacao, filtroOperadora, filtroSituacaoFinanceira, somentePendencia, search.situacao, search.teto]);
 
   const totalComPendencia = servidoresList.filter((s) => s.status === "pendente" || s.status === "alerta").length;
 
   const exibindo = filtrados.length;
   const total =
-    busca || filtroStatus || filtroAssociacao || filtroOperadora || filtroSituacaoFinanceira || somentePendencia
+    busca || filtroStatus || filtroAssociacao || filtroOperadora || filtroSituacaoFinanceira || somentePendencia || search.situacao || search.teto
       ? exibindo
       : TOTAL_REAL;
 
@@ -191,6 +200,8 @@ function Servidores() {
     filtroOperadora && `Operadora: ${filtroOperadora}`,
     filtroSituacaoFinanceira && `Situação financeira: ${filtroSituacaoFinanceira === "adimplente" ? "Adimplente" : "Inadimplente"}`,
     somentePendencia && "Só com pendência",
+    search.situacao && `Situação do titular: ${SITUACOES_TITULAR.find((x) => slugSituacaoTitular(x) === search.situacao) ?? search.situacao}`,
+    search.teto && "No teto familiar",
   ].filter((f): f is string => Boolean(f));
 
   const specExport: RelatorioExportSpec<ServidorListItem> = {
@@ -239,6 +250,15 @@ function Servidores() {
           <AcaoMenu />
         </div>
       </header>
+
+      {(search.situacao || search.teto) && (
+        <div className="flex flex-wrap items-center gap-2 text-sm" role="status">
+          <span className="text-muted-foreground">Filtro aplicado:</span>
+          {search.situacao && <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">Situação do titular: {SITUACOES_TITULAR.find((x) => slugSituacaoTitular(x) === search.situacao) ?? search.situacao}</span>}
+          {search.teto && <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">No teto familiar</span>}
+          <button type="button" onClick={() => navigate({ to: "/admin/servidores", search: {} })} className="text-xs text-primary hover:underline">Limpar filtro</button>
+        </div>
+      )}
 
       {/* Filtros funcionais — visual em chip, mesma lógica de antes */}
       <div className="bg-card rounded-xl border border-border shadow-card p-3 flex flex-wrap items-center gap-2.5">

@@ -1,19 +1,11 @@
-/** Calcula o 2º dia útil do mês seguinte a `competencia` (formato "YYYY-MM"), pulando
- *  sábados e domingos — sem calendário de feriados (simplificação assumida, documentada em
- *  docs/MODULO_PAGAMENTO.md). Preparação de modelo/indicador para um futuro módulo de Relatório
- *  Mensal, ainda não construído. */
+import { getNesimoDiaUtil } from "./dias-uteis";
+
+/** 2º dia útil do mês seguinte a `competencia` (formato "YYYY-MM"). Delegado ao calendário único
+ *  do sistema (`dias-uteis.ts`: segunda a sexta, sem feriados nacionais e do DF) — nunca um
+ *  cálculo próprio, para o prazo do relatório e o fechamento automático nunca divergirem. */
 export function segundoDiaUtilMesSeguinte(competencia: string): Date {
   const [ano, mes] = competencia.split("-").map(Number);
-  // `mes` (1-indexado, ex: 7 = julho) usado como índice de mês do `Date` (0-indexado) já
-  // aponta para o 1º dia do mês seguinte.
-  const data = new Date(ano, mes, 1);
-  let diasUteisEncontrados = 0;
-  while (diasUteisEncontrados < 2) {
-    const diaSemana = data.getDay();
-    if (diaSemana !== 0 && diaSemana !== 6) diasUteisEncontrados++;
-    if (diasUteisEncontrados < 2) data.setDate(data.getDate() + 1);
-  }
-  return data;
+  return mes === 12 ? getNesimoDiaUtil(ano + 1, 1, 2) : getNesimoDiaUtil(ano, mes + 1, 2);
 }
 
 /** `true` quando `dataEnvio` (ISO string) está dentro do prazo do relatório mensal — até o fim

@@ -524,7 +524,7 @@ interface SolicitacaoRequerimento {
 
 **Indicador de prazo do relatório mensal** (`estaDentroDoPrazoRelatorio`, novo `src/lib/prazo-competencia.ts`):
 ```ts
-function segundoDiaUtilMesSeguinte(competencia: string): Date  // pula sáb/dom, sem calendário de feriados
+function segundoDiaUtilMesSeguinte(competencia: string): Date  // delega a `dias-uteis.ts`: seg–sex sem feriados nacionais e do DF
 function estaDentroDoPrazoRelatorio(competencia: string, dataEnvio: string): boolean
 ```
 - Calcula o 2º dia útil do mês seguinte à competência do comprovante e compara com a data de envio. Simplificação assumida e documentada: não há calendário de feriados — só pula sábado/domingo.
@@ -791,7 +791,7 @@ Antes da Etapa 1 (ver plano de alinhamento de stakeholder, seção 13, decisão 
 
 ### Solicitar requerimento + prazo do relatório — implementado (seção 3.24)
 31g. **(Novo — Etapa 7)** Generaliza o padrão acima (31f) para requerimentos de outro módulo: o Analista/Gerência pode **solicitar** que o Servidor abra um requerimento de Mudança de Plano ou Inclusão de Dependente via `Comprovante.solicitacaoRequerimento`, destacado ao Servidor com um link direto para o requerimento certo. Não há ponte automática que feche o pedido quando o requerimento é aberto — fica só no histórico (limitação aceita).
-31h. **(Novo — Etapa 7)** Indicador de prazo do relatório mensal (2º dia útil do mês seguinte à competência, sem calendário de feriados) é **só informativo** para o Analista/Gerência — não altera a regra de retroativo (`competencia !== competenciaAtual`, regra 13) nem nenhum outro status. Preparação de modelo para um futuro módulo de Relatório Mensal, que ainda não existe.
+31h. **(Novo — Etapa 7)** Indicador de prazo do relatório mensal (2º dia útil do mês seguinte à competência, pelo calendário único de `dias-uteis.ts`: segunda a sexta sem feriados nacionais e do DF) é **só informativo** para o Analista/Gerência — não altera a regra de retroativo (`competencia !== competenciaAtual`, regra 13) nem nenhum outro status. Preparação de modelo para um futuro módulo de Relatório Mensal, que ainda não existe.
 
 ### Permissões
 31. **(Atualizado — Etapa 1, ver seção 13, decisão 30)** Gerência e Analista têm ações idênticas sobre comprovantes/retroativos — não há mais ações exclusivas de nenhum dos dois nesse fluxo.

@@ -123,7 +123,7 @@ export function RessarcimentoRetroativoBloco({
           <RefreshCw className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm">Ressarcimento retroativo</h3>
+          <h3 className="font-semibold text-sm">Ressarcimento de meses anteriores</h3>
           <p className="text-xs text-muted-foreground">
             Solicite o ressarcimento de uma ou mais competências anteriores em
             um único pedido.
@@ -312,7 +312,7 @@ export function RessarcimentoRetroativoBloco({
                   className="rounded-lg border border-border p-3 space-y-1.5"
                 >
                   <p className="text-sm font-medium">
-                    {sol.motivo ? (MOTIVOS_RESSARCIMENTO[sol.motivo] ?? sol.motivo) : "Ressarcimento retroativo"}
+                    {sol.motivo ? (MOTIVOS_RESSARCIMENTO[sol.motivo] ?? sol.motivo) : "Ressarcimento de meses anteriores"}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Enviada em{" "}
@@ -441,13 +441,13 @@ export function AvisoComplementacaoRetroativa({ cpfTitular }: { cpfTitular?: str
   if (pendentes.length === 0) return null;
   return (
     <section className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm space-y-1" role="status">
-      <p className="font-semibold">Pendência no seu ressarcimento retroativo</p>
+      <p className="font-semibold">Pendência no seu ressarcimento de meses anteriores</p>
       {pendentes.map((p) => (
         <p key={p.comp}>
           <span className="font-medium">{formatCompetencia(p.comp)}:</span> a GERDAB solicitou complementação — {p.texto}
         </p>
       ))}
-      <p className="text-xs text-muted-foreground">Envie o documento dentro da própria solicitação, no bloco “Ressarcimento retroativo” abaixo.</p>
+      <p className="text-xs text-muted-foreground">Envie o documento dentro da própria solicitação, no bloco “Ressarcimento de meses anteriores” abaixo.</p>
     </section>
   );
 }

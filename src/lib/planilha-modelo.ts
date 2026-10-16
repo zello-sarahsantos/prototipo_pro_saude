@@ -58,7 +58,7 @@ export async function buildModeloBlob(associacao: string, tipo: TipoModeloPlanil
   const ultimaColuna = String.fromCharCode(64 + colunas.length); // A..K (≤ 26 colunas)
 
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(nomeAbaValido(tipo === "retroativo" ? `${a} retroativo v1` : `${a} v1`));
+  const sheet = workbook.addWorksheet(nomeAbaValido(tipo === "retroativo" ? `${a} meses anteriores v1` : `${a} v1`));
   sheet.columns = getLargurasModelo(tipo).map((width) => ({ width }));
 
   // Ordinário mantém a mesma mesclagem do modelo aprovado (A1:G1); retroativo cobre a grade toda.
@@ -66,7 +66,7 @@ export async function buildModeloBlob(associacao: string, tipo: TipoModeloPlanil
   sheet.mergeCells(`A1:${fimTitulo}1`);
   sheet.getCell("A1").value =
     tipo === "retroativo"
-      ? `Envio retroativo — ${a.toUpperCase()} — Preencher uma linha por beneficiário e por mês de referência`
+      ? `Envio de meses anteriores — ${a.toUpperCase()} — Preencher uma linha por beneficiário e por mês de referência`
       : "Envio mensal - Preencher uma linha por beneficiário";
   sheet.getCell("A1").font = { bold: true, size: 12 };
 

@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { Upload, History, LogOut, Building2, Menu, X, Shield, UserPlus, RefreshCcw } from "lucide-react";
 import { useState } from "react";
+import { AlternarTema } from "@/components/AlternarTema";
 
 export const Route = createFileRoute("/associacao")({
   component: AssociacaoLayout,
@@ -12,7 +13,7 @@ function AssociacaoLayout() {
 
   const items = [
     { to: "/associacao/upload", icon: Upload, label: "Upload de Planilha (ASSEFAZ)" },
-    { to: "/associacao/retroativo", icon: RefreshCcw, label: "Envio Retroativo" },
+    { to: "/associacao/retroativo", icon: RefreshCcw, label: "Envio de meses anteriores" },
     { to: "/associacao/gerenciamento", icon: UserPlus, label: "Gerenciamento (ASSETRAN)" },
   ];
 
@@ -27,9 +28,12 @@ function AssociacaoLayout() {
             <h1 className="text-sm font-semibold">Área da Associação</h1>
           </div>
         </div>
-        <button onClick={() => setOpen(!open)} className="p-2 rounded-md hover:bg-primary-dark" aria-label="Abrir menu">
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <AlternarTema />
+          <button onClick={() => setOpen(!open)} className="p-2 rounded-md hover:bg-primary-dark" aria-label="Abrir menu">
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </header>
 
       {/* Sidebar */}
@@ -65,9 +69,12 @@ function AssociacaoLayout() {
           })}
         </nav>
         <div className="p-4 border-t border-slate-800">
-          <div className="mb-4">
-            <p className="text-sm font-medium">ASSEFAZ / ASSETRAN</p>
-            <p className="text-[11px] text-slate-400">Associações Parceiras</p>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">ASSEFAZ / ASSETRAN</p>
+              <p className="text-[11px] text-slate-400">Associações Parceiras</p>
+            </div>
+            <AlternarTema />
           </div>
           <Link to="/login" className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition">
             <LogOut className="h-4 w-4" /> Sair

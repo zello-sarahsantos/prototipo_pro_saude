@@ -36,7 +36,7 @@ function HistoricoConsolidacoes() {
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-5">
       <header>
-        <h1 className="text-2xl font-bold">Ressarcimento Retroativo</h1>
+        <h1 className="text-2xl font-bold">Ressarcimento de meses anteriores</h1>
         <p className="text-sm text-muted-foreground">Histórico: cada relatório gerado para o NURFI, exatamente como foi gerado — não recalculado.</p>
       </header>
       <RetroativosNav ativa="historico" />
@@ -46,7 +46,7 @@ function HistoricoConsolidacoes() {
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
                 <th className="text-left px-4 py-2">Relatório</th>
-                <th className="text-left px-4 py-2">Ciclo</th>
+                <th className="text-left px-4 py-2">Competência</th>
                 <th className="text-left px-4 py-2">Gerado em</th>
                 <th className="text-left px-4 py-2">Responsável</th>
                 <th className="text-right px-4 py-2">Competências</th>
@@ -83,8 +83,8 @@ function Detalhe({ snap, aba, setAba, onVoltar }: { snap: SnapshotConsolidacaoRe
   const spec = montarSpecConsolidacao({
     linhas: snap.linhas,
     grupo: aba,
-    filtrosAplicados: [`Relatório nº ${snap.sequencia} — ciclo ${formatCompetencia(snap.ciclo)}`, `Gerada em ${new Date(snap.geradoEm).toLocaleString("pt-BR")} por ${snap.responsavel}`],
-    nomeArquivoBase: `pro-saude_ressarcimento_retroativo_consolidacao_${snap.ciclo}_n${snap.sequencia}_${aba === "ativo" ? "ativos" : "inativos"}`,
+    filtrosAplicados: [`Relatório nº ${snap.sequencia} — ${formatCompetencia(snap.ciclo)}`, `Gerada em ${new Date(snap.geradoEm).toLocaleString("pt-BR")} por ${snap.responsavel}`],
+    nomeArquivoBase: `pro-saude_ressarcimento_meses_anteriores_consolidacao_${snap.ciclo}_n${snap.sequencia}_${aba === "ativo" ? "ativos" : "inativos"}`,
   });
   const linhas = snap.linhas.filter((l) => l.grupo === aba);
   const total = linhas.reduce((t, l) => t + l.valorRessarcir, 0);
