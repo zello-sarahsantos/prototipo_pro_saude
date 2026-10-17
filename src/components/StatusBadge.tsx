@@ -10,6 +10,10 @@ const map: Record<StatusKey, string> = {
   analise: "bg-status-analise-bg text-status-analise-fg",
   alerta: "bg-status-pendente-bg text-status-pendente-fg",
   suspenso: "bg-status-suspenso-bg text-status-suspenso-fg",
+  importado: "bg-status-inativo-bg text-status-inativo-fg",
+  aguardando_ativacao: "bg-status-pendente-bg text-status-pendente-fg",
+  aguardando_validacao: "bg-status-analise-bg text-status-analise-fg",
+  divergencia: "bg-status-pendente-bg text-status-pendente-fg",
 };
 
 export function StatusBadge({ status, label }: { status: StatusKey; label?: string }) {

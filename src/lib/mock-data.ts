@@ -439,6 +439,7 @@ export const valorMockItemNaoReembolsavel: Record<SituacaoNaoReembolsavel, numbe
   taxa_administrativa: 15.90,
   multa: 20.00,
   juros: 10.00,
+  iof: 15.19,
 };
 
 /** Tipos documentais que um arquivo anexado pode representar — um mesmo arquivo pode

@@ -38,6 +38,7 @@ const palavrasChavePorSituacaoNaoReembolsavel: Record<SituacaoNaoReembolsavel, s
   multa: ["multa"],
   taxa_administrativa: ["taxa_administrativa", "taxa-administrativa"],
   juros: ["juros"],
+  iof: ["iof"],
 };
 
 /** Detecta, a partir do nome do arquivo, **todas** as situações não reembolsáveis presentes —

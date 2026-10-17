@@ -11,7 +11,7 @@ function Login() {
   const navigate = useNavigate();
   const [matricula, setMatricula] = useState("12345678");
   const [senha, setSenha] = useState("••••••");
-  const [perfil, setPerfil] = useState<"servidor" | "analista" | "gerencia">("servidor");
+  const [perfil, setPerfil] = useState<"servidor" | "associacao" | "analista" | "gerencia">("servidor");
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary-dark to-primary flex items-center justify-center px-4 py-8">
