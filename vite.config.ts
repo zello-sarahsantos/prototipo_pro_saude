@@ -14,6 +14,11 @@ export default defineConfig({
           target: 'http://127.0.0.1:8002',
           rewrite: (path: string) => path.replace(/^\/api\/ia/, ''),
         },
+        // O front conversa com o backend do domínio; ele dispara e acompanha a IA em segundo plano.
+        '/api/backend': {
+          target: 'http://127.0.0.1:8003',
+          rewrite: (path: string) => path.replace(/^\/api\/backend/, ''),
+        },
       },
     },
   },

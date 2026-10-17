@@ -23,7 +23,8 @@ import {
 } from "@/lib/mock-data";
 import { mesclarCamposDeArquivos } from "@/lib/ocr-mock";
 import { interpretarExtracaoIA, resultadosIA, camposPermitidos, camposParaPessoa } from "@/lib/ia-pagamento";
-import { iniciarExtracao, aguardarExtracao, registrarEnvioTeste } from "@/lib/ia-cliente";
+import { registrarEnvioTeste } from "@/lib/ia-cliente";
+import { enviarParaAnalise } from "@/lib/backend-cliente";
 import {
   beneficiariosCobertosPeloDocumento,
   getCoberturaDocumental,
@@ -56,7 +57,8 @@ type Step =
   | "ilegivel"
   | "conferencia_beneficiarios"
   | "confirmar_documento"
-  | "resumo_competencia";
+  | "resumo_competencia"
+  | "enviado";
 
 const stepLabels = ["Beneficiários", "Documento", "Revisão", "Resumo"];
 
@@ -64,6 +66,7 @@ function stepIndex(step: Step): number {
   if (step === "selecao") return 0;
   if (step === "upload" || step === "lendo" || step === "ilegivel") return 1;
   if (step === "conferencia_beneficiarios") return 2;
+  if (step === "enviado") return 3;
   return 3;
 }
 
@@ -125,131 +128,33 @@ function EnviarComprovante() {
     todosContemplados(coberturaDocumental) &&
     todosDocumentosComCoberturaDefinida(arquivosSelecionados, beneficiariosEscolhidos.length);
 
-  function iniciarProcessamento() {
-    setTituloErro('Não foi possível processar os documentos');
+  async function iniciarProcessamento() {
+    setTituloErro('Não foi possível registrar os documentos');
     setStep("lendo");
-    setEtapaLeitura(0);
+    setEtapaLeitura(1);
     setLeituraConcluida(false);
     setArquivosConcluidos(0);
     setArquivosIlegiveis([]);
 
-    setTimeout(() => {
-      setEtapaLeitura(1);
-      setTimeout(() => {
-        setEtapaLeitura(2);
-        setTimeout(async () => {
-          const todosIds = beneficiariosEscolhidos.map((b) => b.id);
-          try {
-          const leituras = new Map<File, Promise<CampoExtraido[]>>();
-          // Primeiro envia todos os documentos separadamente e recebe seus IDs.
-          // Depois acompanha cada execução em paralelo; a fila controla a carga do modelo.
-          const iniciadas = await Promise.allSettled(arquivosSelecionados.map(async (a) => {
-            resultadosIA.delete(a.file);
-            const tiposDoArquivo = a.documentos.map(d => d.tipo);
-            if (tiposDoArquivo.length !== 1) {
-              throw new Error('Cada arquivo deve ter exatamente um tipo documental. Separe boleto, comprovante e demais documentos em arquivos distintos.');
-            }
-            return iniciarExtracao(a.file, tiposDoArquivo[0], beneficiariosEscolhidos, competencia);
-          }));
-          const respostas: PromiseSettledResult<CampoExtraido[]>[] = await Promise.all(arquivosSelecionados.map(async (a, indice) => {
-            try {
-              const iniciada = iniciadas[indice];
-              if (iniciada.status === 'rejected') return { status: 'rejected', reason: iniciada.reason };
-              const { id, resultado } = await aguardarExtracao(iniciada.value);
-              const campos = interpretarExtracaoIA(a.file, a.documentos.map(d => d.tipo), beneficiariosEscolhidos, id, resultado);
-              leituras.set(a.file, Promise.resolve(campos));
-              return { status: 'fulfilled', value: campos };
-            } catch (reason) {
-              return { status: 'rejected', reason };
-            } finally {
-              setArquivosConcluidos(anterior => anterior + 1);
-            }
-          }));
-          const falhas = respostas.flatMap((resposta, indice) => {
-            if (resposta.status !== 'rejected') return [];
-            const motivo = resposta.reason?.name === 'TimeoutError'
-              ? 'O serviço de leitura não respondeu no prazo. Tente novamente.'
-              : resposta.reason instanceof Error ? resposta.reason.message : 'Falha de comunicação com a IA.';
-            return [`${arquivosSelecionados[indice].file.name}: ${motivo}`];
-          });
-          if (falhas.length) {
-            setGruposExtraidos([]);
-            setArquivosIlegiveis(falhas);
-            setStep('ilegivel');
-            return;
-          }
-          const tiposIncompativeis = arquivosSelecionados
-            .filter((a) => resultadosIA.get(a.file)?.avisoTipo)
-            .map((a) => `${a.file.name}: ${resultadosIA.get(a.file)?.avisoTipo}`);
-          if (tiposIncompativeis.length > 0) {
-            throw new Error(`TIPO_DOCUMENTO_INCOMPATIVEL:${tiposIncompativeis.join(" | ")}`);
-          }
-          const nomesEncontrados = arquivosSelecionados.flatMap((a) =>
-            resultadosIA.get(a.file)?.beneficiarios ?? []
-          );
-          const relacaoEncontrada = beneficiariosEscolhidos.some((b) =>
-            nomesEncontrados.some((l) => nomesIguais(l.nome, b.nome) || nomeAbreviadoCompativel(l.nome, b.nome) || nomeOCRCompativel(l.nome, b.nome))
-          );
-          const exigeIdentificacaoDeBeneficiario = arquivosSelecionados.some((a) =>
-            a.documentos.some((d) => ["boleto", "recibo", "demonstrativo", "fatura_tecnica"].includes(d.tipo))
-          );
-          if (exigeIdentificacaoDeBeneficiario && !relacaoEncontrada) {
-            throw new Error(nomesEncontrados.length > 0
-              ? `DOCUMENTOS_SEM_RELACAO:${nomesEncontrados.map((n) => n.nome).join(", ")}`
-              : "BENEFICIARIO_NAO_IDENTIFICADO");
-          }
-          const grupos = await Promise.all(beneficiariosEscolhidos.map(async (b) => {
-            // Só entram campos de arquivos com pelo menos 1 documento (tipo) que cobre este
-            // beneficiário — e só com os tipos que de fato o cobrem, não todos os do arquivo.
-            // Mesma regra de cobertura usada no checklist (`getCoberturaDocumental`).
-            const porArquivo = arquivosSelecionados.flatMap((a) => {
-              const tiposQueCobrem = a.documentos
-                .filter((d) => beneficiariosCobertosPeloDocumento(d, todosIds).includes(b.id))
-                .map((d) => d.tipo);
-              if (tiposQueCobrem.length === 0) return [];
-              const permitidos = new Set(tiposQueCobrem.flatMap(t => camposPermitidos[t]));
-              // O nome vem da lista de beneficiários do documento, não de campos.nome.
-              permitidos.add('nome');
-              const associadoEmAlgumArquivo = arquivosSelecionados.some((outro) =>
-                (resultadosIA.get(outro.file)?.beneficiarios ?? []).some((linha) =>
-                  nomesIguais(linha.nome, b.nome) || nomeAbreviadoCompativel(linha.nome, b.nome) || nomeOCRCompativel(linha.nome, b.nome)
-                )
-              );
-              return [{ nome: a.file.name, campos: leituras.get(a.file)!.then(() => camposParaPessoa(a.file, b.nome, todosIds.length > 1, associadoEmAlgumArquivo).filter(c => permitidos.has(c.chave))) }];
-            });
-            const processados = await Promise.all(porArquivo.map(async (arquivo) => ({
-              nome: arquivo.nome,
-              campos: await arquivo.campos,
-            })));
-            return { beneficiarioId: b.id, campos: mesclarCamposDeArquivos(processados) };
-          }));
-          setGruposExtraidos(grupos);
-          setLeituraConcluida(true);
-          setTimeout(() => {
-            setStep("conferencia_beneficiarios");
-          }, 500);
-          } catch (error) {
-            const codigo = error instanceof Error ? error.message : '';
-            setTituloErro(codigo === 'BENEFICIARIO_NAO_IDENTIFICADO' ? 'Beneficiário não identificado'
-              : codigo.startsWith('DOCUMENTOS_SEM_RELACAO:') ? 'Documentos sem relação com o beneficiário'
-              : codigo.startsWith('TIPO_DOCUMENTO_INCOMPATIVEL:') ? 'Tipo de documento incompatível'
-              : codigo === 'DOCUMENTO_ILEGIVEL' ? 'Documento ilegível' : 'Não foi possível processar os documentos');
-            console.error("Falha no processamento do comprovante pela IA", error);
-            const ilegiveis = error instanceof Error && error.message === "BENEFICIARIO_NAO_IDENTIFICADO"
-              ? ["A IA não conseguiu identificar nenhum beneficiário no boleto/documento principal."]
-              : error instanceof Error && error.message.startsWith("DOCUMENTOS_SEM_RELACAO:")
-              ? [error.message.replace("DOCUMENTOS_SEM_RELACAO:", "")]
-              : error instanceof Error && error.message.startsWith("TIPO_DOCUMENTO_INCOMPATIVEL:")
-              ? error.message.replace("TIPO_DOCUMENTO_INCOMPATIVEL:", "").split(" | ")
-              : error instanceof Error && error.message === "DOCUMENTO_ILEGIVEL"
-              ? arquivosSelecionados.map((a) => a.file.name)
-              : [error instanceof Error ? `Falha na IA: ${error.message}` : "Falha no processamento pela IA"];
-            setArquivosIlegiveis(ilegiveis);
-            setTimeout(() => setStep("ilegivel"), 700);
-          }
-        }, 600);
-      }, 500);
-    }, 350);
+    try {
+      // O navegador só registra o pedido. A espera pela IA pertence ao backend,
+      // assim o servidor não fica preso na tela de processamento.
+      const processoId = crypto.randomUUID();
+      await Promise.all(arquivosSelecionados.map(async (arquivo) => {
+        const tipos = arquivo.documentos.map((documento) => documento.tipo);
+        if (tipos.length !== 1) {
+          throw new Error('Cada arquivo deve ter exatamente um tipo documental. Separe os documentos antes de enviar.');
+        }
+        await enviarParaAnalise(arquivo.file, tipos[0], beneficiariosEscolhidos, competencia, processoId);
+        setArquivosConcluidos((anterior) => anterior + 1);
+      }));
+      setLeituraConcluida(true);
+      setStep("enviado");
+    } catch (error) {
+      const mensagem = error instanceof Error ? error.message : 'Falha de comunicação com o backend.';
+      setArquivosIlegiveis([mensagem]);
+      setStep("ilegivel");
+    }
   }
 
   function corrigirIlegivel() {
@@ -258,10 +163,11 @@ function EnviarComprovante() {
   }
 
   function handleChangeGrupo(beneficiarioId: string, campos: CampoExtraido[]) {
-    setGruposExtraidos((prev) => prev.map((g) => (g.beneficiarioId === beneficiarioId ? { ...g, campos } : g)));
+    setGruposExtraidos((anteriores) => anteriores.map((grupo) =>
+      grupo.beneficiarioId === beneficiarioId ? { ...grupo, campos } : grupo,
+    ));
   }
 
-  /** Persiste o documento em revisão — reflete no Resumo da competência, que só lê dados salvos. */
   async function confirmarDocumento() {
     if (salvandoEnvio) return;
     setSalvandoEnvio(true);
@@ -453,6 +359,24 @@ function EnviarComprovante() {
           falhouLegibilidade={arquivosIlegiveis.length > 0}
           onVoltar={() => setStep("upload")}
         />
+      )}
+
+
+      {step === "enviado" && (
+        <div className="mx-auto max-w-xl rounded-xl border border-success/30 bg-success/5 p-6 text-center space-y-4">
+          <h3 className="text-lg font-semibold text-success">Documentos enviados para análise</h3>
+          <p className="text-sm text-muted-foreground">
+            O envio já está na fila do analista. A IA processa os arquivos em segundo plano e o resultado técnico será anexado ao caso quando estiver pronto.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <button onClick={() => navigate({ to: "/admin/comprovantes" })} className="rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary-light">
+              Abrir fila do analista
+            </button>
+            <button onClick={() => navigate({ to: "/servidor/pagamentos" })} className="rounded-md border border-border px-4 py-2.5 text-sm hover:bg-muted">
+              Voltar para pagamentos
+            </button>
+          </div>
+        </div>
       )}
 
       {step === "ilegivel" && (
