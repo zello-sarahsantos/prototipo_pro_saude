@@ -20,7 +20,6 @@ import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
 import { AnalisePlanilhaModal } from "@/components/AnalisePlanilhaModal";
 import { DocPreview } from "@/components/DocPreview";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
-import { listarComprovantesTeste } from "@/lib/ia-cliente";
 import { editarCampoBackend, emitirParecerBackend, listarComprovantesBackend, reenviarIaBackend, type BackendComprovante } from "@/lib/backend-cliente";
 import { DivergenciaAprovacaoModal } from "@/components/DivergenciaAprovacaoModal";
 import { getAdminRole } from "@/components/AdminLayout";
@@ -39,7 +38,6 @@ import {
 } from "@/lib/mock-data";
 import {
   getComprovantesUnificados,
-  importarComprovantesPagamentoTeste,
   updateComprovantePagamento,
   getBeneficiariosPagamentoAtual,
   atualizarValorCadastradoBeneficiario,
@@ -180,7 +178,6 @@ function Comprovantes() {
   const autor = isGerencia ? gerenteReferencia : analistaReferencia;
   const etapaAtual: "analista" | "gerencia" = isGerencia ? "gerencia" : "analista";
   const [refreshKey, setRefreshKey] = useState(0);
-  const [enviosDoBanco, setEnviosDoBanco] = useState<Comprovante[]>([]);
   const [filaBackend, setFilaBackend] = useState<BackendComprovante[]>([]);
   const [erroFilaBackend, setErroFilaBackend] = useState("");
   const [processoBackendAberto, setProcessoBackendAberto] = useState<BackendComprovante | null>(null);
@@ -209,18 +206,7 @@ function Comprovantes() {
 
   const todos = useMemo(() => {
     const locais = getComprovantesUnificados();
-    const ids = new Set(locais.map(c => c.id));
-    return [...locais, ...enviosDoBanco.filter(c => !ids.has(c.id))];
-  }, [refreshKey, enviosDoBanco]);
-  useEffect(() => {
-    let ativo = true;
-    listarComprovantesTeste().then(envios => {
-      if (ativo) {
-        importarComprovantesPagamentoTeste(envios);
-        setEnviosDoBanco(envios);
-      }
-    }).catch(() => { /* Exemplos locais continuam disponíveis se o serviço de teste estiver offline. */ });
-    return () => { ativo = false; };
+    return locais;
   }, [refreshKey]);
   useEffect(() => {
     let ativo = true;
@@ -781,8 +767,7 @@ function Comprovantes() {
               <ResumoAnalise comprovante={cur} beneficiarios={beneficiariosAtuais} />
               <div className="space-y-2">
                 {cur.arquivos.map((a, index) => (
-                  <DocPreview key={`${a.nome}-${index}`} filename={a.nome}
-                    src={a.execucaoId ? `/api/ia/simulacao/envios/${encodeURIComponent(cur.id)}/arquivos/${index + 1}` : undefined} />
+                  <DocPreview key={`${a.nome}-${index}`} filename={a.nome} />
                 ))}
               </div>
 

@@ -1,22 +1,5 @@
 import type { Comprovante, TipoDocumentoArquivo } from "./mock-data";
 
-export async function listarComprovantesTeste(): Promise<Comprovante[]> {
-  const response = await fetch('/api/ia/simulacao/comprovantes', { signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`Falha ao consultar envios: HTTP ${response.status}`);
-  return await response.json() as Comprovante[];
-}
-
-export async function registrarEnvioTeste(comprovante: Comprovante, execucoes: string[]): Promise<void> {
-  const response = await fetch('/api/ia/simulacao/envios', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ comprovante, execucoes }), signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) {
-    const erro = await response.json().catch(() => ({}));
-    throw new Error(typeof erro.detail === 'string' ? erro.detail : `Falha ao salvar no banco de teste: HTTP ${response.status}`);
-  }
-}
-
 export async function iniciarExtracao(file: File, tipo: TipoDocumentoArquivo, candidatos: { nome: string; operadora?: string; valorCadastrado?: number }[] = [], competencia = '', modo: 'async' | 'sync' = 'async'): Promise<{ id: string; status: string; resultado?: any; erro?: string }> {
   const form = new FormData();
   form.append("arquivo", file);

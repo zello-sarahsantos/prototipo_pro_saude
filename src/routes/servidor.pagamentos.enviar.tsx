@@ -23,7 +23,6 @@ import {
 } from "@/lib/mock-data";
 import { mesclarCamposDeArquivos } from "@/lib/ocr-mock";
 import { interpretarExtracaoIA, resultadosIA, camposPermitidos, camposParaPessoa } from "@/lib/ia-pagamento";
-import { registrarEnvioTeste } from "@/lib/ia-cliente";
 import { enviarParaAnalise } from "@/lib/backend-cliente";
 import {
   beneficiariosCobertosPeloDocumento,
@@ -173,8 +172,6 @@ function EnviarComprovante() {
     setSalvandoEnvio(true);
     setErroSalvarEnvio('');
     try {
-    const execucoes = arquivosSelecionados.map(a => resultadosIA.get(a.file)?.execucaoId);
-    if (execucoes.some(id => !id)) throw new Error('Há arquivo sem execução de IA concluída. Reprocesse os anexos.');
     const arquivosDoEnvio: ArquivoAnexado[] = arquivosSelecionados.map((a) => ({
       nome: a.file.name,
       documentos: a.documentos,
@@ -200,7 +197,6 @@ function EnviarComprovante() {
       aprovacoes: [],
       dataEnvio: new Date().toISOString(),
     };
-    await registrarEnvioTeste(novoComprovante, execucoes as string[]);
     addComprovantePagamento(novoComprovante);
     idEnvioPendente.current = null;
     setRefreshResumoKey((k) => k + 1);
