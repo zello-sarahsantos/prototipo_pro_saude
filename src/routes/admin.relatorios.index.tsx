@@ -8,6 +8,7 @@ import {
   Activity,
   RefreshCcw,
   ArrowRight,
+  Handshake,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
 import { competenciasParaFechamento, formatCompetencia, getResumoFechamento } from "@/lib/fechamento-pagamento";
@@ -83,6 +84,24 @@ function VisaoGeralRelatorios() {
             <p className="font-medium text-sm">Ressarcimento de meses anteriores</p>
             <p className="text-xs text-muted-foreground">
               Análise, consolidação e histórico dos ressarcimentos retroativos.</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-auto" />
+        </div>
+      </Link>
+
+      <Link
+        to="/admin/relatorios/negociacoes"
+        className="block bg-card rounded-xl border border-border shadow-card p-4 hover:border-primary transition"
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Handshake className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="font-medium text-sm">Ressarcimento de Negociações</p>
+            <p className="text-xs text-muted-foreground">
+              Parcelas de negociações com quitação confirmada, reunidas em relatório de ressarcimento para o NURFI.
+            </p>
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-auto" />
         </div>

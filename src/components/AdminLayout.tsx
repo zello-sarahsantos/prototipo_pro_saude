@@ -12,6 +12,7 @@ import {
   FileCheck,
   BarChart3,
   RefreshCcw,
+  Handshake,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AdminNotificationBell } from "@/components/AdminNotificationBell";
@@ -28,6 +29,7 @@ const baseItems = [
   { to: "/admin/requerimentos", icon: ClipboardList, label: "Requerimentos" },
   { to: "/admin/comprovantes", icon: FileCheck, label: "Comprovantes" },
   { to: "/admin/retroativos", icon: RefreshCcw, label: "Ressarcimentos de meses anteriores" },
+  { to: "/admin/negociacoes", icon: Handshake, label: "Negociações" },
   { to: "/admin/relatorios", icon: BarChart3, label: "Relatórios" },
   { to: "/admin/carga-inicial", icon: Upload, label: "Carga Inicial" },
 ];

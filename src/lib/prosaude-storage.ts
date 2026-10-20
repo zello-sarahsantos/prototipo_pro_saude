@@ -30,6 +30,15 @@ export const PROSAUDE_STORAGE_KEYS = {
   solicitacoesRetroativas: "prosaude_solicitacoes_retroativas",
   // Fase 10 — Histórico do Fechamento de Pagamento (chave já reservada desde a Fase 0).
   historicoFechamentos: "prosaude_historico_relatorios",
+  // Módulo de Negociações (Fase 1). Metadados e valores aqui; o conteúdo dos anexos fica em IndexedDB
+  // (`armazenamento-arquivos.ts`), indexado pelo id do documento.
+  negociacoes: "prosaude_negociacoes",
+  massaDemoNegociacoes: "prosaude_massa_demo_negociacoes",
+  // Fase 3 — Relatórios de Negociações enviados pelas Associações (conteúdo em IndexedDB, mesmo id).
+  negociacoesEnvios: "prosaude_negociacoes_envios",
+  massaDemoNegociacoesEnvios: "prosaude_massa_demo_negociacoes_envios",
+  // Fase 4 — Emissões do Relatório de Ressarcimento de Negociações (snapshots imutáveis; fonte única do controle de duplicidade).
+  negociacoesEmissoes: "prosaude_negociacoes_emissoes_ressarcimento",
   /** Data simulada do protótipo (limitação de demonstração — ver `dias-uteis.ts`). */
   dataReferenciaPrototipo: "prosaude_data_referencia",
 } as const;

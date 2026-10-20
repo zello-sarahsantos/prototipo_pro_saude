@@ -1967,6 +1967,15 @@ GERDAB, o tema escuro e o sino de notificações do Admin estão documentados em
 ganhou os campos opcionais `gruposCabecalho`, `notas` e `nomeAba`, sem efeito sobre os relatórios
 existentes.
 
+### 3.32 Relatório de Ressarcimento de Negociações
+
+O relatório de ressarcimento das **negociações** de débitos de servidores (parcelas com quitação manual confirmada, emissões em
+snapshot imutável, exportação PDF/Excel e histórico) é acessível pela Central de Relatórios
+(`/admin/relatorios/negociacoes`, card "Ressarcimento de Negociações") e pela aba "Relatório de ressarcimento" do módulo
+Negociações — **mesma implementação e mesma fonte de dados**. Está documentado em `docs/MODULO_NEGOCIACOES.md` (seção 6). O menu
+Exportar do histórico usa o novo modo opcional `flutuante` do `ExportarRelatorio` (portal + posição fixa), sem efeito sobre as telas
+existentes.
+
 ---
 
 ## 4. Fora de escopo (decisão explícita, registrada desde já)
@@ -1976,7 +1985,7 @@ existentes.
   (`ressarcimento-retroativo.ts`), fila de análise, relatório NURFI retroativo, planilhas de
   associação e a integração com o retroativo leve legado (que permanece intacto, agora só como
   referência histórica). O que continua fora desta rodada: negociação/parcelamento com
-  operadoras, integração automática com contracheque real, e o texto institucional definitivo do
+  operadoras (o módulo de Negociações agora existe — ver `docs/MODULO_NEGOCIACOES.md`; o retroativo continua sem parcelamento), integração automática com contracheque real, e o texto institucional definitivo do
   relatório retroativo (ver seção 5).
 - Integração real com SEI (links diretos, blocos de assinatura, abertura de processo),
   integração com GOV.BR (assinatura) e integração com WhatsApp — todas citadas na ata como

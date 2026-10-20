@@ -1495,3 +1495,48 @@ os elementos interativos; Enter/Espaço ativam cartões com `role="button"`.
 3. Rótulos legados "Retroativo" do fluxo antigo de comprovantes (fora do Dashboard) mantidos.
 4. O Dashboard e o NUPLA usam tokens `.gd` (protótipo aprovado) em vez dos tokens Tailwind das
    seções 4–5; unificar os dois conjuntos exigiria decisão própria.
+
+---
+
+## 29. Módulo de Negociações (Admin GERDAB, Área da Associação e Relatório de Ressarcimento)
+
+> **Fonte:** requisitos validados com o responsável pelo produto em quatro fases. Telas administrativas usam os tokens `.gd`
+> (mesmo conjunto das telas da seção 28); a Área da Associação segue o estilo Tailwind/slate das demais telas da associação, com
+> trechos `className="gd"` apenas onde o componente compartilhado (`SeletorArquivo`) exige. Documentação funcional:
+> `docs/MODULO_NEGOCIACOES.md`.
+
+### 29.1 Estrutura e navegação
+- Menu lateral "Negociações" (ícone aperto de mãos). Abas internas (`NegociacoesNav`): **Negociações**, **Relatórios das associações**
+  (com contador âmbar de pendentes) e **Relatório de ressarcimento**.
+- Cabeçalho padrão: título (26 px, 700), subtítulo, selo âmbar "Dados demonstrativos".
+- Detalhe da negociação em **seis seções numeradas e expansíveis** (mesmo padrão de "Ressarcimentos de meses anteriores"); **não** usar
+  cartões A–F.
+- Cadastro em 5 etapas com *stepper* compacto no mobile (fonte 8,5 px, depois 7,5 px, sem cortar rótulos).
+- Etapa de parcelas: quatro campos em uma linha; o painel **Resumo fica à direita** e passa abaixo no mobile (*container queries*,
+  4 colunas ≥ 760 px, 2+2 intermediário, 1 coluna ≤ 420 px nos documentos).
+
+### 29.2 Componentes e padrões
+- **Upload**: botão "Selecionar documento" (sem o texto padrão do navegador); depois "Substituir arquivo" + nome do arquivo e ajuda abaixo.
+- **Listas em grade responsivas** (`.neg-fila-row`, `.neg-env-row`, `.neg-res-row`, `.neg-hist-row`, `.neg-rel-row`): tabela com cabeçalho
+  em telas largas; **cartões com rótulos** (`.neg-lbl`) em contêineres estreitos; sem rolagem horizontal.
+- **Selos**: "Preenchido manualmente" (âmbar, lápis) × "Calculado automaticamente" (neutro); situação de relatório da associação:
+  **"Pendente de conferência" = âmbar** e **"Conferido" = verde**, idênticos no Portal da Associação e no Admin; receber arquivo nunca é
+  verde. Não existe selo/ação de "reenvio" nem numeração de versões.
+- **Relatório de ressarcimento**: quatro indicadores no topo (disponíveis, selecionadas, não selecionadas, valor total selecionado);
+  seção "1. Parcelas disponíveis" com busca, filtro, "Selecionar todas"/"Desmarcar todas" (com o **alcance escrito**), lista com caixa de
+  seleção por linha, "Mostrar mais"; botões **Pré-visualizar** (secundário) e **Emitir relatório** (primário, desabilitado sem seleção);
+  confirmação em diálogo (quantidade, total, aviso de registro no histórico); seção "2. Histórico de emissões" com Consultar e Exportar.
+- **Menu Exportar dentro de tabelas**: usar `ExportarRelatorio flutuante` (portal no `<body>`, posição fixa, abre para cima quando falta
+  espaço). Nunca remover o `overflow` da moldura para "resolver" o corte.
+- **Restaurar dados de demonstração**: link discreto (texto `muted`, ícone de desfazer) no fim da página, **sem competir** com
+  "Emitir relatório"; confirmação deixa claro que afeta apenas registros demonstrativos e o que é preservado.
+- Documentos PDF/Excel do relatório: identificação como "Emitido em: 20/10/2026, às 11h51" e "Responsável pela emissão" (não como filtros).
+
+### 29.3 Tema escuro e responsividade
+- Selos e cartões usam variáveis `--gd-*`; na Área da Associação, preferir classes com sobrescrita escura já existente
+  (`bg-slate-50`, `bg-amber-50`, `bg-green-100`; **evitar `bg-slate-100` e `bg-amber-100`**, que ficam ilegíveis no escuro).
+- Verificado em 375 px (claro e escuro) nas 8 telas do módulo: sem rolagem horizontal.
+
+### 29.4 Pendências de decisão visual
+1. A Área da Associação mantém o estilo Tailwind/slate; unificar com `.gd` exigiria decisão própria.
+2. Paginação do relatório de ressarcimento é "Mostrar mais" (10 por vez); uma paginação numerada exigiria decisão.

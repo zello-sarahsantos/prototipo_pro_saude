@@ -358,3 +358,83 @@
   .gd .gd-clk, .gd .gd-opt, .gd .gd-row, .gd .gd-sec { transition: none; }
   .gd .gd-clk:hover, .gd .gd-sec:has(.gd-sec-head:hover) { transform: none; }
 }
+
+/* ── Módulo de Negociações — lista responsiva (linhas em grade; viram cartões no mobile) ───────── */
+.gd .neg-row { display: grid; grid-template-columns: minmax(180px, 2.2fr) 90px minmax(130px, 1.4fr) 90px 130px 110px 70px; gap: 0 12px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--gd-border); color: var(--gd-text); text-decoration: none; font-size: 13px; }
+.gd .neg-row.neg-head { font-size: 12px; font-weight: 600; color: var(--gd-muted); border-top: none; padding-top: 6px; padding-bottom: 6px; }
+.gd a.neg-row:hover { text-decoration: none; }
+.gd .neg-row .neg-lbl { display: none; }
+.gd .neg-list { container-type: inline-size; }
+@container (max-width: 920px) {
+  .gd .neg-row.neg-head { display: none; }
+  .gd .neg-row { grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 12px; }
+  .gd .neg-row > :first-child { grid-column: 1 / -1; }
+  .gd .neg-row > span { text-align: left !important; display: block; }
+  .gd .neg-row > :last-child { grid-column: 1 / -1; text-align: right !important; }
+  .gd .neg-row .neg-lbl { display: block; font-size: 11px; color: var(--gd-muted); }
+}
+
+/* Negociações — indicador de etapas legível em telas estreitas (rótulos longos como "CONFERÊNCIA"). */
+@media (max-width: 480px) {
+  .gd .neg-stepper ol { gap: 4px; }
+  .gd .neg-stepper li p { font-size: 7.5px; letter-spacing: 0; overflow-wrap: anywhere; }
+}
+
+/* Seletor de arquivo padronizado (input nativo oculto visualmente, mas focável por teclado). */
+.gd .neg-file input:focus-visible + div .neg-file-botao { outline: 2px solid var(--gd-primary); outline-offset: 2px; }
+.gd .neg-file-botao:hover { border-color: var(--gd-primary) !important; }
+
+/* Formulário de anexo: 4 campos na mesma linha quando há espaço; senão 2 + 2; 1 coluna em telas estreitas.
+   Medido pelo contêiner (não pela janela), pois o Resumo lateral reduz a largura útil. */
+.gd .neg-doc, .gd .neg-doc-wrap { container-type: inline-size; }
+.gd .neg-doc-grid { display: grid; gap: 12px; align-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container (min-width: 760px) { .gd .neg-doc-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (max-width: 420px) { .gd .neg-doc-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Rotina mensal — fila de confirmações de pagamento (linhas em grade; viram cartões em contêineres estreitos). */
+.gd .neg-fila { container-type: inline-size; }
+.gd .neg-fila-row { display: grid; grid-template-columns: minmax(200px, 2.4fr) 80px 110px 120px 140px 120px; gap: 0 12px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--gd-border); font-size: 14px; }
+.gd .neg-fila-row.neg-fila-head { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--gd-muted); border-top: none; padding-top: 9px; padding-bottom: 9px; }
+.gd .neg-fila-row .neg-lbl { display: none; }
+@container (max-width: 820px) {
+  .gd .neg-fila-row.neg-fila-head { display: none; }
+  .gd .neg-fila-row { grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 14px 16px; }
+  .gd .neg-fila-row > :first-child { grid-column: 1 / -1; }
+  .gd .neg-fila-row > span { text-align: left !important; display: block; }
+  .gd .neg-fila-row > :last-child { grid-column: 1 / -1; }
+  .gd .neg-fila-row .neg-lbl { display: block; font-size: 11px; font-weight: 400; color: var(--gd-muted); text-transform: none; letter-spacing: 0; }
+}
+
+/* Relatórios recebidos das associações (GERDAB) — linhas em grade; cartões em contêineres estreitos. */
+.gd .neg-env { container-type: inline-size; }
+.gd .neg-env-row { display: grid; grid-template-columns: minmax(200px, 2.2fr) 130px 110px 150px 200px; gap: 0 12px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--gd-border); font-size: 14px; }
+.gd .neg-env-row.neg-env-head { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--gd-muted); border-top: none; padding-top: 9px; padding-bottom: 9px; }
+.gd .neg-env-row .neg-lbl { display: none; }
+@container (max-width: 860px) {
+  .gd .neg-env-row.neg-env-head { display: none; }
+  .gd .neg-env-row { grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 14px 16px; }
+  .gd .neg-env-row > :first-child, .gd .neg-env-row > :last-child { grid-column: 1 / -1; }
+  .gd .neg-env-row .neg-lbl { display: block; font-size: 11px; font-weight: 400; color: var(--gd-muted); text-transform: none; letter-spacing: 0; }
+}
+
+/* Relatório de Ressarcimento de Negociações (Fase 4) — linhas em grade; cartões em contêineres estreitos. */
+.gd .neg-res-resumo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .gd .neg-res-resumo { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.gd .neg-res { container-type: inline-size; border: 1px solid var(--gd-border); border-radius: 10px; overflow: hidden; }
+.gd .neg-res-row, .gd .neg-hist-row, .gd .neg-rel-row { display: grid; gap: 0 12px; align-items: center; padding: 11px 16px; border-top: 1px solid var(--gd-border); font-size: 14px; }
+.gd .neg-res-row { grid-template-columns: 28px minmax(180px, 2fr) minmax(120px, 1.2fr) minmax(130px, 1.2fr) 100px 150px; }
+.gd .neg-hist-row { grid-template-columns: minmax(120px, 1fr) 150px minmax(120px, 1fr) 80px 130px minmax(200px, auto); }
+.gd .neg-rel-row { grid-template-columns: 90px minmax(160px, 2fr) minmax(110px, 1.2fr) 100px 80px 100px 150px; }
+.gd .neg-res-head, .gd .neg-hist-head, .gd .neg-rel-head { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--gd-muted); border-top: none; padding-top: 9px; padding-bottom: 9px; }
+.gd .neg-res .neg-lbl { display: none; }
+@container (max-width: 860px) {
+  .gd .neg-res-head, .gd .neg-hist-head, .gd .neg-rel-head { display: none; }
+  .gd .neg-res-row { grid-template-columns: 28px 1fr 1fr; gap: 8px 12px; padding: 14px 16px; }
+  .gd .neg-res-row > :nth-child(2), .gd .neg-res-row > :nth-child(3), .gd .neg-res-row > :nth-child(6) { grid-column: 2 / -1; }
+  .gd .neg-res-row > :nth-child(4) { grid-column: 2; }
+  .gd .neg-res-row > :nth-child(5) { grid-column: 3; }
+  .gd .neg-hist-row, .gd .neg-rel-row { grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 14px 16px; }
+  .gd .neg-hist-row > :first-child, .gd .neg-hist-row > :last-child, .gd .neg-rel-row > :nth-child(2) { grid-column: 1 / -1; }
+  .gd .neg-res-row > span:last-child, .gd .neg-hist-row > span, .gd .neg-rel-row > span:last-child { text-align: left !important; }
+  .gd .neg-res .neg-lbl { display: block; font-size: 11px; font-weight: 400; color: var(--gd-muted); text-transform: none; letter-spacing: 0; }
+}

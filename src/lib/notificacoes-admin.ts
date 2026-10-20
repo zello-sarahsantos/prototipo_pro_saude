@@ -10,6 +10,8 @@
 import { formatCompetencia } from "./mock-data";
 import { listarRequerimentosAssociacao, statusAtualRequerimento, tipoRequerimentoAssociacaoLabels } from "./requerimentos-associacao";
 import { getEstadoCompetencia, getSolicitacoesRetroativas } from "./ressarcimento-retroativo";
+import { getCompetenciaReferencia, getFilaConfirmacoes } from "./negociacoes";
+import { enviosAguardandoConferencia } from "./negociacoes-envios";
 
 export interface NotificacaoAdmin {
   id: string;
@@ -21,8 +23,13 @@ export interface NotificacaoAdmin {
   lida: boolean;
   /** Rota interna de destino (opcional). */
   href?: string;
+  /** Chave usada para registrar a leitura (padrão: `id`). */
+  chaveLeitura?: string;
 }
 
+/** Id fixo da notificação da fila de Negociações; "lida" vale para a contagem em que foi lida (nova contagem = pendente de leitura de novo). */
+export const ID_NEGOCIACOES = "real-negociacoes-fila";
+export const ID_ENVIOS = "real-negociacoes-envios";
 const CHAVE_LIDAS = "prosaude_notificacoes_admin_lidas";
 
 /** Exemplos do protótipo aprovado (Dashboard GERDAB). Não representam eventos reais. */
@@ -87,13 +94,57 @@ function getNotificacoesReais(): Omit<NotificacaoAdmin, "lida">[] {
         href: `/admin/retroativos?origem=${s.origem}`,
       })),
   );
-  return [...reqs, ...ress];
+  return [...getNotificacaoNegociacoes(), ...getNotificacaoEnvios(), ...reqs, ...ress];
+}
+
+/** Notificação DINÂMICA e única da fila de confirmações de pagamento das Negociações (tarefa de conferência — não indica
+ *  que houve pagamento). Some quando a fila fica vazia; o id é fixo, então nunca se duplica por acesso ou recarga.
+ *  Perfis: só Analista e Gerência (o sino do Admin só existe para eles; aqui reforçado). */
+function getNotificacaoNegociacoes(): Omit<NotificacaoAdmin, "lida">[] {
+  if (typeof window === "undefined") return [];
+  const perfil = localStorage.getItem("prosaude_role") || "gerencia";
+  if (perfil !== "analista" && perfil !== "gerencia") return [];
+  const fila = getFilaConfirmacoes();
+  if (fila.length === 0) return [];
+  return [
+    {
+      id: ID_NEGOCIACOES,
+      origem: "real",
+      titulo: "Negociações — Confirmações pendentes",
+      descricao: `Existem ${fila.length} ${fila.length === 1 ? "parcela" : "parcelas"} de negociações aguardando conferência de pagamento.`,
+      quando: `Competência ${getCompetenciaReferencia().split("-").reverse().join("/")}`,
+      href: "/admin/negociacoes?rotina=1",
+      chaveLeitura: `${ID_NEGOCIACOES}:${fila.length}`,
+    },
+  ];
+}
+
+/** Relatórios de Negociações enviados por associações e ainda não conferidos pela GERDAB — notificação única e dinâmica
+ *  (some quando todos foram conferidos). Indica consulta/conferência manual; nada é lido nem baixado automaticamente. */
+function getNotificacaoEnvios(): Omit<NotificacaoAdmin, "lida">[] {
+  if (typeof window === "undefined") return [];
+  const perfil = localStorage.getItem("prosaude_role") || "gerencia";
+  if (perfil !== "analista" && perfil !== "gerencia") return [];
+  const aguardando = enviosAguardandoConferencia();
+  if (aguardando.length === 0) return [];
+  const associacoes = [...new Set(aguardando.map((e) => e.associacao.toUpperCase()))].join(", ");
+  return [
+    {
+      id: ID_ENVIOS,
+      origem: "real",
+      titulo: "Negociações — Relatórios recebidos das associações",
+      descricao: `${aguardando.length} ${aguardando.length === 1 ? "relatório aguarda" : "relatórios aguardam"} consulta e conferência (${associacoes}).`,
+      quando: new Date(Math.max(...aguardando.map((e) => new Date(e.enviadoEm).getTime()))).toLocaleDateString("pt-BR"),
+      href: "/admin/negociacoes/recebidos",
+      chaveLeitura: `${ID_ENVIOS}:${aguardando.map((e) => e.id).sort().join(",")}`,
+    },
+  ];
 }
 
 /** Reais primeiro (mais acionáveis), depois as demonstrativas. */
 export function getNotificacoesAdmin(): NotificacaoAdmin[] {
   const lidos = lerIdsLidos();
-  const reais = getNotificacoesReais().map((n) => ({ ...n, lida: lidos.has(n.id) }));
+  const reais = getNotificacoesReais().map((n) => ({ ...n, lida: lidos.has(n.chaveLeitura ?? n.id) }));
   const demo = DEMONSTRATIVAS.map((n) => ({ ...n, origem: "demonstrativa" as const, lida: n.lida || lidos.has(n.id) }));
   return [...reais, ...demo];
 }

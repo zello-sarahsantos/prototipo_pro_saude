@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, X } from "lucide-react";
+import { EVENTO_NEGOCIACOES } from "@/lib/negociacoes";
+import { garantirMassaDemonstracaoEnvios } from "@/lib/massa-demonstracao-envios";
+import { garantirMassaDemonstracaoNegociacoes } from "@/lib/massa-demonstracao-negociacoes";
 import { getNotificacoesAdmin, marcarComoLidas, type NotificacaoAdmin } from "@/lib/notificacoes-admin";
 
 /** Sino de notificações do ambiente administrativo (comportamento do protótipo aprovado): contador de
@@ -13,7 +16,20 @@ export function AdminNotificationBell() {
   const navigate = useNavigate();
 
   const recarregar = () => setItens(getNotificacoesAdmin());
-  useEffect(recarregar, []);
+  useEffect(() => {
+    recarregar();
+    // Massa demonstrativa das Negociações (idempotente) e atualização imediata quando houver quitação/cadastro.
+    garantirMassaDemonstracaoNegociacoes().finally(() => {
+      recarregar();
+      void garantirMassaDemonstracaoEnvios().finally(recarregar);
+    });
+    window.addEventListener(EVENTO_NEGOCIACOES, recarregar);
+    window.addEventListener("storage", recarregar);
+    return () => {
+      window.removeEventListener(EVENTO_NEGOCIACOES, recarregar);
+      window.removeEventListener("storage", recarregar);
+    };
+  }, []);
 
   useEffect(() => {
     if (!aberto) return;
@@ -34,11 +50,12 @@ export function AdminNotificationBell() {
 
   const naoLidas = itens.filter((n) => !n.lida).length;
   const abrir = (n: NotificacaoAdmin) => {
-    marcarComoLidas([n.id]);
+    marcarComoLidas([n.chaveLeitura ?? n.id]);
     recarregar();
     if (n.href) {
       setAberto(false);
-      navigate({ to: n.href as string });
+      // `rotina=<instante>` muda a cada clique: a seção reabre a fila mesmo se o usuário já estiver na página.
+      navigate({ to: n.href.replace("rotina=1", `rotina=${Date.now()}`) as string });
     }
   };
 
@@ -75,7 +92,7 @@ export function AdminNotificationBell() {
                 <button
                   type="button"
                   onClick={() => {
-                    marcarComoLidas(itens.map((n) => n.id));
+                    marcarComoLidas(itens.map((n) => n.chaveLeitura ?? n.id));
                     recarregar();
                   }}
                   className="text-xs font-semibold text-primary hover:underline"

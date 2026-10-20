@@ -81,3 +81,6 @@ out/
 *.sw?
 
 .wrangler/
+
+# TanStack Router (cache local)
+.tanstack/

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Upload, History, LogOut, Building2, Menu, X, Shield, UserPlus, RefreshCcw } from "lucide-react";
+import { Upload, History, LogOut, Building2, Menu, X, Shield, UserPlus, RefreshCcw, FileSpreadsheet } from "lucide-react";
 import { useState } from "react";
 import { AlternarTema } from "@/components/AlternarTema";
 
@@ -15,6 +15,7 @@ function AssociacaoLayout() {
     { to: "/associacao/upload", icon: Upload, label: "Upload de Planilha (ASSEFAZ)" },
     { to: "/associacao/retroativo", icon: RefreshCcw, label: "Envio de meses anteriores" },
     { to: "/associacao/gerenciamento", icon: UserPlus, label: "Gerenciamento (ASSETRAN)" },
+    { to: "/associacao/negociacoes", icon: FileSpreadsheet, label: "Relatório de Negociações" },
   ];
 
   return (
