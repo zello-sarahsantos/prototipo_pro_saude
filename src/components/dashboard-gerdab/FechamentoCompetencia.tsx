@@ -136,18 +136,18 @@ export function FechamentoCompetencia({ dados, competencia, competenciaRotulo, s
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-        <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "adimplente" }} title="Consolidação vigente · Adimplentes" className="gd-clk" style={tile}>
-          <span style={rotuloTile}><span style={{ width: 8, height: 8, borderRadius: 2, background: V.green }} />Adimplentes</span>
+        <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "adimplente" }} title="Consolidação vigente · Adimplentes" className="gd-clk gd-card-ind gd-card-sec" style={tile}>
+          <span className="gd-titulo" style={rotuloTile}><span style={{ width: 8, height: 8, borderRadius: 2, background: V.green }} />Adimplentes</span>
           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}><span style={valorTile}>{num(adimplentes)}</span><span style={{ fontSize: 13, color: V.muted }}>servidores</span></span>
           <span style={acaoTile}>Ver relação →</span>
         </Link>
-        <button type="button" onClick={abrirComp} aria-expanded={aberta && aba === "competencia"} className="gd-clk" data-sel={aberta && aba === "competencia" ? "true" : undefined} style={{ ...tile, alignItems: "flex-start", background: V.card, fontFamily: "inherit", textAlign: "left" }}>
-          <span style={rotuloTile}><span style={{ width: 8, height: 8, borderRadius: 2, background: V.red }} />Inadimplentes</span>
+        <button type="button" onClick={abrirComp} aria-expanded={aberta && aba === "competencia"} className="gd-clk gd-card-ind gd-card-sec" data-sel={aberta && aba === "competencia" ? "true" : undefined} style={{ ...tile, alignItems: "flex-start", background: V.card, fontFamily: "inherit", textAlign: "left" }}>
+          <span className="gd-titulo" style={rotuloTile}><span style={{ width: 8, height: 8, borderRadius: 2, background: V.red }} />Inadimplentes</span>
           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}><span style={valorTile}>{num(inadimplentes.length)}</span><span style={{ fontSize: 13, color: V.muted }}>servidores</span></span>
           <span style={acaoTile}>Consultar e exportar →</span>
         </button>
-        <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "requer_analise" }} title="Consolidação vigente · Requer análise" className="gd-clk" style={tile}>
-          <span style={rotuloTile}><span style={{ width: 8, height: 8, borderRadius: 2, background: V.amber }} />Requer análise</span>
+        <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "requer_analise" }} title="Consolidação vigente · Requer análise" className="gd-clk gd-card-ind gd-card-sec" style={tile}>
+          <span className="gd-titulo" style={rotuloTile}><span style={{ width: 8, height: 8, borderRadius: 2, background: V.amber }} />Requer análise</span>
           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}><span style={valorTile}>{num(requerAnalise)}</span><span style={{ fontSize: 13, color: V.muted }}>servidores</span></span>
           <span style={acaoTile}>Ver pendências →</span>
         </Link>

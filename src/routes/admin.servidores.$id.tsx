@@ -12,6 +12,7 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { PendencyBanner } from "@/components/PendencyBanner";
 import { getAdminRole } from "@/components/AdminLayout";
+import { CAMPOS_EDITAVEIS, mascararTelefone, responsavelCadastro, salvarAlteracaoCadastral, useAlteracoesCadastrais, useTelefoneServidor, type EventoAlteracaoCadastral } from "@/lib/servidor-cadastro";
 import { DocPreview } from "@/components/DocPreview";
 import {
   loadObservacoesGerdab,
@@ -102,8 +103,10 @@ function DetalheServidor() {
   const analisesDocumento = solicitacoesDocumento.filter(
     (o) => o.analiseStatus === "aprovado" || o.analiseStatus === "reenvio_solicitado",
   ).length;
+  const alteracoesCadastraisCount = useAlteracoesCadastrais().length;
   const historicoCount =
     2 +
+    alteracoesCadastraisCount +
     requerimentos.filter((r) => r.matricula === servidorAtual.matricula).length +
     pendenciasDependentes().length +
     solicitacoesDocumento.length +
@@ -227,13 +230,14 @@ function DetalheServidor() {
 // Fix #6 — Editar abre modal com campos editáveis
 function TabDados() {
   const [editOpen, setEditOpen] = useState(false);
+  const telefone = useTelefoneServidor();
   const fields: [string, string, string][] = [
     ["Nome completo", "nome", servidorAtual.nome],
     ["Matrícula", "matricula", servidorAtual.matricula],
     ["CPF", "cpf", servidorAtual.cpf],
     ["Data de nascimento", "dataNascimento", servidorAtual.dataNascimento],
     ["E-mail institucional", "email", servidorAtual.email],
-    ["Telefone", "telefone", servidorAtual.telefone],
+    ["Telefone", "telefone", telefone],
     ["RG", "rg", servidorAtual.rg],
     ["Endereço", "endereco", servidorAtual.endereco],
     ["Plano", "plano", servidorAtual.plano],
@@ -243,17 +247,38 @@ function TabDados() {
     ["Processo SEI", "processoSEI", servidorAtual.processoSEI],
     ["Início do benefício", "inicioBeneficio", servidorAtual.inicioBeneficio],
   ];
+  const [novoTelefone, setNovoTelefone] = useState("");
+  const [justificativa, setJustificativa] = useState("");
+  const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
+
+  function abrirEdicao() {
+    setNovoTelefone(telefone);
+    setJustificativa("");
+    setErro("");
+    setEditOpen(true);
+  }
+  function salvar() {
+    try {
+      salvarAlteracaoCadastral({ novos: { telefone: novoTelefone }, justificativa, responsavel: responsavelCadastro(getAdminRole()) });
+      setEditOpen(false);
+      setAviso("Dados atualizados. A alteração foi registrada no Histórico da ficha.");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível salvar a alteração.");
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <button
-          onClick={() => setEditOpen(true)}
+          onClick={abrirEdicao}
           className="text-sm border border-border rounded-md px-3 py-1.5 hover:bg-muted"
         >
           Editar
         </button>
       </div>
+      {aviso && <p role="status" className="text-sm font-medium text-success">{aviso}</p>}
       <dl className="bg-card rounded-xl border border-border grid grid-cols-1 sm:grid-cols-2 gap-x-6">
         {fields.map(([k, , v]) => (
           <div key={k} className="px-4 py-3 border-b border-border">
@@ -275,23 +300,41 @@ function TabDados() {
                 <X className="h-4 w-4" />
               </button>
             </header>
-            <div className="p-6 space-y-3">
-              {fields.filter(([k]) => !["Matrícula", "CPF"].includes(k)).map(([k, , v]) => (
-                <div key={k}>
-                  <label className="block text-xs text-muted-foreground mb-1">{k}</label>
-                  <input
-                    defaultValue={v === "—" ? "" : v}
-                    className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-              ))}
+            <div className="p-6 space-y-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Justificativa da alteração *</label>
+                <label htmlFor="edit-telefone" className="block text-xs text-muted-foreground mb-1">{CAMPOS_EDITAVEIS.telefone.rotulo} *</label>
+                <input
+                  id="edit-telefone"
+                  value={novoTelefone}
+                  onChange={(e) => { setNovoTelefone(mascararTelefone(e.target.value)); setErro(""); }}
+                  inputMode="tel"
+                  autoComplete="off"
+                  className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-justificativa" className="block text-xs text-muted-foreground mb-1">Justificativa da alteração *</label>
                 <textarea
+                  id="edit-justificativa"
                   rows={3}
+                  value={justificativa}
+                  onChange={(e) => { setJustificativa(e.target.value); setErro(""); }}
                   placeholder="Descreva o motivo da alteração dos dados..."
                   className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                 />
+              </div>
+              {erro && <p role="alert" className="text-sm font-medium text-destructive">{erro}</p>}
+              <div className="rounded-lg bg-muted/50 border border-border p-3 space-y-2">
+                <p className="text-xs font-semibold">Campos somente leitura</p>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  {fields.filter(([, chave]) => chave !== "telefone").map(([k, , v]) => (
+                    <div key={k} className="min-w-0">
+                      <dt className="text-muted-foreground">{k}</dt>
+                      <dd className="font-medium break-words" aria-readonly="true">{v || "—"}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="text-xs text-muted-foreground leading-relaxed">Plano, operadora e associação só são alterados por requerimento de mudança de plano. Os demais dados cadastrais não podem ser editados nesta tela.</p>
               </div>
             </div>
             <footer className="px-6 py-4 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">
@@ -299,7 +342,7 @@ function TabDados() {
                 Cancelar
               </button>
               <button
-                onClick={() => setEditOpen(false)}
+                onClick={salvar}
                 className="text-sm bg-primary text-primary-foreground rounded-md px-4 py-2"
               >
                 Salvar alterações
@@ -879,9 +922,22 @@ type EventoHistorico = {
   data: string;
   responsavel: string;
   descricao: string;
+  /** Só nos eventos de "Alteração cadastral" (edição pela GERDAB): tipo, campos alterados e justificativa. */
+  tipo?: string;
+  alteracoes?: { rotulo: string; anterior: string; novo: string }[];
+  justificativa?: string;
 };
 
 function useEventosHistorico(): EventoHistorico[] {
+  const alteracoesCadastrais = useAlteracoesCadastrais();
+  const deAlteracoesCadastrais: EventoHistorico[] = alteracoesCadastrais.map((a: EventoAlteracaoCadastral) => ({
+    data: new Date(a.dataHora).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
+    responsavel: a.responsavel,
+    descricao: `Alterou ${a.alteracoes.length === 1 ? "o campo" : "os campos"} ${a.alteracoes.map((x) => x.rotulo).join(", ")}.`,
+    tipo: "Alteração cadastral",
+    alteracoes: a.alteracoes,
+    justificativa: a.justificativa,
+  }));
   const transicoes: EventoHistorico[] = [
     { data: "05/06/2026", responsavel: "Analista João", descricao: 'Alterou o status do cadastro de "Aguardando Validação" para "Ativo".' },
     { data: "01/05/2026", responsavel: "Sistema", descricao: 'Solicitação inicial concluída pelo servidor — status avançou de "Em Análise" para "Aguardando Validação".' },
@@ -927,7 +983,7 @@ function useEventosHistorico(): EventoHistorico[] {
           : `Solicitou reenvio de ${o.documento} para ${o.beneficiarioNome ?? servidorAtual.nome} (${o.justificativaReenvio}) — realizado por ${o.analisadoPor}.`,
     }));
 
-  return [...transicoes, ...deRequerimentos, ...dePendencias, ...deSolicitacoes, ...deAnalises];
+  return [...deAlteracoesCadastrais, ...transicoes, ...deRequerimentos, ...dePendencias, ...deSolicitacoes, ...deAnalises];
 }
 
 function TabHistorico() {
@@ -960,7 +1016,20 @@ function TabHistorico() {
                   <span className="text-muted-foreground"> · Realizado por </span>
                   <span className="font-semibold">{e.responsavel}</span>
                 </p>
-                <p className="text-sm mt-0.5 text-foreground">{e.descricao}</p>
+                <p className="text-sm mt-0.5 text-foreground">
+                  {e.tipo && <span className="inline-block mr-2 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-primary/10 text-primary align-middle">{e.tipo}</span>}
+                  {e.descricao}
+                </p>
+                {e.alteracoes && (
+                  <ul className="mt-1 space-y-0.5 text-xs">
+                    {e.alteracoes.map((x) => (
+                      <li key={x.rotulo}>
+                        <span className="font-semibold">{x.rotulo}:</span> <span className="text-muted-foreground">{x.anterior || "—"}</span> → <span className="font-medium">{x.novo}</span>
+                      </li>
+                    ))}
+                    {e.justificativa && <li><span className="font-semibold">Justificativa:</span> <span className="text-muted-foreground">{e.justificativa}</span></li>}
+                  </ul>
+                )}
               </div>
             </li>
           ))}

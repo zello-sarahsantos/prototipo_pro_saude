@@ -4,7 +4,12 @@ import { ChevronDown, FileText, FolderOpen } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
 import { ROTULO_SITUACAO_COMPROVANTES, type LinhaRessarcimentoDashboard, type SituacaoComprovantes } from "@/lib/dashboard-gerdab";
 import type { DadosDashboard } from "@/lib/dashboard-gerdab-dados";
-import { IconeInfo, ListaPaginada, NadaPendente, V, botaoTexto, cardBase, linkNegrito, num } from "./gd-ui";
+import { ContadorNotificacoes, EVENTO_FOCO_DASHBOARD, type FocoDashboard } from "@/components/ContadorNotificacoes";
+import { ROTULO_INDICADOR_DASHBOARD, useNotificacoesAdmin, type IndicadorDashboard } from "@/lib/notificacoes-admin";
+import { BotaoAtualizacoes } from "./AtualizacoesDashboard";
+import { AvisoAtualizacao, CabecalhoExpansao, SeloResumo, type AtualizacaoSelecionada } from "./PainelExpansao";
+import { PainelAptos, PainelComprovantes, PainelRessarcimentos } from "./PaineisIndicadores";
+import { IconeInfo, NadaPendente, V, botaoTexto, cardBase, linkNegrito, num } from "./gd-ui";
 
 interface Props {
   dados: DadosDashboard;
@@ -28,7 +33,7 @@ const TIPO_REQUERIMENTO: Record<string, string> = {
 function Valor({ x, y, cor, info = true }: { x: number; y: number; cor?: string; info?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 30, fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1.15, color: cor }}>{num(x)}</span>
+      <span style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1.15, color: cor }}>{num(x)}</span>
       <span style={{ fontSize: 13, color: V.muted }}>de {num(y)} aguardando análise</span>
       {info && <IconeInfo texto={DICA_XY} />}
     </div>
@@ -48,7 +53,7 @@ const acaoRodape: CSSProperties = { ...linkNegrito, display: "inline-flex", alig
 
 function BotaoExpandir({ aberto, onClick, rotulo }: { aberto: boolean; onClick: () => void; rotulo: string }) {
   return (
-    <button type="button" onClick={onClick} aria-expanded={aberto} style={{ ...botaoTexto, ...acaoRodape, color: V.primary }}>
+    <button type="button" onClick={onClick} aria-expanded={aberto} className="gd-cta" style={{ ...botaoTexto, ...acaoRodape, color: V.primary }}>
       {rotulo} <ChevronDown size={14} style={{ transform: aberto ? "rotate(180deg)" : "none", transition: "transform 180ms ease" }} />
     </button>
   );
@@ -65,6 +70,9 @@ function Cartao({
   className,
   children,
   extra,
+  prioritario,
+  indicador,
+  botaoModal,
 }: {
   kicker: string;
   titulo: ReactNode;
@@ -74,7 +82,15 @@ function Cartao({
   className?: string;
   children: ReactNode;
   extra?: ReactNode;
+  /** Linha principal de indicadores: altura mínima maior (apenas visual). */
+  prioritario?: boolean;
+  /** Indicador de notificações não lidas deste cartão (círculo vermelho ao lado do título). Independe das contagens operacionais. */
+  indicador?: IndicadorDashboard;
+  /** Botão inferior da modal de atualizações deste indicador. */
+  botaoModal?: { rotulo: string; href?: string; onClick?: () => void };
 }) {
+  const { itens } = useNotificacoesAdmin();
+  const naoLidas = indicador ? itens.filter((n) => !n.lida && n.origem === "real" && n.indicadores?.includes(indicador)) : [];
   const handler = (e: MouseEvent<HTMLDivElement>) => {
     if (!aoClicar) return;
     if ((e.target as HTMLElement).closest("a,button,[role=img]")) return;
@@ -84,23 +100,28 @@ function Cartao({
     <div
       onClick={handler}
       data-sel={ativo ? "true" : undefined}
-      className={`gd-bar ${aoClicar ? "gd-clk " : ""}${className ?? ""}`}
-      style={{ ...cardBase, padding: "20px 18px 16px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}
+      className={`gd-bar ${aoClicar ? "gd-clk gd-card-ind " : ""}${prioritario ? "" : "gd-card-sec "}${className ?? ""}`}
+      style={{ ...cardBase, padding: 20, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, minHeight: prioritario ? 224 : undefined }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: V.muted }}>{kicker}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: V.muted }}>{kicker}</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           {extra}
-          {pendente !== undefined && <span title={pendente ? "Com pendências" : "Sem pendências"} style={{ width: 9, height: 9, borderRadius: "50%", background: pendente ? V.amber : V.green }} />}
+          {naoLidas.length > 0 ? (
+            <ContadorNotificacoes itens={naoLidas} rotulo={indicador ? ROTULO_INDICADOR_DASHBOARD[indicador] : "Notificações"} indicadorId={indicador} className="!min-w-6 !h-6 !text-xs" modal={{ indicador: indicador ? ROTULO_INDICADOR_DASHBOARD[indicador] : "Indicador", botao: botaoModal, aoSelecionar: (n) => window.dispatchEvent(new CustomEvent<FocoDashboard>(EVENTO_FOCO_DASHBOARD, { detail: { indicador: indicador ?? "", entidade: n.entidade ?? n.titulo, acontecimento: n.acontecimento ?? n.descricao, href: n.href } })) }} />
+          ) : (
+            pendente !== undefined && <span title={pendente ? "Com pendências" : "Sem pendências"} style={{ width: 9, height: 9, borderRadius: "50%", background: pendente ? V.amber : V.green }} />
+          )}
         </span>
       </div>
-      <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{titulo}</span>
+      <span className="gd-titulo" style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{titulo}</span>
       {children}
     </div>
   );
 }
 
 const painelEstilo: CSSProperties = {
+  scrollMarginTop: 72,
   gridColumn: "1 / -1",
   ...cardBase,
   padding: "18px 20px",
@@ -109,37 +130,6 @@ const painelEstilo: CSSProperties = {
   animation: "gd-alt-in 220ms ease-out",
   minWidth: 0,
 };
-
-function CabecalhoPainel({ titulo, detalhe, onFechar }: { titulo: ReactNode; detalhe?: ReactNode; onFechar: () => void }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
-      <span style={{ fontSize: 15, fontWeight: 700, display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-        {titulo} {detalhe && <span style={{ fontWeight: 400, color: V.muted }}>{detalhe}</span>}
-      </span>
-      <button type="button" onClick={onFechar} style={{ ...botaoTexto, fontSize: 13, fontWeight: 600, color: V.muted }}>Fechar ×</button>
-    </div>
-  );
-}
-
-const linhaBase: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 14px", padding: "8px 8px", margin: "0 -8px", borderRadius: 6, borderTop: `1px solid ${V.border}` };
-
-function ListaRessarcimentos({ linhas, rotulo }: { linhas: LinhaRessarcimentoDashboard[]; rotulo: string }) {
-  return (
-    <ListaPaginada
-      itens={linhas}
-      rotulo={rotulo}
-      render={(l) => (
-        <div key={l.id} className="gd-row" style={linhaBase}>
-          <div style={{ flex: "1 1 220px", minWidth: 0, fontSize: 13 }}>
-            <span style={{ fontWeight: 600 }}>{l.nome}</span> <span style={{ color: V.muted }}>· {l.origemRotulo} · ref. {l.referencia}</span>
-          </div>
-          <span style={{ fontSize: 12, fontWeight: 600, color: l.aguardando ? V.amber : V.muted, background: l.aguardando ? V.amberSoft : V.track, padding: "2px 9px", borderRadius: 999, whiteSpace: "nowrap" }}>{l.statusRotulo}</span>
-          <span style={{ flex: "1 1 160px", fontSize: 12, color: V.muted }}>{l.responsavel ? `Responsável: ${l.responsavel}` : "Sem decisão registrada"}</span>
-        </div>
-      )}
-    />
-  );
-}
 
 /** Ordem fixa das solicitações cadastrais (não depende da quantidade de pendências). */
 const ORDEM_CADASTRAL = ["primeira", "inclusao_dependente", "exclusao_dependente", "mudanca_plano"];
@@ -264,7 +254,7 @@ function GrupoAlteracoes({
         tabIndex={0}
         aria-expanded={on}
         aria-label={`${a.rotulo}: ${a.aguardandoAnalise} aguardando análise de ${a.recebidas}. ${on ? "Fechar" : "Ver"} prévia da fila`}
-        className="gd-clk gd-bar"
+        className="gd-clk gd-cat"
         data-sel={on ? "true" : undefined}
         onClick={() => onSelecionar(on ? null : a.chave)}
         onKeyDown={(e) => {
@@ -273,7 +263,7 @@ function GrupoAlteracoes({
             onSelecionar(on ? null : a.chave);
           }
         }}
-        style={{ background: on ? V.primarySoft : V.card, border: `1px solid ${V.border}`, borderRadius: 12, padding: "17px 16px 14px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}
+        style={{ background: on ? V.primarySoft : V.card, border: `1px solid ${V.border}`, borderRadius: 12, padding: "16px 16px 14px 20px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: "4px 8px" }}>
           <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.3, flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>{a.rotulo}</span>
@@ -282,7 +272,7 @@ function GrupoAlteracoes({
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8, marginTop: "auto", paddingTop: 6 }}>
           <div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-              <span style={{ fontSize: 26, fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1.1, color: a.aguardandoAnalise === 0 ? V.muted : undefined }}>{num(a.aguardandoAnalise)}</span>
+              <span style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1.1, color: a.aguardandoAnalise === 0 ? V.muted : undefined }}>{num(a.aguardandoAnalise)}</span>
               <span style={{ fontSize: 13, color: V.muted }}>{a.aguardandoAnalise === 1 ? "pendente" : "pendentes"}</span>
             </div>
             <div style={{ fontSize: 12, color: V.muted, fontVariantNumeric: "tabular-nums" }}>{num(a.recebidas)} recebidas no total</div>
@@ -297,18 +287,18 @@ function GrupoAlteracoes({
   });
 
   const tipoCtx = cadastral && sel ? TIPO_REQUERIMENTO[sel.chave] : undefined;
-  const botaoGrupo: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, background: V.primary, color: V.onPrimary, padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" };
+  const botaoGrupo: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, background: V.primary, color: V.onPrimary, border: `1px solid ${V.primary}`, padding: "10px 16px", borderRadius: 12, fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" };
   const Icone = cadastral ? FileText : FolderOpen;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "18px 20px", borderTop: cadastral ? "none" : `4px solid ${V.track}`, background: V.card }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "20px", borderTop: cadastral ? "none" : `4px solid ${V.track}`, background: V.card }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <span style={{ width: 40, height: 40, borderRadius: 10, background: cadastral ? V.primarySoft : V.track, color: cadastral ? V.primary : V.muted, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <span style={{ width: 40, height: 40, borderRadius: 12, background: cadastral ? V.primarySoft : V.track, color: cadastral ? V.primary : V.muted, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Icone size={18} />
           </span>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "4px 10px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{grupo.titulo}</span>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>{grupo.titulo}</span>
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap", color: cadastral ? V.primary : V.muted, background: cadastral ? V.primarySoft : V.track }}>
                 {cadastral ? "Fluxo: Requerimentos" : "Fluxo: Relatório"}
               </span>
@@ -334,6 +324,8 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
   const [painel, setPainel] = useState<Painel>(null);
   const [catAlt, setCatAlt] = useState<string | null>(null);
   const painelRef = useRef<HTMLDivElement>(null);
+  const [aviso, setAviso] = useState<(AtualizacaoSelecionada & { indicador: string }) | null>(null);
+  const avisoDe = (ind: string) => (aviso && aviso.indicador === ind ? aviso : null);
   const { alteracoes, comprovantes, ressServidor, ressAssociacoes, aptos } = dados;
   const altAg = alteracoes.itens.reduce((n, a) => n + a.aguardandoAnalise, 0);
   const altRec = alteracoes.itens.reduce((n, a) => n + a.recebidas, 0);
@@ -343,6 +335,25 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
     setPainel((atual) => (atual === p ? null : p));
   };
   const compAberto = painel === "aguardando" || painel === "validados" || painel === "devolvidos";
+
+  // Atualização escolhida numa notificação do Dashboard: abre (e só ela) a expansão do indicador, destaca o registro e rola até o painel.
+  useEffect(() => {
+    const aoFocar = (e: Event) => {
+      const d = (e as CustomEvent<FocoDashboard>).detail;
+      const alvo: Partial<Record<string, Exclude<Painel, null>>> = { alteracoes: "alt", comprovantes: "aguardando", ress_servidor: "rs", ress_associacoes: "ra" };
+      const p = alvo[d.indicador];
+      if (!p) return;
+      setCatAlt(null);
+      setPainel(p);
+      setAviso({ indicador: d.indicador, entidade: d.entidade, acontecimento: d.acontecimento, href: d.href });
+      setTimeout(() => painelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+    };
+    window.addEventListener(EVENTO_FOCO_DASHBOARD, aoFocar);
+    return () => window.removeEventListener(EVENTO_FOCO_DASHBOARD, aoFocar);
+  }, []);
+  useEffect(() => {
+    if (!painel) setAviso(null);
+  }, [painel]);
 
   // Reiniciar a seleção ao trocar de competência/fonte.
   useEffect(() => {
@@ -375,22 +386,25 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Requer ação</h2>
-        <span style={{ fontSize: 13, color: V.muted }}>
-          {filas === 0 ? "Nenhuma fila com atividades pendentes" : `${filas} ${filas === 1 ? "fila com atividades pendentes" : "filas com atividades pendentes"}`}
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Requer ação</h2>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: V.muted }}>
+            {filas === 0 ? "Nenhuma fila com atividades pendentes" : `${filas} ${filas === 1 ? "fila com atividades pendentes" : "filas com atividades pendentes"}`}
+          </span>
+          <BotaoAtualizacoes />
         </span>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(max(170px, calc((100% - 28px) / 3)), 1fr))", gap: 14 }}>
-        <Cartao kicker="Gestão de benefícios" titulo="Alterações mensais" pendente={altAg > 0} ativo={painel === "alt"} aoClicar={() => alternar("alt")}>
+        <Cartao prioritario indicador="alteracoes" botaoModal={{ rotulo: "Ver detalhes das alterações", onClick: () => { setCatAlt(null); setPainel("alt"); } }} kicker="Gestão de benefícios" titulo="Alterações mensais" pendente={altAg > 0} ativo={painel === "alt"} aoClicar={() => alternar("alt")}>
           <Valor x={altAg} y={altRec} />
           <div style={{ fontSize: 13, color: V.muted, lineHeight: 1.4 }}>{cntCad} solicitações cadastrais · {cntDoc} pendências documentais</div>
           <Rodape>
-            <BotaoExpandir aberto={painel === "alt"} onClick={() => alternar("alt")} rotulo="Ver detalhes" />
+            <BotaoExpandir aberto={painel === "alt"} onClick={() => alternar("alt")} rotulo={painel === "alt" ? "Ocultar detalhes" : "Ver detalhes"} />
           </Rodape>
         </Cartao>
 
-        <Cartao kicker="Documentação" titulo="Comprovantes" pendente={comprovantes.aguardando > 0} ativo={compAberto} aoClicar={() => alternar("aguardando")} className="max-md:order-2">
+        <Cartao prioritario indicador="comprovantes" botaoModal={{ rotulo: "Abrir fila de comprovantes", href: `/admin/comprovantes?competencia=${competencia}&situacao=aguardando` }} kicker="Documentação" titulo="Comprovantes" pendente={comprovantes.aguardando > 0} ativo={compAberto} aoClicar={() => alternar("aguardando")} className="max-md:order-2">
           <Valor x={comprovantes.aguardando} y={comprovantes.total} />
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {situacoes.map((s) => {
@@ -403,7 +417,7 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
                   data-sel={on ? "true" : undefined}
                   onClick={() => alternar(s.chave)}
                   aria-pressed={on}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", padding: "5px 8px", borderRadius: 6, border: `1px solid ${V.border}`, background: "transparent", fontFamily: "inherit", fontSize: 13, color: V.text, textAlign: "left" }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", padding: "6px 10px", borderRadius: 10, border: `1px solid ${V.border}`, background: V.bg, fontFamily: "inherit", fontSize: 13, color: V.text, textAlign: "left" }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ width: 7, height: 7, borderRadius: 2, background: s.cor }} />
@@ -415,12 +429,12 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
             })}
           </div>
           <Rodape>
-            <BotaoExpandir aberto={compAberto} onClick={() => alternar("aguardando")} rotulo="Ver detalhes" />
-            <Link to="/admin/comprovantes" search={{ competencia, situacao: "aguardando" }} style={acaoRodape}>Abrir fila ›</Link>
+            <BotaoExpandir aberto={compAberto} onClick={() => alternar("aguardando")} rotulo={compAberto ? "Ocultar detalhes" : "Ver detalhes"} />
+            <Link to="/admin/comprovantes" search={{ competencia, situacao: "aguardando" }} className="gd-cta" style={acaoRodape}>Abrir fila <span className="gd-seta" aria-hidden>›</span></Link>
           </Rodape>
         </Cartao>
 
-        <Cartao kicker="Ressarcimentos" titulo="Meses anteriores — Servidor" pendente={ressServidor.resumo.aguardando > 0} ativo={painel === "rs"} aoClicar={() => alternar("rs")} className="max-md:order-4">
+        <Cartao prioritario indicador="ress_servidor" botaoModal={{ rotulo: "Abrir fila de ressarcimentos", href: "/admin/retroativos?origem=individual" }} kicker="Ressarcimentos" titulo="Meses anteriores — Servidor" pendente={ressServidor.resumo.aguardando > 0} ativo={painel === "rs"} aoClicar={() => alternar("rs")} className="max-md:order-4">
           <Valor x={ressServidor.resumo.aguardando} y={ressServidor.resumo.total} cor={ressServidor.resumo.aguardando === 0 ? V.muted : undefined} />
           {ressServidor.resumo.aguardando === 0 ? (
             <NadaPendente />
@@ -430,31 +444,25 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
             </div>
           )}
           <Rodape>
-            <BotaoExpandir aberto={painel === "rs"} onClick={() => alternar("rs")} rotulo="Ver detalhes" />
-            <Link to="/admin/retroativos" search={{ origem: "individual" }} style={acaoRodape}>Abrir fila ›</Link>
+            <BotaoExpandir aberto={painel === "rs"} onClick={() => alternar("rs")} rotulo={painel === "rs" ? "Ocultar detalhes" : "Ver detalhes"} />
+            <Link to="/admin/retroativos" search={{ origem: "individual" }} className="gd-cta" style={acaoRodape}>Abrir fila <span className="gd-seta" aria-hidden>›</span></Link>
           </Rodape>
         </Cartao>
 
         {painel === "alt" && (
-          <div ref={painelRef} role="region" aria-label={`Alterações mensais ${competenciaRotulo}`} className={ordemPainel} style={{ ...painelEstilo, padding: 0, overflow: "hidden" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "16px 20px", background: V.primarySoft, borderBottom: `1px solid ${V.border}` }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: V.primary }}>Alterações mensais · {competenciaRotulo}</div>
-                <div style={{ fontSize: 17, fontWeight: 700, marginTop: 2 }}>{num(altAg)} itens requerem atenção</div>
-                <div style={{ fontSize: 12, color: V.muted, marginTop: 2 }}>Cada tipo de pendência possui um fluxo de tratamento diferente.</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {grupos.map((g) => {
-                  const n = alteracoes.itens.filter((a) => a.grupo === g.chave).reduce((t, a) => t + a.aguardandoAnalise, 0);
-                  return (
-                    <span key={g.chave} style={{ fontSize: 12, fontWeight: 600, color: V.primary, background: V.card, border: `1px solid ${V.border}`, padding: "6px 12px", borderRadius: 8, whiteSpace: "nowrap" }}>
-                      {n} {g.chave === "cadastral" ? "solicitações cadastrais" : "pendências documentais"}
-                    </span>
-                  );
-                })}
-                <button type="button" onClick={() => setPainel(null)} aria-label="Fechar alterações mensais" style={{ ...botaoTexto, width: 32, height: 32, borderRadius: 8, color: V.muted, fontSize: 20, lineHeight: 1 }}>×</button>
-              </div>
-            </div>
+          <div ref={painelRef} role="region" aria-label={`Alterações mensais ${competenciaRotulo}`} className={`${ordemPainel} gd-painel`} style={{ ...painelEstilo, padding: 0, overflow: "hidden" }}>
+            <CabecalhoExpansao
+              categoria={`Alterações mensais · ${competenciaRotulo}`}
+              titulo={`${num(altAg)} itens requerem atenção`}
+              descricao="Cada tipo de pendência possui um fluxo de tratamento diferente."
+              badges={grupos.map((g) => {
+                const n = alteracoes.itens.filter((a) => a.grupo === g.chave).reduce((t, a) => t + a.aguardandoAnalise, 0);
+                return <SeloResumo key={g.chave} texto={`${n} ${g.chave === "cadastral" ? "solicitações cadastrais" : "pendências documentais"}`} tom={g.chave === "cadastral" ? "azul" : "neutro"} />;
+              })}
+              onFechar={() => setPainel(null)}
+              rotuloFechar="Fechar alterações mensais"
+            />
+            {avisoDe("alteracoes") && <AvisoAtualizacao aviso={avisoDe("alteracoes")!} encontrada={false} onDispensar={() => setAviso(null)} />}
             <div style={{ display: "flex", flexDirection: "column" }}>
               {grupos.map((g) => (
                 <GrupoAlteracoes
@@ -473,41 +481,20 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
         )}
 
         {compAberto && painel && (
-          <div ref={painelRef} role="region" aria-label={`Comprovantes ${ROTULO_SITUACAO_COMPROVANTES[painel].toLowerCase()}`} className="max-md:order-3 md:order-1" style={{ ...painelEstilo, gap: 6 }}>
-            <CabecalhoPainel titulo={`Comprovantes ${ROTULO_SITUACAO_COMPROVANTES[painel].toLowerCase()} · ${competenciaRotulo}`} detalhe={`· ${num(comprovantes[painel])}`} onFechar={() => setPainel(null)} />
-            <ListaPaginada
-              key={painel + competencia + dados.fonte}
-              itens={comprovantes.linhas(painel)}
-              rotulo="comprovantes"
-              vazio="Nenhum comprovante nesta situação."
-              render={(r) => (
-                <div key={r.id} className="gd-row" style={linhaBase}>
-                  <div style={{ flex: "1 1 220px", minWidth: 0, fontSize: 13 }}><span style={{ fontWeight: 600 }}>{r.nome}</span></div>
-                  <div style={{ flex: "1 1 200px", minWidth: 0, fontSize: 12, color: V.muted }}>{r.arquivo} · {r.situacaoRotulo}</div>
-                  <div style={{ flex: "0 1 170px", fontSize: 12, color: V.muted }}>{r.responsavel ? `Responsável: ${r.responsavel}` : "Sem ação registrada"}</div>
-                  <Link to="/admin/comprovantes" search={{ competencia, situacao: painel }} style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Abrir →</Link>
-                </div>
-              )}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 6 }}>
-              <Link to="/admin/comprovantes" search={{ competencia, situacao: painel }} style={{ fontSize: 12, fontWeight: 600 }}>Abrir relação completa →</Link>
-            </div>
+          <div ref={painelRef} role="region" aria-label={`Comprovantes ${ROTULO_SITUACAO_COMPROVANTES[painel].toLowerCase()}`} className="max-md:order-3 md:order-1 gd-painel" style={{ ...painelEstilo, padding: 0, overflow: "hidden" }}>
+            <PainelComprovantes dados={comprovantes} situacao={painel} onSituacao={(sit) => { setCatAlt(null); setPainel(sit); }} competencia={competencia} competenciaRotulo={competenciaRotulo} onFechar={() => setPainel(null)} aviso={avisoDe("comprovantes")} onDispensarAviso={() => setAviso(null)} fonte={dados.fonte} />
           </div>
         )}
 
         {painel === "rs" && (
-          <div ref={painelRef} role="region" aria-label="Ressarcimentos de meses anteriores — Servidor" className={ordemPainel} style={{ ...painelEstilo, gap: 6 }}>
-            <CabecalhoPainel titulo="Ressarcimentos de meses anteriores — Servidor" detalhe={`· ${num(ressServidor.resumo.aguardando)} aguardando análise de ${num(ressServidor.resumo.total)}`} onFechar={() => setPainel(null)} />
-            <ListaRessarcimentos key={"rs" + dados.fonte} linhas={ressServidor.linhas} rotulo="competências" />
-            <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 6 }}>
-              <Link to="/admin/retroativos" search={{ origem: "individual" }} style={{ fontSize: 12, fontWeight: 600 }}>Abrir na fila de análise →</Link>
-            </div>
+          <div ref={painelRef} role="region" aria-label="Ressarcimentos de meses anteriores — Servidor" className={`${ordemPainel} gd-painel`} style={{ ...painelEstilo, padding: 0, overflow: "hidden" }}>
+            <PainelRessarcimentos origem="individual" dados={ressServidor} competenciaRotulo={competenciaRotulo} onFechar={() => setPainel(null)} aviso={avisoDe("ress_servidor")} onDispensarAviso={() => setAviso(null)} />
           </div>
         )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(max(170px, calc((100% - 14px) / 2)), 1fr))", gap: 14 }}>
-        <Cartao kicker="Ressarcimentos" titulo="Meses anteriores — Associações" pendente={ressAssociacoes.resumo.aguardando > 0} ativo={painel === "ra"} aoClicar={() => alternar("ra")}>
+        <Cartao indicador="ress_associacoes" botaoModal={{ rotulo: "Abrir fila de ressarcimentos", href: "/admin/retroativos?origem=associacao" }} kicker="Ressarcimentos" titulo="Meses anteriores — Associações" pendente={ressAssociacoes.resumo.aguardando > 0} ativo={painel === "ra"} aoClicar={() => alternar("ra")}>
           <Valor x={ressAssociacoes.resumo.aguardando} y={ressAssociacoes.resumo.total} cor={ressAssociacoes.resumo.aguardando === 0 ? V.muted : undefined} />
           {ressAssociacoes.resumo.aguardando === 0 ? (
             <NadaPendente />
@@ -515,8 +502,8 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
             <div style={{ fontSize: 13, color: V.muted, lineHeight: 1.4 }}>{ressAssociacoes.resumo.porAssociacao.map((p) => `${p.associacao} ${p.aguardando}`).join(" · ")}</div>
           )}
           <Rodape>
-            <BotaoExpandir aberto={painel === "ra"} onClick={() => alternar("ra")} rotulo="Ver detalhes" />
-            <Link to="/admin/retroativos" search={{ origem: "associacao" }} style={acaoRodape}>Abrir fila ›</Link>
+            <BotaoExpandir aberto={painel === "ra"} onClick={() => alternar("ra")} rotulo={painel === "ra" ? "Ocultar detalhes" : "Ver detalhes"} />
+            <Link to="/admin/retroativos" search={{ origem: "associacao" }} className="gd-cta" style={acaoRodape}>Abrir fila <span className="gd-seta" aria-hidden>›</span></Link>
           </Rodape>
         </Cartao>
 
@@ -528,47 +515,27 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
           aoClicar={() => alternar("aptos")}
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 30, fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1.15 }}>{num(aptos.vidas)}</span>
+            <span style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1.15 }}>{num(aptos.vidas)}</span>
             <span style={{ fontSize: 13, color: V.muted }}>de {num(aptos.vidasTotal)} vidas beneficiadas</span>
           </div>
           <div style={{ fontSize: 13, color: V.muted, lineHeight: 1.4 }}>
             <span style={{ color: V.text, fontWeight: 600 }}>{formatCurrency(aptos.valorRessarcir)}</span> a ressarcir · fechamento mensal · não inclui Ressarcimentos de meses anteriores
           </div>
           <Rodape>
-            <BotaoExpandir aberto={painel === "aptos"} onClick={() => alternar("aptos")} rotulo="Ver detalhes" />
-            <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "adimplente" }} style={acaoRodape}>Abrir consolidação ›</Link>
+            <BotaoExpandir aberto={painel === "aptos"} onClick={() => alternar("aptos")} rotulo={painel === "aptos" ? "Ocultar detalhes" : "Ver detalhes"} />
+            <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "adimplente" }} className="gd-cta" style={acaoRodape}>Abrir consolidação <span className="gd-seta" aria-hidden>›</span></Link>
           </Rodape>
         </Cartao>
 
         {painel === "ra" && (
-          <div ref={painelRef} role="region" aria-label="Ressarcimentos de meses anteriores — Associações" style={{ ...painelEstilo, gap: 6, gridColumn: "1 / -1" }}>
-            <CabecalhoPainel titulo="Ressarcimentos de meses anteriores — Associações" detalhe={`· ${num(ressAssociacoes.resumo.aguardando)} aguardando análise de ${num(ressAssociacoes.resumo.total)}`} onFechar={() => setPainel(null)} />
-            <ListaRessarcimentos key={"ra" + dados.fonte} linhas={ressAssociacoes.linhas} rotulo="competências" />
-            <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 6 }}>
-              <Link to="/admin/retroativos" search={{ origem: "associacao" }} style={{ fontSize: 12, fontWeight: 600 }}>Abrir na fila de análise →</Link>
-            </div>
+          <div ref={painelRef} role="region" aria-label="Ressarcimentos de meses anteriores — Associações" className="gd-painel" style={{ ...painelEstilo, padding: 0, overflow: "hidden", gridColumn: "1 / -1" }}>
+            <PainelRessarcimentos origem="associacao" dados={ressAssociacoes} competenciaRotulo={competenciaRotulo} onFechar={() => setPainel(null)} aviso={avisoDe("ress_associacoes")} onDispensarAviso={() => setAviso(null)} />
           </div>
         )}
 
         {painel === "aptos" && (
-          <div ref={painelRef} role="region" aria-label="Aptos na Consolidação" style={{ ...painelEstilo, gap: 6 }}>
-            <CabecalhoPainel titulo={`Aptos na Consolidação · ${competenciaRotulo}`} detalhe={`· ${num(aptos.registros)} titulares`} onFechar={() => setPainel(null)} />
-            <ListaPaginada
-              key={"aptos" + competencia + dados.fonte}
-              itens={aptos.linhas}
-              rotulo="titulares aptos"
-              vazio="Nenhum titular apto nesta competência."
-              render={(l) => (
-                <div key={l.id} className="gd-row" style={linhaBase}>
-                  <div style={{ flex: "1 1 220px", minWidth: 0, fontSize: 13 }}><span style={{ fontWeight: 600 }}>{l.nome}</span> {l.matricula && <span style={{ color: V.muted }}>· mat. {l.matricula}</span>}</div>
-                  <span style={{ flex: "1 1 140px", fontSize: 12, color: V.muted }}>{l.plano} · {l.vidas} {l.vidas === 1 ? "vida" : "vidas"}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{formatCurrency(l.valor)}</span>
-                </div>
-              )}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 6 }}>
-              <Link to="/admin/relatorios/pagamentos" search={{ competencia, aba: "adimplente" }} style={{ fontSize: 12, fontWeight: 600 }}>Abrir a Consolidação →</Link>
-            </div>
+          <div ref={painelRef} role="region" aria-label="Aptos na Consolidação" className="gd-painel" style={{ ...painelEstilo, padding: 0, overflow: "hidden" }}>
+            <PainelAptos aptos={aptos} competencia={competencia} competenciaRotulo={competenciaRotulo} vigente={vigente} onFechar={() => setPainel(null)} />
           </div>
         )}
       </div>

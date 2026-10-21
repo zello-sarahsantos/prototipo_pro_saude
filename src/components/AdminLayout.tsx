@@ -17,6 +17,8 @@ import {
 import { useMemo, useState } from "react";
 import { AdminNotificationBell } from "@/components/AdminNotificationBell";
 import { AlternarTema } from "@/components/AlternarTema";
+import { ContadorNotificacoes } from "@/components/ContadorNotificacoes";
+import { useNotificacoesAdmin, type ModuloNotificacao } from "@/lib/notificacoes-admin";
 
 // "Comprovantes" fica disponível para Analista e Gerência — a Gerência sempre tem, no
 // mínimo, as mesmas permissões do Analista (regra do Módulo de Pagamento).
@@ -44,6 +46,11 @@ export function AdminLayout() {
   const [open, setOpen] = useState(false);
   const role = getAdminRole();
   const isGerencia = role === "gerencia";
+  const { itens: notificacoes } = useNotificacoesAdmin();
+  // Só notificações REAIS não lidas alimentam o menu (as demonstrativas ficam apenas no sino).
+  const naoLidasReais = notificacoes.filter((n) => !n.lida && n.origem === "real" && n.modulo);
+  const MODULO_DO_ITEM: Record<string, ModuloNotificacao> = { "/admin/requerimentos": "requerimentos", "/admin/comprovantes": "comprovantes", "/admin/retroativos": "retroativos", "/admin/negociacoes": "negociacoes" };
+  const notificacoesDoItem = (to: string) => (to === "/admin/dashboard" ? naoLidasReais.filter((n) => (n.indicadores?.length ?? 0) > 0) : MODULO_DO_ITEM[to] ? naoLidasReais.filter((n) => n.modulo === MODULO_DO_ITEM[to]) : []);
   const items = useMemo(
     () => [
       ...baseItems,
@@ -89,20 +96,27 @@ export function AdminLayout() {
           {items.map((it) => {
             const active = loc.pathname.startsWith(it.to);
             const Icon = it.icon;
+            const nots = notificacoesDoItem(it.to);
             return (
-              <Link
-                key={it.to}
-                to={it.to}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition ${
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "hover:bg-sidebar-accent/50"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {it.label}
-              </Link>
+              <div key={it.to} className="relative">
+                <Link
+                  to={it.to}
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition ${nots.length > 0 ? "pr-11" : ""} ${
+                    active
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "hover:bg-sidebar-accent/50"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {it.label}
+                </Link>
+                {nots.length > 0 && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <ContadorNotificacoes itens={nots} rotulo={it.label} />
+                  </span>
+                )}
+              </div>
             );
           })}
         </nav>

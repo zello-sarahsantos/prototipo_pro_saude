@@ -1,7 +1,7 @@
 # Documentação Técnica — Navegação do Portal do Servidor e Módulo de Cadastro
 
-> **Última atualização:** 2026-08-10 (via sessão de desenvolvimento assistido)
-> **Branch de trabalho:** `feature-modulo-pagamentos`
+> **Última atualização:** 2026-10-21 (seção 7 — edição cadastral pela GERDAB; demais seções: 2026-08-10)
+> **Branch de trabalho:** `main` (a seção 7 é posterior ao ciclo `feature-modulo-pagamentos`)
 > **Escopo:** este documento cobre mudanças no Portal do Servidor e no Módulo de Cadastro que **não pertencem ao Módulo de Pagamento** (documentado separadamente em `docs/MODULO_PAGAMENTO.md`). Foi criado para manter os dois escopos separados — cada documento acompanha os commits do seu próprio assunto.
 
 ---
@@ -68,6 +68,22 @@
 - **Persistência:** sem mudança de mecanismo — `IncluirDependenteValue`/`DependentData` continuam gravados exatamente como antes (`novosDependentes`/`dependentsData` dentro de `RequerimentoMudancaPlanoDraft`, via `saveRequerimentoMudancaPlano()`); o **tipo** do campo `modalidade` voltou a ser texto livre, e `empresarial` é um booleano novo e independente, gravado junto.
 - **Regras respeitadas:** nenhuma validação nova de obrigatoriedade além da que já existia (o campo continua obrigatório como texto livre; `empresarial` é informativo, sem obrigatoriedade — mesmo padrão das seções 3 e 5); nenhuma tela nova criada; nenhum outro passo dos 2 wizards foi alterado.
 - **Arquivos principais:** `src/components/IncluirDependenteForm.tsx`; `src/routes/servidor.requerimento.novo-plano.tsx`.
+
+## 7. Edição cadastral pela GERDAB — Telefone (ficha do servidor)
+- **Telas:** `src/routes/admin.servidores.$id.tsx` (aba Dados → **Editar**, modal "Editar dados do servidor") e leitura em
+  `src/routes/servidor.meus-dados.tsx` (Portal do Servidor). **Lógica:** `src/lib/servidor-cadastro.ts` (novo).
+- **Escopo deliberadamente restrito:** só o **Telefone** é editável (campos de contato sem procedimento administrativo).
+  Nome, data de nascimento, CPF, RG, e-mail institucional, plano, operadora, associação, processo SEI e início do benefício
+  continuam **somente leitura**; mudanças de plano/operadora/associação seguem pelos Requerimentos.
+- **Regras:** telefone com DDD (fixo de 10 dígitos ou celular de 11 começando em 9), máscara `(DD) NNNNN-NNNN`; **justificativa
+  obrigatória**; não grava se nada mudou; responsável derivado do perfil (Analista/Gerência).
+- **Armazenamento:** o valor novo **sobrepõe** o cadastro-base (`servidorAtual`, que não é modificado), em
+  `servidorCadastroValores`; o histórico é append-only (`servidorCadastroHistorico`, reutiliza `auditoria.ts`), com **um evento
+  por operação** (campo, valor anterior/novo, justificativa, responsável, data/hora) exibido no Histórico da ficha. O Portal do
+  Servidor passa a exibir o telefone vigente; nada em requerimentos, comprovantes, negociações ou ressarcimentos é alterado.
+- **Rótulo do Portal:** o botão da tela Meus Dados passou de "Solicitar alteração de cadastro" para
+  **"Solicitar alteração do benefício"**, para não sugerir edição de dados pessoais (que o servidor não faz por conta própria).
+- **Limitações:** o protótipo usa **um servidor de referência** (a edição vale para ele); sem backend, o dado fica no navegador.
 
 ---
 

@@ -2,27 +2,29 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 import { servidorAtual } from "@/lib/mock-data";
 import { PendencyBanner } from "@/components/PendencyBanner";
+import { useTelefoneServidor } from "@/lib/servidor-cadastro";
 
 export const Route = createFileRoute("/servidor/meus-dados")({
   component: MeusDados,
 });
 
-const fields: [string, string][] = [
-  ["Nome completo", servidorAtual.nome],
-  ["Matrícula", servidorAtual.matricula],
-  ["Data de nascimento", servidorAtual.dataNascimento],
-  ["CPF", servidorAtual.cpf],
-  ["E-mail institucional", servidorAtual.email],
-  ["Telefone", servidorAtual.telefone],
-  ["Tipo de plano", servidorAtual.plano],
-  ["Associação vinculada", servidorAtual.associacao || "—"],
-  ["Processo SEI", servidorAtual.processoSEI],
-  ["Início do benefício", servidorAtual.inicioBeneficio],
-];
 
 function MeusDados() {
   // Fix #10 — botão navega para o fluxo de requerimento correto
   const navigate = useNavigate();
+  const telefone = useTelefoneServidor();
+  const fields: [string, string][] = [
+    ["Nome completo", servidorAtual.nome],
+    ["Matrícula", servidorAtual.matricula],
+    ["Data de nascimento", servidorAtual.dataNascimento],
+    ["CPF", servidorAtual.cpf],
+    ["E-mail institucional", servidorAtual.email],
+    ["Telefone", telefone],
+    ["Tipo de plano", servidorAtual.plano],
+    ["Associação vinculada", servidorAtual.associacao || "—"],
+    ["Processo SEI", servidorAtual.processoSEI],
+    ["Início do benefício", servidorAtual.inicioBeneficio],
+  ];
 
   return (
     <div className="p-4 space-y-4">
@@ -45,7 +47,7 @@ function MeusDados() {
         onClick={() => navigate({ to: "/servidor/requerimento/novo" })}
         className="w-full bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-medium hover:bg-primary-light transition"
       >
-        Solicitar alteração de cadastro
+        Solicitar alteração do benefício
       </button>
 
       <button

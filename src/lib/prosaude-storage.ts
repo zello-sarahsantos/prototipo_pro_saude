@@ -39,6 +39,11 @@ export const PROSAUDE_STORAGE_KEYS = {
   massaDemoNegociacoesEnvios: "prosaude_massa_demo_negociacoes_envios",
   // Fase 4 — Emissões do Relatório de Ressarcimento de Negociações (snapshots imutáveis; fonte única do controle de duplicidade).
   negociacoesEmissoes: "prosaude_negociacoes_emissoes_ressarcimento",
+  // Massa demonstrativa das solicitações documentais complementares (Requerimentos da Associação e Comprovantes).
+  massaDemoComplementares: "prosaude_massa_demo_complementares",
+  // Edição cadastral pela GERDAB (ficha do servidor): valores alterados (sobrepõem o cadastro-base) e trilha de alterações.
+  servidorCadastroValores: "prosaude_servidor_cadastro_valores",
+  servidorCadastroHistorico: "prosaude_servidor_cadastro_historico",
   /** Data simulada do protótipo (limitação de demonstração — ver `dias-uteis.ts`). */
   dataReferenciaPrototipo: "prosaude_data_referencia",
 } as const;

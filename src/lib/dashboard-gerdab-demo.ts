@@ -151,7 +151,7 @@ export interface AlteracaoMensal {
 const TIPOS_ALTERACAO: [string, string, GrupoAlteracao, number, number][] = [
   ["primeira", "Primeira inclusão no Pró-Saúde", "cadastral", 28, 2],
   ["inclusao_dependente", "Inclusão de dependentes", "cadastral", 64, 4],
-  ["exclusao_dependente", "Exclusão de dependentes", "cadastral", 28, 2],
+  ["exclusao_dependente", "Exclusão", "cadastral", 28, 2],
   ["mudanca_plano", "Mudança de plano", "cadastral", 41, 3],
   ["comprovante_matricula", "Comprovante de matrícula", "documento", 96, 4],
   ["irpf_enteado", "Declaração de IRPF de enteados", "documento", 37, 2],

@@ -252,7 +252,14 @@ Módulo: `src/lib/notificacoes-pagamento.ts`, consumido por `NotificationBell.ts
 
 Status mapeados para notificação: `ilegivel`, `correcao_solicitada`, `aprovado`, `aprovado_com_ressalva`, `recusado`, `retroativo_aguardando_aprovacao`, `retroativo_aprovado`, `retroativo_recusado`. **Não gera notificação** para `em_analise`, `processando`, `revisao` (obsoleto), `retroativo_aguardando_analista`/`retroativo_aguardando_gerencia`/`retroativo_devolvido` (legado — ver 3.12) — nenhuma mensagem mapeada para esses.
 
-**Limitação conhecida:** notificações não são "lidas/marcadas" — são recalculadas do zero a cada render (`useEffect` em `NotificationBell`), não há persistência de "já vi essa notificação".
+> **Lado administrativo (GERDAB):** a chegada de comprovantes (novo e corrigido/reenviado, em `em_analise` ou
+> `retroativo_aguardando_aprovacao`) gera notificações do **Admin** — sino, contador do item "Comprovantes" do menu e do
+> indicador Comprovantes do Dashboard (o reenvio também aparece em "Prazos e alertas documentais"). Esse modelo é separado
+> deste (do Servidor), tem leitura persistida por perfil e está em `docs/DASHBOARD_GERDAB_NUPLA_TEMA_NOTIFICACOES.md`, §4.
+> O Dashboard também lista "correção solicitada" e "documento complementar solicitado" como solicitações aguardando envio do
+> Servidor (somente leitura; o tratamento continua em `/admin/comprovantes`).
+
+**Limitação conhecida (sino do Servidor):** notificações não são "lidas/marcadas" — são recalculadas do zero a cada render (`useEffect` em `NotificationBell`), não há persistência de "já vi essa notificação".
 
 ### 3.14 Persistência
 Ver seção 8 (completa).

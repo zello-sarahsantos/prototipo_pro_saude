@@ -64,16 +64,20 @@ export function SecaoRecolhivel({
   onAlternar,
   children,
   selo,
+  contador,
 }: {
   titulo: string;
   resumo: ReactNode;
+  /** Círculo de notificações não lidas, ao lado do botão de expandir (fora do <button>, para não aninhar controles). */
+  contador?: ReactNode;
   aberta: boolean;
   onAlternar: () => void;
   children: ReactNode;
   selo?: ReactNode;
 }) {
   return (
-    <section className="gd-sec gd-bar" style={{ ...cardBase, padding: "20px 20px 18px", display: "flex", flexDirection: "column" }}>
+    <section className="gd-sec gd-bar" style={{ ...cardBase, padding: "20px 20px 18px", display: "flex", flexDirection: "column", position: "relative" }}>
+      {contador && <span style={{ position: "absolute", top: 20 + 17, right: 20 + 32 + 10, transform: "translateY(-50%)", zIndex: 1 }}>{contador}</span>}
       <button
         type="button"
         onClick={onAlternar}
@@ -81,12 +85,12 @@ export function SecaoRecolhivel({
         className="gd-sec-head"
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, width: "100%", minHeight: 34, background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", color: "inherit", font: "inherit", textAlign: "left" }}
       >
-        <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <h2 className="gd-titulo" style={{ fontSize: 16, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {titulo} {selo}
         </h2>
         <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <span style={{ fontSize: 13, color: V.muted, textAlign: "right" }}>{resumo}</span>
-          <span style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${aberta ? V.primary : V.border}`, background: aberta ? V.primarySoft : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: V.primary, transition: "background-color 180ms ease, border-color 180ms ease" }}>
+          <span style={{ fontSize: 13, color: V.muted, textAlign: "right", marginRight: contador ? 30 : 0 }}>{resumo}</span>
+          <span className="gd-chev" style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${aberta ? V.primary : V.border}`, background: aberta ? V.primarySoft : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: V.primary, transition: "background-color 180ms ease, border-color 180ms ease" }}>
             <ChevronDown size={18} style={{ transform: aberta ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 200ms ease" }} />
           </span>
         </span>

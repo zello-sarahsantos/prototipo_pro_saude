@@ -438,3 +438,161 @@
   .gd .neg-res-row > span:last-child, .gd .neg-hist-row > span, .gd .neg-rel-row > span:last-child { text-align: left !important; }
   .gd .neg-res .neg-lbl { display: block; font-size: 11px; font-weight: 400; color: var(--gd-muted); text-transform: none; letter-spacing: 0; }
 }
+
+/* ── Dashboard GERDAB — atualização visual (referência: proposta do Figma) ───────────────────────────────
+   Escopada em `.gd-dash` (somente a página /admin/dashboard): as demais telas que usam `.gd` não mudam.
+   Só aparência: neutros institucionais, cartões brancos com borda neutra e sombra discreta, azul reservado para
+   ação/foco/seleção, sem barra azul superior em todos os cartões. Comportamentos e conteúdos não são alterados. */
+html:not(.dark) .gd.gd-dash {
+  --gd-bg: #f8fafc;
+  --gd-border: #e2e8f0;
+  --gd-text: #0f172a;
+  --gd-muted: #64748b;
+  --gd-primary: #1d4ed8;
+  --gd-primary-soft: #eff6ff;
+  --gd-hover: #f1f5f9;
+  --gd-track: #f1f5f9;
+  --gd-green: #047857;
+  --gd-green-soft: #d1fae5;
+  --gd-red: #be123c;
+  --gd-red-soft: #ffe4e6;
+  --gd-border-hover: #cbd5e1;
+  --gd-head-border: #dbeafe;
+  --gd-panel-border: #bfdbfe;
+}
+.dark .gd.gd-dash { --gd-border-hover: #36465e; --gd-head-border: #2b4468; --gd-panel-border: #2f4a73; }
+.gd-dash .gd-bar { background-image: none !important; border-radius: 16px !important; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); }
+.gd-dash .gd-sec { border-radius: 16px !important; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); }
+.gd-dash .gd-painel { border-radius: 16px !important; border-color: var(--gd-panel-border) !important; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06); }
+/* Categorias: acento azul estreito na lateral; só a categoria selecionada recebe aparência de seleção. */
+.gd-dash .gd-cat {
+  background-image: linear-gradient(var(--gd-primary), var(--gd-primary)) !important;
+  background-size: 4px 100% !important;
+  background-repeat: no-repeat !important;
+  background-position: left top !important;
+}
+@media (hover: hover) {
+  .gd-dash .gd-clk:hover { border-color: var(--gd-border-hover) !important; transform: none; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+  .gd-dash .gd-sec:has(.gd-sec-head:hover) { border-color: var(--gd-border-hover); transform: none; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+}
+.gd-dash .gd-clk[data-sel="true"] {
+  border-color: var(--gd-primary) !important;
+  background-color: color-mix(in srgb, var(--gd-primary-soft) 70%, var(--gd-card)) !important;
+  box-shadow: 0 0 0 1px var(--gd-primary), 0 6px 16px rgba(29, 78, 216, 0.12) !important;
+}
+.gd-dash .gd-opt[data-sel="true"] { border-color: var(--gd-primary) !important; background-color: var(--gd-primary-soft) !important; }
+
+/* Dashboard — Prazos e alertas documentais: fila operacional em tabela (cartões em contêineres estreitos). */
+.gd-dash .gd-fila { container-type: inline-size; }
+.gd-dash .gd-fila-row { display: grid; grid-template-columns: 160px minmax(150px, 1.1fr) minmax(170px, 1.4fr) 100px 150px; gap: 0 14px; align-items: center; padding: 16px 20px; border-top: 1px solid var(--gd-border); }
+.gd-dash .gd-fila-head { padding-top: 12px; padding-bottom: 12px; font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--gd-muted); border-top: none; }
+.gd-dash .gd-fila .gd-lbl { display: none; }
+@container (max-width: 840px) {
+  .gd-dash .gd-fila-head { display: none; }
+  .gd-dash .gd-fila-row { grid-template-columns: 1fr auto; gap: 10px 12px; padding: 16px; }
+  .gd-dash .gd-fila-row .gd-c-org, .gd-dash .gd-fila-row .gd-c-doc { grid-column: 1 / -1; }
+  .gd-dash .gd-fila-row .gd-c-acc { grid-column: 1 / -1; text-align: left !important; }
+  .gd-dash .gd-fila-row .gd-c-acc a { width: 100%; box-sizing: border-box; }
+  .gd-dash .gd-fila .gd-lbl { display: inline; font-weight: 400; color: var(--gd-muted); }
+}
+
+/* Dashboard — filtros da fila operacional: estados normal, hover, foco e selecionado com contraste garantido. */
+html:not(.dark) .gd.gd-dash { --gd-filtro-sel-bg: #0f172a; --gd-filtro-sel-fg: #ffffff; --gd-filtro-sel-hover: #1e293b; }
+.dark .gd.gd-dash { --gd-filtro-sel-bg: #e6ebf2; --gd-filtro-sel-fg: #0d1420; --gd-filtro-sel-hover: #f3f6fa; }
+.gd-dash .gd-filtro { transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease; }
+.gd-dash .gd-filtro[data-sel="true"] { background: var(--gd-filtro-sel-bg); color: var(--gd-filtro-sel-fg); border: 1px solid var(--gd-filtro-sel-bg); }
+@media (hover: hover) {
+  .gd-dash .gd-filtro:not([data-sel="true"]):hover { background: var(--gd-hover) !important; }
+  .gd-dash .gd-filtro[data-sel="true"]:hover { background: var(--gd-filtro-sel-hover); color: var(--gd-filtro-sel-fg); }
+}
+.gd-dash .gd-filtro:focus-visible { outline: 2px solid var(--gd-primary); outline-offset: 2px; }
+
+/* Contadores de notificações do Dashboard (rose-600): hover/foco com halo e tooltip "Ver atualizações". */
+.notif-wrap { position: relative; display: inline-flex; }
+.notif-dash, .notif-dash-estatico { background: #e11d48; color: #ffffff; }
+.notif-dash { box-shadow: 0 1px 3px rgba(159, 18, 57, 0.35); transition: background-color 150ms ease, box-shadow 150ms ease; }
+.notif-dash:hover, .notif-dash:focus-visible { background: #be123c; box-shadow: 0 0 0 4px rgba(225, 29, 72, 0.2), 0 3px 8px rgba(159, 18, 57, 0.45); }
+.notif-dash:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; }
+.notif-tip { position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; display: flex; flex-direction: column; gap: 2px; width: max-content; max-width: 220px; padding: 8px 12px; border-radius: 12px; background: #050816; color: #ffffff; font-size: 12px; line-height: 1.3; box-shadow: 0 8px 24px rgba(5, 8, 22, 0.35); opacity: 0; visibility: hidden; transform: translateY(-2px); pointer-events: none; transition: opacity 150ms ease, transform 150ms ease, visibility 150ms; text-align: left; }
+.notif-tip strong { font-size: 13px; font-weight: 700; }
+.notif-tip span { color: #cbd5e1; }
+.notif-wrap:hover .notif-tip, .notif-wrap:focus-within .notif-tip { opacity: 1; visibility: visible; transform: none; }
+@media (prefers-reduced-motion: reduce) { .notif-dash, .notif-tip { transition: none; } }
+
+/* Dashboard — hover dos cartões de indicadores (elevação, borda/halo azul, título e CTA). Só com dispositivo de hover e sem
+   "reduzir movimento" para a elevação; a borda/halo/sombra continuam. Nunca altera alvos de clique nem o layout (só transform). */
+html:not(.dark) .gd.gd-dash { --gd-hv-borda: #93c5fd; --gd-hv-halo: #dbeafe; --gd-hv-sombra: 0 12px 28px rgba(15, 23, 42, 0.1); --gd-hv-sombra-sel: 0 10px 24px rgba(29, 78, 216, 0.18); --gd-titulo-hover: #1e3a8a; --gd-cta-hover: #eff6ff; --gd-cta-hover-direto: #dbeafe; }
+.dark .gd.gd-dash { --gd-hv-borda: #3b5f95; --gd-hv-halo: rgba(138, 184, 238, 0.14); --gd-hv-sombra: 0 12px 28px rgba(0, 0, 0, 0.45); --gd-hv-sombra-sel: 0 10px 24px rgba(138, 184, 238, 0.18); --gd-titulo-hover: #bfdbfe; --gd-cta-hover: rgba(138, 184, 238, 0.12); --gd-cta-hover-direto: rgba(138, 184, 238, 0.22); }
+.gd-dash .gd-card-ind { transition: transform 200ms ease-out, border-color 200ms ease-out, box-shadow 200ms ease-out; }
+.gd-dash .gd-card-ind .gd-titulo { transition: color 200ms ease-out; }
+.gd-dash .gd-cta { padding: 6px 10px !important; margin: -6px -10px; border-radius: 10px; transition: background-color 200ms ease-out, color 200ms ease-out; }
+.gd-dash .gd-seta { display: inline-block; transition: transform 200ms ease-out; }
+@media (hover: hover) {
+  .gd-dash .gd-card-ind.gd-clk:hover { border-color: var(--gd-hv-borda) !important; box-shadow: 0 0 0 4px var(--gd-hv-halo), var(--gd-hv-sombra) !important; z-index: 2; }
+  .gd-dash .gd-card-ind.gd-clk[data-sel="true"]:hover { border-color: var(--gd-primary) !important; box-shadow: 0 0 0 4px var(--gd-hv-halo), var(--gd-hv-sombra-sel) !important; }
+  .gd-dash .gd-card-ind.gd-clk.gd-card-sec:hover { box-shadow: 0 0 0 3px var(--gd-hv-halo), 0 8px 20px rgba(15, 23, 42, 0.08) !important; }
+  .gd-dash .gd-card-ind:hover .gd-titulo { color: var(--gd-titulo-hover) !important; }
+  .gd-dash .gd-card-ind:hover .gd-cta { background: var(--gd-cta-hover); }
+  .gd-dash .gd-card-ind .gd-cta:hover { background: var(--gd-cta-hover-direto); }
+  .gd-dash .gd-card-ind:hover .gd-seta { transform: translateX(3px); }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .gd-dash .gd-card-ind.gd-clk:hover { transform: translateY(-4px); }
+  .gd-dash .gd-card-ind.gd-clk.gd-card-sec:hover { transform: translateY(-3px); }
+  .gd-dash .gd-card-ind.gd-clk[data-sel="true"]:hover { transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gd-dash .gd-card-ind, .gd-dash .gd-card-ind .gd-titulo, .gd-dash .gd-cta, .gd-dash .gd-seta { transition: none; }
+}
+
+/* Dashboard — mesmo padrão de hover nas seções recolhíveis (Prazos e alertas, Movimentações), nos indicadores do Fechamento e
+   nas métricas clicáveis do Panorama. A elevação só atua sobre o cabeçalho/indicador sob o mouse; o conteúdo interno não reage. */
+.gd-dash .gd-sec { transition: transform 200ms ease-out, border-color 200ms ease-out, box-shadow 200ms ease-out; }
+.gd-dash .gd-sec .gd-titulo { transition: color 200ms ease-out; }
+.gd-dash .gd-sec .gd-chev { transition: background-color 200ms ease-out, border-color 200ms ease-out; }
+@media (hover: hover) {
+  .gd-dash .gd-sec:has(.gd-sec-head:hover) { border-color: var(--gd-hv-borda) !important; box-shadow: 0 0 0 4px var(--gd-hv-halo), var(--gd-hv-sombra) !important; z-index: 2; }
+  .gd-dash .gd-sec:has(.gd-sec-head[aria-expanded="true"]:hover) { box-shadow: 0 0 0 4px var(--gd-hv-halo), var(--gd-hv-sombra-sel) !important; }
+  .gd-dash .gd-sec:has(.gd-sec-head:hover) .gd-titulo { color: var(--gd-titulo-hover) !important; }
+  .gd-dash .gd-sec .gd-sec-head:hover .gd-chev { background: var(--gd-cta-hover) !important; border-color: var(--gd-hv-borda) !important; }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .gd-dash .gd-sec:has(.gd-sec-head:hover) { transform: translateY(-4px); }
+  .gd-dash .gd-sec:has(.gd-sec-head[aria-expanded="true"]:hover) { transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) { .gd-dash .gd-sec, .gd-dash .gd-sec .gd-titulo, .gd-dash .gd-sec .gd-chev { transition: none; } }
+
+/* Secundário + selecionado: o reforço azul da sombra prevalece sobre o hover secundário. */
+@media (hover: hover) {
+  .gd-dash .gd-card-ind.gd-clk.gd-card-sec[data-sel="true"]:hover { border-color: var(--gd-primary) !important; box-shadow: 0 0 0 3px var(--gd-hv-halo), var(--gd-hv-sombra-sel) !important; }
+}
+
+/* Dashboard — expansões padronizadas dos indicadores (cabeçalho blue-50/95, CTA principal, tabela operacional). */
+html:not(.dark) .gd.gd-dash { --gd-primary-hover: #1e40af; --gd-linha-div: #f1f5f9; }
+.dark .gd.gd-dash { --gd-primary-hover: #a9cdf5; --gd-linha-div: #1c2738; }
+.gd-dash .gd-painel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 14px 20px; padding: 20px; background: color-mix(in srgb, var(--gd-primary-soft) 95%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--gd-head-border, var(--gd-border)); }
+.gd-dash .gd-fechar { height: 40px; width: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--gd-border); background: var(--gd-card); color: var(--gd-muted); cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+.gd-dash .gd-fechar:hover { background: var(--gd-hover); color: var(--gd-text); }
+.gd-dash .gd-cta-principal { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 0 16px; border: none; border-radius: 12px; background: var(--gd-primary); color: var(--gd-on-primary) !important; font-family: inherit; font-size: 14px; font-weight: 700; text-decoration: none !important; white-space: nowrap; cursor: pointer; transition: background-color 150ms ease; }
+.gd-dash .gd-cta-principal:hover { background: var(--gd-primary-hover); }
+.gd-dash .gd-cta-principal:focus-visible { outline: 2px solid var(--gd-primary); outline-offset: 3px; }
+.gd-dash .gd-tab { container-type: inline-size; }
+.gd-dash .gd-tab-row { display: grid; grid-template-columns: var(--cols); gap: 0 16px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--gd-linha-div); background: var(--gd-card); font-size: 14px; }
+.gd-dash .gd-tab-head { padding-top: 12px; padding-bottom: 12px; background: var(--gd-bg); border-top: 1px solid var(--gd-border); border-bottom: 1px solid var(--gd-border); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--gd-muted); }
+.gd-dash .gd-tab-row.gd-row:hover { background: color-mix(in srgb, var(--gd-primary-soft) 50%, var(--gd-card)); }
+.gd-dash .gd-tab-row[data-destaque="true"] { background: var(--gd-primary-soft); box-shadow: inset 4px 0 0 var(--gd-primary); }
+.gd-dash .gd-t4 { text-align: right; }
+@container (max-width: 760px) {
+  .gd-dash .gd-tab-head { display: none; }
+  .gd-dash .gd-tab-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 16px; }
+  .gd-dash .gd-tab-row > .gd-t1, .gd-dash .gd-tab-row > .gd-t2 { grid-column: 1 / -1; }
+  .gd-dash .gd-tab-row > .gd-t3 { grid-column: 1 / -1; }
+  .gd-dash .gd-tab-row > .gd-t4 { grid-column: 1 / -1; text-align: left; }
+  .gd-dash .gd-tab-row > .gd-t4 a, .gd-dash .gd-tab-row > .gd-t4 button { width: 100%; box-sizing: border-box; justify-content: center; }
+}
+.gd-dash .gd-btn-abrir { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--gd-border); background: var(--gd-card); color: var(--gd-primary) !important; font-size: 14px; font-weight: 700; text-decoration: none !important; white-space: nowrap; transition: border-color 150ms ease, background-color 150ms ease; }
+.gd-dash .gd-btn-abrir:hover { border-color: var(--gd-hv-borda); background: var(--gd-cta-hover); }
+.gd-dash .gd-btn-abrir:focus-visible { outline: 2px solid var(--gd-primary); outline-offset: 2px; }
+/* Miniindicadores de Comprovantes selecionados: fundo azul claro, borda e anel azuis. */
+.gd-dash .gd-opt[data-sel="true"] { box-shadow: 0 0 0 1px var(--gd-primary); }
+.gd-dash .gd-fila-row[data-destaque="true"] { background: var(--gd-primary-soft); box-shadow: inset 4px 0 0 var(--gd-primary); }

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatCompetencia } from "@/lib/mock-data";
 import { getDataReferencia } from "@/lib/dias-uteis";
 import { garantirMassaDemonstracaoRetroativos } from "@/lib/massa-demonstracao";
+import { garantirMassaDemonstracaoComplementares } from "@/lib/massa-demonstracao-complementares";
 import { getDadosDashboard } from "@/lib/dashboard-gerdab-dados";
 import { getCompetenciaVigente, getCompetenciasDashboard, getSituacaoFechamentoCompetencia } from "@/lib/dashboard-gerdab";
 import { RequerAcao } from "@/components/dashboard-gerdab/RequerAcao";
@@ -35,6 +36,7 @@ function Dashboard() {
   // fila já ter conteúdo quando o Dashboard é a primeira tela aberta. Não é comportamento de produção.
   useEffect(() => {
     garantirMassaDemonstracaoRetroativos();
+    garantirMassaDemonstracaoComplementares();
     setVersao((v) => v + 1);
   }, []);
 
@@ -65,10 +67,10 @@ function Dashboard() {
   const forte = { color: "var(--gd-text)", fontWeight: 600 } as const;
 
   return (
-    <div className="gd" style={{ padding: "32px clamp(16px, 3.5%, 48px) 48px", display: "flex", flexDirection: "column", gap: 28, background: "var(--gd-bg)", minHeight: "100%" }}>
-      <header style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 12, position: "relative" }}>
+    <div className="gd gd-dash" style={{ padding: "32px clamp(16px, 3.5%, 48px) 48px", display: "flex", flexDirection: "column", gap: 32, background: "var(--gd-bg)", minHeight: "100%" }}>
+      <header style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 12, position: "relative", paddingBottom: 24, borderBottom: "1px solid var(--gd-border)" }}>
         <div style={{ flex: "1 1 320px", minWidth: 0 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.4px", margin: 0 }}>Dashboard</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.6px", margin: 0 }}>Dashboard</h1>
           <p style={{ fontSize: 14, margin: "6px 0 0", ...muted }}>
             Competência <strong style={forte}>{rotulo}</strong> {estado} · {dados.situacao.fechada ? "fechada automaticamente em" : "fechamento automático em"}{" "}
             <strong style={forte}>{dados.situacao.fechamentoEm.toLocaleDateString("pt-BR")}</strong> (2º dia útil)
@@ -82,7 +84,7 @@ function Dashboard() {
               value={dados.competencia}
               onChange={(e) => setSelecionada(e.target.value)}
               aria-label="Filtrar por competência"
-              style={{ height: 44, padding: "0 10px", border: "1px solid var(--gd-border)", borderRadius: 10, background: "var(--gd-card)", color: "var(--gd-text)", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+              style={{ height: 44, padding: "0 10px", border: "1px solid var(--gd-border)", borderRadius: 12, background: "var(--gd-card)", color: "var(--gd-text)", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
             >
               {[...dados.competencias].reverse().map((c) => (
                 <option key={c.chave} value={c.chave}>{c.rotulo}</option>
@@ -98,7 +100,7 @@ function Dashboard() {
 
       <RequerAcao dados={dados.d} competencia={dados.competencia} competenciaRotulo={rotulo} vigente={dados.situacao.vigente} />
 
-      <PrazosAlertas dados={dados.d} />
+      <PrazosAlertas dados={dados.d} competenciaRotulo={rotulo} />
 
       <MovimentacoesCard competencia={dados.competencia} competenciaRotulo={rotulo} linhas={dados.d.movimentacoes.linhas} />
 

@@ -144,6 +144,10 @@ Notificações dinâmicas, uma de cada, com id estável e chave de leitura que m
 - **"Negociações — Relatórios recebidos das associações"** (`real-negociacoes-envios`): conta os envios efetivamente pendentes de
   conferência. Some quando todos são conferidos.
 Só Analista e Gerência as recebem. O relatório de ressarcimento **não** gera notificação.
+Ambas pertencem ao módulo `negociacoes` do modelo de notificações do Admin e **alimentam o sino e o contador do item
+"Negociações" do menu lateral**; **não** alimentam indicadores do Dashboard (`indicadores: []`). A leitura é por perfil e
+persistida (ver `DASHBOARD_GERDAB_NUPLA_TEMA_NOTIFICACOES.md`, §4.2). A notificação indica **tarefa de conferência**, nunca que
+houve pagamento nem leitura/download automático de documentos.
 
 ---
 

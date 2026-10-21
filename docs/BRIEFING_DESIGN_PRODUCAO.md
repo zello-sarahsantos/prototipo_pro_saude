@@ -18,6 +18,10 @@
 > auditoria de qualidade posterior de 30/09/2026 e já corrigidos aqui: ambos já existiam no
 > protótipo antes destas fases) ou variantes sem divergência real entre telas.
 
+> **Atualização (Dashboard — expansões e notificações):** a seção **28** foi revisada para o estado atual: cartões com contador
+> vermelho, expansões padronizadas (28.11) e notificações (28.9). Onde o Dashboard difere dos tokens das seções 4–27, vale a
+> seção 28.
+>
 > **Atualização (Dashboard GERDAB / NUPLA / tema escuro / notificações):** a seção **28** documenta o
 > novo Dashboard GERDAB, o Relatório NUPLA, o tema escuro e o sino de notificações do Admin, com
 > base no protótipo de alta fidelidade do Claude Design e no que foi efetivamente implementado
@@ -931,7 +935,9 @@ vencida ou uma ação precisa de atenção urgente.
 
 ### 17.3 Notificações (sino)
 
-Componente `NotificationBell` — ícone de sino com badge numérico circular (mesmo padrão de badge
+> O sino do **Admin** (`AdminNotificationBell`) e os contadores do menu e do Dashboard seguem o padrão da seção 28.9.
+
+Componente `NotificationBell` (Portal do Servidor/Associação) — ícone de sino com badge numérico circular (mesmo padrão de badge
 de contagem da seção 14) sobreposto no canto superior direito do ícone, dropdown ao clicar (mesmo
 padrão visual de popover: `bg-popover` com borda e sombra elevada).
 
@@ -1360,6 +1366,10 @@ algo visualmente diferente do restante do sistema:
 | `--gd-track` | `#e8ecf2` | `#223047` | Trilhas, divisor entre fluxos, abas |
 | `--gd-bar` | `#0f2d52` | `#8ab8ee` | Barra superior dos cartões |
 | `--gd-hover` | `#e9eef5` | `#1f2c40` | Hover de listas/opções |
+| `--gd-hv-borda` / `--gd-hv-halo` | `#93c5fd` / `#dbeafe` | `#3b5f95` / `rgba(138,184,238,.14)` | Borda e halo do hover dos cartões e seções |
+| `--gd-head-border` / `--gd-panel-border` | `#dbeafe` / `#bfdbfe` | `#2b4468` / `#2f4a73` | Divisor do cabeçalho e borda dos painéis expandidos |
+| `--gd-filtro-sel-bg` / `-fg` | `#0f172a` / `#ffffff` | `#e6ebf2` / `#0d1420` | Filtro de situação selecionado |
+| Contador vermelho | `#e11d48` (hover `#be123c`) | idem | `.notif-dash`, texto branco |
 
 Tipografia: Inter; título de página 28 px/700 (NUPLA 26 px); valor-destaque dos indicadores 30 px/600
 com `tabular-nums`; título de cartão 15 px/700; kicker 11 px/700 caixa-alta com `letter-spacing 0.8`;
@@ -1379,19 +1389,27 @@ Regras: `prefers-reduced-motion` desliga elevação e transições; foco visíve
 os elementos interativos; Enter/Espaço ativam cartões com `role="button"`.
 
 ### 28.3 Cartões de indicador ("Requer ação")
-- Grade `repeat(auto-fit, minmax(max(170px, calc((100% − 28px) / 3)), 1fr))`, gap 14 px; 1 coluna no
-  mobile. Cartão: raio 12 px, padding `20px 18px 16px`, barra azul superior.
-- Estrutura: kicker (caixa-alta, muted) + ponto de status (âmbar = pendência, verde = nada pendente)
-  → título → valor "N de M aguardando análise" → texto de apoio → rodapé com divisor
-  (esquerda: "Ver detalhes ⌄"; direita: link "Abrir fila ›" quando houver destino único).
-- **Alterações mensais** não tem link geral no rodapé (reúne dois fluxos): kicker "GESTÃO DE
-  BENEFÍCIOS", apoio "11 solicitações cadastrais · 7 pendências documentais".
-- Clicar em qualquer ponto do cartão (exceto links/botões) abre/fecha o painel de detalhe.
+- Grade `repeat(auto-fit, minmax(max(170px, calc((100% − 28px) / 3)), 1fr))`, gap 14 px; 1 coluna no mobile. **Três
+  prioritários** na primeira linha (Alterações mensais, Comprovantes, Ressarcimentos — Servidor) e **dois secundários**
+  (Ressarcimentos — Associações, Aptos na consolidação; classe `gd-card-sec`, menor peso: sombra mais discreta no hover).
+  Cartão: raio 12 px, padding `20px 18px 16px`, barra azul superior (`.gd-bar`).
+- Estrutura: kicker (caixa-alta, muted) + **contador vermelho** (§28.9, substitui o antigo ponto de status) → título
+  (`.gd-titulo`, 15 px/700) → valor "N de M aguardando análise" → texto de apoio → rodapé com divisor (esquerda: CTA
+  "Ver detalhes ⌄" / **"Ocultar detalhes ⌃"**; direita: link "Abrir fila ›" quando houver destino único).
+- **Alterações mensais** não tem link geral no rodapé (reúne dois fluxos): kicker "GESTÃO DE BENEFÍCIOS", apoio
+  "11 solicitações cadastrais · 7 pendências documentais".
+- **Estados:** *normal* — fundo `--gd-card`, borda `--gd-border`; *hover* (só dispositivos com hover e sem
+  `prefers-reduced-motion`) — borda `--gd-hv-borda` (#93c5fd claro / #3b5f95 escuro), halo de 4 px `--gd-hv-halo`, sombra
+  `--gd-hv-sombra`, título em `--gd-titulo-hover`, CTA com fundo `--gd-cta-hover`; *foco por teclado* — anel de 2 px
+  `--gd-primary` com offset; *selecionado/expandido* (`data-sel="true"`, `aria-expanded="true"`) — borda e halo azuis
+  (`--gd-primary`/`--gd-primary-soft`), sombra azul suave `--gd-hv-sombra-sel`, botão "Ocultar detalhes". O hover de um cartão
+  selecionado mantém a borda azul. Clicar em qualquer ponto (exceto links/botões internos e o contador) alterna o painel.
 
 ### 28.4 Detalhamento de Alterações mensais
-- Painel de largura total (`gridColumn 1 / -1`): cabeçalho em `--gd-primary-soft` (kicker, "N itens
-  requerem atenção", chips das duas contagens, botão ×); animação de entrada `gd-alt-in` (opacidade
-  + 6 px).
+- Painel de largura total, **inserido logo abaixo da linha do cartão**, com o **cabeçalho padronizado das expansões**
+  (§28.11): categoria "ALTERAÇÕES MENSAIS · OUTUBRO/2026", "N itens requerem atenção", badges das duas contagens
+  ("N solicitações cadastrais", "N pendências documentais"), botão ×; **sem CTA no cabeçalho** (cada grupo tem o seu).
+  Animação de entrada `gd-alt-in` (opacidade + 6 px; desligada com `prefers-reduced-motion`).
 - **Dois grupos de fundo branco**, divisor neutro de **4 px** `--gd-track` entre eles, sem fundos
   coloridos. Cada grupo: ícone em quadrado 36 px (azul claro para cadastral; neutro para
   documental), título 15 px/700, **etiqueta de fluxo** (10 px/700 caixa-alta, pílula: `FLUXO:
@@ -1406,23 +1424,23 @@ os elementos interativos; Enter/Espaço ativam cartões com `role="button"`.
   caixa-alta, padding `1px 6px`, borda e texto `--gd-primary`, fundo `--gd-card`, **dentro do cartão**
   e na mesma linha do título (quebra para a linha de baixo se faltar espaço, nunca sobrepõe; o título
   usa `overflow-wrap:anywhere` e **não** reduz a fonte).
-- **Prévia da fila:** largura total, logo após a última coluna da linha do cartão selecionado (no
-  mobile, abaixo do próprio cartão); contêiner branco com borda, cabeçalho e rodapé em `--gd-bg`;
+- **Prévia da fila:** largura total, dentro do painel, abaixo das categorias; contêiner branco com borda, cabeçalho e rodapé em `--gd-bg`;
   até 5 linhas `.gd-row` com "Abrir ficha →" e rodapé com link para a tela completa. Ordem das
   categorias fixa (cadastral: primeira inclusão, inclusão de dependentes, exclusão de dependentes,
   mudança de plano; documental: comprovante de matrícula, IRPF de enteados, laudo médico).
 
 ### 28.5 Botões do Dashboard
-- **Primário preenchido:** `--gd-primary` / `--gd-on-primary`, raio 8 px, 36–44 px de altura (44 px
-  para o CTA "Acessar relatório NUPLA ↗"; 40 px para "Consultar inadimplência recorrente ↗").
-  Estado "aberto" de botão que alterna painel = halo de 3 px `--gd-primary-soft` (não troca o fundo,
-  para manter o contraste do texto).
-- **Secundário (opções, exportar, filtros):** `.gd-opt`, fundo `--gd-card`, borda `--gd-border`,
-  raio 8 px, 40 px de altura; ícones PDF em `--gd-red` e Excel em `--gd-green`.
-- **Link de ação:** 13 px/600 em `--gd-primary` ("Abrir fila ›", "Abrir ficha →"), sem sublinhado
-  exceto no hover.
-- Busca (inadimplência/alertas): campo com placeholder "Pesquisar servidor por nome ou matrícula…",
-  botão × para limpar, contagem "N de M servidores encontrados" e mensagem de vazio.
+- **Primário preenchido:** `--gd-primary` / `--gd-on-primary`, raio 8 px, 36–44 px de altura (44 px para o CTA
+  "Acessar relatório NUPLA ↗"; 40 px para "Consultar inadimplência recorrente ↗"). Estado "aberto" de botão que alterna painel =
+  halo de 3 px `--gd-primary-soft` (não troca o fundo, para manter o contraste do texto).
+- **CTA principal de expansão** (`.gd-cta-principal`): 40 px, raio 12 px, fundo `--gd-primary`, hover `--gd-primary-hover`, ícone
+  de seta; **só existe quando há rota real**.
+- **Secundário (opções, exportar, filtros):** `.gd-opt`, fundo `--gd-card`, borda `--gd-border`, raio 8 px, 40 px de altura;
+  ícones PDF em `--gd-red` e Excel em `--gd-green`.
+- **"Abrir" por linha** (`.gd-btn-abrir`): 38 px, raio 10 px, contorno neutro, texto azul; hover com borda `--gd-hv-borda` e fundo
+  `--gd-cta-hover`; `aria-label` com o nome do registro; largura total no mobile.
+- **Link de ação:** 13 px/600 em `--gd-primary` ("Abrir fila ›", "Abrir ficha →"), sem sublinhado exceto no hover.
+- Busca: campo com placeholder específico do painel, botão × para limpar, contagem e mensagem de vazio.
 
 ### 28.6 Selos e identificação de dados demonstrativos
 - **"Dados demonstrativos":** pílula 11 px/600 (`--gd-amber` sobre `--gd-amber-soft`), **uma única**
@@ -1470,29 +1488,80 @@ os elementos interativos; Enter/Espaço ativam cartões com `role="button"`.
 - Armadilha: botões preenchidos com `--gd-primary` devem usar `--gd-on-primary` para o texto (no
   escuro o azul é claro e o texto precisa ser escuro).
 
-### 28.9 Sino de notificações do Admin
-- Gatilho: ícone de sino 36×36 ao lado do botão de tema; **contador** vermelho (`--destructive`,
-  10 px/700, mínimo 16×16, canto superior direito) com o total de não lidas.
-- Painel: desktop = ancorado ao sino, largura 380 px (`absolute`); mobile = `fixed`, margens de 16 px,
-  abaixo da barra superior. Cartão `--card`, borda `--border`, raio 12 px, `shadow-elevated`, `z-50`,
-  lista com rolagem (máx. 420 px).
-- Cabeçalho: "Notificações" 15 px/700 + "N não lidas" (12 px muted), ação "Marcar todas como lidas" e ×.
-- Item: ponto de 8 px (azul se não lida), título 13 px (700 não lida / 500 lida), horário 11 px
-  muted à direita, descrição 12 px muted; não lida com fundo `primary/10`; hover `--muted`. Item
-  demonstrativo traz a pílula "Demonstrativa". Rodapé de 11 px explica a diferença.
-- Fecha com Esc, clique/toque fora ou ×; clicar em um item marca como lido e navega ao destino.
+### 28.9 Notificações: sino, contadores, tooltips e modais
+- **Sino** (gatilho 36×36 ao lado do botão de tema): contador vermelho (`--destructive`, 10 px/700, mínimo 16×16, canto superior
+  direito) com o total de não lidas (reais + demonstrativas). Painel: desktop ancorado ao sino, 380 px; mobile `fixed` com
+  margens de 16 px. Cartão `--card`, borda `--border`, raio 12 px, `shadow-elevated`, `z-50`, lista com rolagem (máx. 420 px).
+  Item: ponto de 8 px (azul se não lida), título 13 px (700 não lida/500 lida), horário 11 px, descrição 12 px, **pílula do módulo**
+  (muted) e, nas demonstrativas, pílula "Demonstrativa". Fecha com Esc/clique fora/×; clicar marca como lida e navega.
+- **Contador vermelho do Dashboard/menu** (`.notif-dash`): círculo rose-600 (`#e11d48`), texto branco 12 px/700, 24 px (mínimo),
+  `tabular-nums`; hover/foco rose-700 + anel suave; foco por teclado com contorno azul de 2 px. No menu lateral aparece à direita
+  do item. **Significa "notificações não lidas", nunca pendências operacionais** (esses números ficam no corpo do cartão). Some em
+  zero. `aria-label` descreve quantidade, módulo e "Ver atualizações"; `aria-haspopup="dialog"`, `aria-expanded`.
+- **Tooltip** (`.notif-tip`): fundo `#050816`, texto branco, raio 12 px, abre em hover **e** foco: "Ver atualizações" + "Última às
+  HH:mm" (ou data). `role="tooltip"`; sem movimento com `prefers-reduced-motion`.
+- **Modal contextual** (`role="dialog"`, `aria-modal`, portal): máx. 640 px × 90 vh, raio 16 px; eyebrow "Atualizações desde seu
+  último acesso" + contador estático, título do indicador, lista (hora/data à esquerda, entidade em negrito e acontecimento),
+  rodapé explicativo ("Selecione uma atualização para marcá-la como lida e abrir a origem. Isso não altera o andamento do
+  registro"), botões "Fechar" e "Abrir a seção"; foco inicial no botão de fechar, Esc fecha. No menu usa popover em portal.
+- **Modal consolidada "Atualizações do dashboard"** (botão "Atualizações" no cabeçalho de "Requer ação"): mesma moldura, uma
+  linha por indicador com contagem, resumo e "Ver atualizações ›".
+- Abrir/fechar qualquer modal **não** marca como lido; só escolher uma atualização. Ao escolher, o toast "Localize na fila: …"
+  aparece quando a navegação leva a uma fila externa.
 - Não há página "Ver todas as notificações" (fora de escopo).
 
 ### 28.10 Responsividade e acessibilidade (Dashboard/NUPLA)
-- Verificado em 1440 px e 375 px: sem rolagem horizontal da página; cartões em 1 coluna no mobile;
-  prévias entram abaixo do cartão selecionado; títulos longos quebram sem reduzir a fonte.
-- Alvos de toque ≥ 40 px nos controles principais; ícones informativos com `aria-label`; regiões
-  expansíveis com `aria-expanded`; painéis com `role="region"` e rótulo; sino com `role="dialog"`.
+- **Desktop/mobile:** verificado em 1440 px e 375 px sem rolagem horizontal da página; cartões em 1 coluna no mobile; painéis
+  abaixo da linha do indicador; **tabelas operacionais viram listas de cards** abaixo de 760 px de largura do contêiner (container query: Servidor/
+  Documento em linha cheia, "Abrir" com largura total); cabeçalho do painel empilha badges e CTA; títulos longos quebram sem
+  reduzir a fonte.
+- **Teclado e ARIA:** cartões expansíveis acessíveis por Enter/Espaço com `aria-expanded`; categorias de Alterações mensais com
+  `aria-pressed`; painéis `role="region"` com rótulo; filtros de situação com estado selecionado (`data-sel`); botões de fechar,
+  contadores e "Abrir" com nome acessível; modais `role="dialog"` + `aria-modal`; foco visível azul em todos os controles.
+- **Movimento:** com `prefers-reduced-motion` ficam desligados a elevação do hover, as transições do contador/tooltip e a
+  animação de entrada. **Limitação:** a rolagem suave até a expansão (`scrollIntoView({behavior:"smooth"})`) não consulta essa
+  preferência.
+- **Tema escuro:** todos os tokens `.gd-dash` têm par escuro (§28.1 e `.dark .gd.gd-dash`); filtro selecionado inverte
+  (`#e6ebf2` sobre texto escuro); contador vermelho e tooltip mantêm o mesmo contraste.
+- Alvos de toque ≥ 40 px nos controles principais (38 px no "Abrir" de linha).
 
-### 28.11 Pendências de decisão visual
+### 28.11 Painéis expandidos dos indicadores (padrão único)
+Vale para Alterações mensais, Comprovantes, Ressarcimentos — Servidor, Ressarcimentos — Associações, Aptos na consolidação e
+Prazos e alertas documentais (`PainelExpansao.tsx`, `PaineisIndicadores.tsx`; classe `.gd-painel`).
+- **Comportamento:** uma expansão por vez; inserida logo abaixo da linha do indicador; `role="region"`; `scroll-margin-top`
+  de 72 px para não ficar sob a barra fixa.
+- **Contêiner:** raio 16 px, borda `--gd-panel-border` (#bfdbfe claro / #2f4a73 escuro, equivalente a blue-200), sombra
+  `0 2px 8px rgba(15,23,42,.06)`, fundo `--gd-card`, `overflow:hidden`.
+- **Cabeçalho** (`.gd-painel-head`): padding 20 px, fundo `--gd-primary-soft` a 95 % (blue-50/95), borda inferior
+  `--gd-head-border` (#dbeafe, blue-100). **À esquerda:** categoria em caixa-alta azul 12 px/700 com tracking amplo
+  (`COMPROVANTES · OUTUBRO/2026`), título 20–22 px/700, descrição 14 px muted. **À direita (quebra para baixo no mobile):**
+  badges brancos (pílula, borda neutra; semânticos só quando têm significado), CTA principal preenchido (§28.5) **apenas com rota
+  real**, botão de fechar 40×40 (raio 12 px, borda neutra, `aria-label`).
+- **Barra operacional:** campo de pesquisa (ícone, placeholder próprio, 40 px) + filtros de situação em pílulas
+  (`.gd-filtro`: normal = card/borda neutra, hover `--gd-hover`, **selecionado = `#0f172a` com texto branco** no claro e
+  `#e6ebf2` com texto escuro no escuro) com a contagem de cada situação + total ("N competências", "N titulares encontrados").
+- **Mini-indicadores de Comprovantes:** os três filtros (Validados, Aguardando análise, Devolvidos) são clicáveis; selecionado =
+  fundo azul-claro, borda azul e anel (`.gd-opt[data-sel]`).
+- **Tabela operacional** (`.gd-tab`): cabeçalho em caixa-alta 12 px muted com fundo `--gd-bg`; linhas com divisor `--gd-linha-div`,
+  padding 14×20, hover `--gd-primary-soft` a 50 %; célula 1 = nome 14 px/700 + matrícula/competência 12 px muted; badges
+  semânticos nas situações (âmbar = em análise/aguardando; verde = validado/decidido; vermelho = devolvido; neutro = sem ação);
+  última coluna = botão "Abrir". Colunas por indicador: ver `DASHBOARD_GERDAB_NUPLA_TEMA_NOTIFICACOES.md`, §2.3.
+- **Paginação:** rodapé "Mostrando 8 de N …" + botão "Mostrar mais 8" (contorno neutro, centralizado); nota opcional de "total
+  demonstrativo" quando o total do cartão difere da lista carregada.
+- **Registro destacado por notificação:** `data-destaque="true"` = fundo `--gd-primary-soft` + faixa interna azul de 4 px à
+  esquerda; acompanha a faixa de aviso "Atualização selecionada: … · Abrir na fila de origem" (fundo azul-claro, texto 13 px).
+- **Prazos e alertas documentais:** mesmo cabeçalho; bloco 1 "Validades e obrigações" e bloco 2 "Solicitações documentais
+  complementares" são tabelas/listas brancas separadas por espaço (sem fundo colorido); filtros Todas/Aguardando envio/Recebido
+  para análise.
+
+### 28.12 Pendências de decisão visual
 1. Tela de login sem botão de alternância de tema.
 2. Seletor de ano do NUPLA mostra apenas o ano de referência.
 3. Rótulos legados "Retroativo" do fluxo antigo de comprovantes (fora do Dashboard) mantidos.
+5. O Dashboard usa a paleta institucional `.gd-dash` (#1b4f8a, tokens de §28.1), não os valores Tailwind do briefing de
+   referência da rodada de redesenho (blue-700/800/950); o cabeçalho de expansão e as bordas equivalem a blue-50/95, blue-100 e
+   blue-200.
+6. A rolagem suave até a expansão não respeita `prefers-reduced-motion` (§28.10).
 4. O Dashboard e o NUPLA usam tokens `.gd` (protótipo aprovado) em vez dos tokens Tailwind das
    seções 4–5; unificar os dois conjuntos exigiria decisão própria.
 

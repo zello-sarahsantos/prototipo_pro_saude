@@ -1,39 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, X } from "lucide-react";
-import { EVENTO_NEGOCIACOES } from "@/lib/negociacoes";
 import { garantirMassaDemonstracaoEnvios } from "@/lib/massa-demonstracao-envios";
 import { garantirMassaDemonstracaoNegociacoes } from "@/lib/massa-demonstracao-negociacoes";
-import { getNotificacoesAdmin, marcarComoLidas, type NotificacaoAdmin } from "@/lib/notificacoes-admin";
+import { marcarComoLidas, ROTULO_MODULO_NOTIFICACAO, useNotificacoesAdmin, type NotificacaoAdmin } from "@/lib/notificacoes-admin";
 
 /** Sino de notificações do ambiente administrativo (comportamento do protótipo aprovado): contador de
  *  não lidas, lista com marcação de lida, fecha com Esc/clique fora. Reaproveita o padrão visual de
  *  `NotificationBell`; as notificações demonstrativas são identificadas com selo. */
 export function AdminNotificationBell() {
   const [aberto, setAberto] = useState(false);
-  const [itens, setItens] = useState<NotificacaoAdmin[]>([]);
+  const { itens, totalSino } = useNotificacoesAdmin();
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  const recarregar = () => setItens(getNotificacoesAdmin());
+  // Massa demonstrativa das Negociações (idempotente); os eventos que ela dispara atualizam a lista compartilhada.
   useEffect(() => {
-    recarregar();
-    // Massa demonstrativa das Negociações (idempotente) e atualização imediata quando houver quitação/cadastro.
-    garantirMassaDemonstracaoNegociacoes().finally(() => {
-      recarregar();
-      void garantirMassaDemonstracaoEnvios().finally(recarregar);
-    });
-    window.addEventListener(EVENTO_NEGOCIACOES, recarregar);
-    window.addEventListener("storage", recarregar);
-    return () => {
-      window.removeEventListener(EVENTO_NEGOCIACOES, recarregar);
-      window.removeEventListener("storage", recarregar);
-    };
+    void garantirMassaDemonstracaoNegociacoes().finally(() => void garantirMassaDemonstracaoEnvios());
   }, []);
 
   useEffect(() => {
     if (!aberto) return;
-    recarregar();
     const fora = (e: MouseEvent | TouchEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
     };
@@ -48,10 +35,9 @@ export function AdminNotificationBell() {
     };
   }, [aberto]);
 
-  const naoLidas = itens.filter((n) => !n.lida).length;
+  const naoLidas = totalSino;
   const abrir = (n: NotificacaoAdmin) => {
     marcarComoLidas([n.chaveLeitura ?? n.id]);
-    recarregar();
     if (n.href) {
       setAberto(false);
       // `rotina=<instante>` muda a cada clique: a seção reabre a fila mesmo se o usuário já estiver na página.
@@ -93,7 +79,6 @@ export function AdminNotificationBell() {
                   type="button"
                   onClick={() => {
                     marcarComoLidas(itens.map((n) => n.chaveLeitura ?? n.id));
-                    recarregar();
                   }}
                   className="text-xs font-semibold text-primary hover:underline"
                 >
@@ -120,6 +105,7 @@ export function AdminNotificationBell() {
                     <span className="text-[11px] text-muted-foreground whitespace-nowrap tabular-nums">{n.quando}</span>
                   </span>
                   <span className="block text-xs text-muted-foreground mt-0.5 leading-snug">{n.descricao}</span>
+                  {n.modulo && <span className="inline-block mt-1 mr-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{ROTULO_MODULO_NOTIFICACAO[n.modulo]}</span>}
                   {n.origem === "demonstrativa" && (
                     <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-status-pendente-bg text-status-pendente-fg">Demonstrativa</span>
                   )}
@@ -127,7 +113,7 @@ export function AdminNotificationBell() {
               </button>
             ))}
           </div>
-          <p className="px-4 py-2.5 text-[11px] text-muted-foreground">Notificações marcadas como “Demonstrativa” são exemplos; as demais vêm de eventos reais do protótipo.</p>
+          <p className="px-4 py-2.5 text-[11px] text-muted-foreground">Notificações marcadas como “Demonstrativa” são exemplos e não entram nos contadores do menu e do Dashboard; as demais vêm de eventos reais do protótipo.</p>
         </div>
       )}
     </div>

@@ -24,21 +24,41 @@ export function PanoramaBase({ panorama, competenciaRotulo }: { panorama: Panora
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
         <div className="gd-bar" style={{ ...cardBase, padding: "20px 20px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 16, alignContent: "start" }}>
-          <Link to="/admin/servidores" title="Abrir Servidores · titulares" className="gd-clk" style={{ ...metrica, border: `1px solid transparent` }}>
-            <div style={{ fontSize: 13, color: V.muted, fontWeight: 600 }}>Titulares</div>
+          <Link to="/admin/servidores" title="Abrir Servidores · titulares" className="gd-clk gd-card-ind gd-card-sec" style={{ ...metrica, border: `1px solid transparent` }}>
+            <div className="gd-titulo" style={{ fontSize: 13, color: V.muted, fontWeight: 600 }}>Titulares</div>
             <div style={{ fontSize: 24, fontWeight: 600, fontVariantNumeric: "tabular-nums", marginTop: 4 }}>{num(panorama.titulares)}</div>
           </Link>
           <div title="Servidores ainda não tem uma visão de dependentes." style={{ ...metrica, cursor: "default", border: "1px solid transparent" }}>
             <div style={{ fontSize: 13, color: V.muted, fontWeight: 600 }}>Dependentes</div>
             <div style={{ fontSize: 24, fontWeight: 600, fontVariantNumeric: "tabular-nums", marginTop: 4 }}>{num(panorama.dependentes)}</div>
-            <div style={{ fontSize: 11, color: V.muted, marginTop: 2 }}>Visão própria ainda não disponível</div>
           </div>
-          <Link to="/admin/relatorios/gerencial" hash="servidores-no-teto-familiar" title="Abrir o relatório Servidores no Teto Familiar (Visões Gerenciais)" className="gd-clk" style={{ ...metrica, border: `1px solid transparent` }}>
-            <div style={{ fontSize: 13, color: V.muted, fontWeight: 600 }}>Servidores no Teto Familiar</div>
+          <Link to="/admin/relatorios/gerencial" hash="servidores-no-teto-familiar" title="Abrir o relatório Servidores no Teto Familiar (Visões Gerenciais)" className="gd-clk gd-card-ind gd-card-sec" style={{ ...metrica, border: `1px solid transparent` }}>
+            <div className="gd-titulo" style={{ fontSize: 13, color: V.muted, fontWeight: 600 }}>Servidores no Teto Familiar</div>
             <div style={{ fontSize: 24, fontWeight: 600, fontVariantNumeric: "tabular-nums", marginTop: 4 }}>
               {num(panorama.noTeto)} <span style={{ fontSize: 14, fontWeight: 600, color: V.muted }}>{pct(panorama.percentualNoTeto)}</span>
             </div>
           </Link>
+          {(() => {
+            const vidas = panorama.titulares + panorama.dependentes;
+            const pTit = vidas ? Math.round((panorama.titulares / vidas) * 100) : 0;
+            const pDep = vidas ? 100 - pTit : 0;
+            return (
+              <div style={{ gridColumn: "1 / -1", background: V.bg, borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Composição da base</span>
+                  <span style={{ fontSize: 13, color: V.muted, fontVariantNumeric: "tabular-nums" }}>{num(vidas)} vidas</span>
+                </div>
+                <div role="img" aria-label={`Composição da base: ${pTit}% titulares e ${pDep}% dependentes, de ${num(vidas)} vidas`} style={{ display: "flex", height: 10, borderRadius: 999, overflow: "hidden", background: V.track }}>
+                  <div style={{ width: `${pTit}%`, background: V.primary }} />
+                  <div style={{ width: `${pDep}%`, background: "color-mix(in srgb, var(--gd-primary) 38%, var(--gd-card))" }} />
+                </div>
+                <div style={{ display: "flex", gap: "4px 20px", flexWrap: "wrap", fontSize: 13, color: V.muted }}>
+                  <span>{pTit}% titulares</span>
+                  <span>{pDep}% dependentes</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
         <div className="gd-bar" style={{ ...cardBase, padding: "17px 20px 14px" }}>
           <div style={{ display: "grid", gridTemplateColumns: colunas, gap: "0 12px", fontSize: 12, fontWeight: 600, color: V.muted, padding: "4px 0 8px", borderBottom: `1px solid ${V.border}` }}>

@@ -1965,7 +1965,8 @@ O Relatório de Movimentações do Pró-Saúde (NUPLA, `/admin/relatorios/nupla`
 GERDAB, o tema escuro e o sino de notificações do Admin estão documentados em
 `docs/DASHBOARD_GERDAB_NUPLA_TEMA_NOTIFICACOES.md`. A camada de exportação (`relatorio-export*.ts`)
 ganhou os campos opcionais `gruposCabecalho`, `notas` e `nomeAba`, sem efeito sobre os relatórios
-existentes.
+existentes. O Dashboard foi posteriormente evoluído (redesenho, expansões padronizadas, contadores e modais de notificação,
+fila de solicitações documentais complementares); o estado atual está **somente** naquele documento (§2 e §4).
 
 ### 3.32 Relatório de Ressarcimento de Negociações
 
@@ -1992,7 +1993,10 @@ existentes.
   dependentes de definição institucional/técnica ainda não fechada.
 - Dashboard via ferramenta de BI externa (Grafana etc.) — quando implementado, o painel
   operacional será nativo do protótipo.
-- **Central de Notificações consolidada no Dashboard da GERDAB** (registrado ao final da Fase 11,
+- **Central de Notificações consolidada no Dashboard da GERDAB** — **parcialmente superado:** hoje existem o sino do Admin, contadores
+  de não lidas no menu e nos indicadores do Dashboard e a modal "Atualizações do dashboard" (ver
+  `DASHBOARD_GERDAB_NUPLA_TEMA_NOTIFICACOES.md`, §4). Segue como evolução futura uma central com priorização, destinatários
+  individuais e página "Ver todas". Texto original (registrado ao final da Fase 11,
   27/09/2026) — não faz parte desta entrega uma central única, na página inicial/Dashboard da
   GERDAB, que reúna alertas de atividades que demandem acompanhamento ou atuação da unidade
   (requerimentos pendentes, solicitações de complementação, planilhas recebidas das associações,
