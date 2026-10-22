@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PendencyBanner } from "@/components/PendencyBanner";
 import { History, ShieldAlert, X } from "lucide-react";
-import { getAdminRole } from "@/components/AdminLayout";
+import { useAdminRole } from "@/lib/use-admin-role";
 import { useState } from "react";
 
 export const Route = createFileRoute("/admin/parametros")({
@@ -29,7 +29,8 @@ const initialHistorico = [
 ];
 
 function Parametros() {
-  const isGerencia = getAdminRole() === "gerencia";
+  const role = useAdminRole(null);
+  const isGerencia = role === "gerencia";
   const [params, setParams] = useState(initialParams);
   const [historico, setHistorico] = useState(initialHistorico);
   const [editando, setEditando] = useState<Param | null>(null);
@@ -37,6 +38,7 @@ function Parametros() {
   const [justificativa, setJustificativa] = useState("");
   const [erro, setErro] = useState("");
 
+  if (role === null) return null; // perfil ainda desconhecido (SSR/hidratação): não exibe conteúdo restrito nem a tela de acesso negado
   if (!isGerencia) {
     return (
       <div className="p-4 sm:p-8 max-w-3xl mx-auto">

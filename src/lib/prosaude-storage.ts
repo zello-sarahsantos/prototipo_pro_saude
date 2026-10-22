@@ -47,8 +47,6 @@ export const PROSAUDE_STORAGE_KEYS = {
   // Relatório de Alterações (NURFI): registros de movimentações (com histórico de intervenções) e marcador da massa demonstrativa.
   relatorioAlteracoes: "prosaude_relatorio_alteracoes",
   massaDemoAlteracoes: "prosaude_massa_demo_alteracoes",
-  // Reservada (sem uso): o fluxo de versões foi substituído por emissões independentes (`relatorioEmissoes`).
-  relatorioAlteracoesVersoes: "prosaude_relatorio_alteracoes_versoes",
   // Emissões independentes de relatórios (motor genérico `emissoes-relatorio.ts`; usado pelos Relatórios de Alterações e de Suspensões).
   relatorioEmissoes: "prosaude_relatorio_emissoes",
   // Relatório de Suspensões (NURFI): registros (com histórico) e marcador da massa demonstrativa.

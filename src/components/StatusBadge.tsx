@@ -1,7 +1,9 @@
 import type { StatusKey } from "@/lib/mock-data";
 import { statusLabels } from "@/lib/mock-data";
 
-const map: Record<StatusKey, string> = {
+// Parcial de propósito: "importado", "aguardando_ativacao", "aguardando_validacao" e "divergencia" existem em `StatusKey`/`statusLabels`,
+// mas nenhuma tela os usa com este componente (sem token de cor definido); caem em string vazia, sem estilo de cor.
+const map: Partial<Record<StatusKey, string>> = {
   pendente: "bg-status-pendente-bg text-status-pendente-fg",
   aprovado: "bg-status-aprovado-bg text-status-aprovado-fg",
   ativo: "bg-status-aprovado-bg text-status-aprovado-fg",
@@ -15,7 +17,7 @@ const map: Record<StatusKey, string> = {
 export function StatusBadge({ status, label }: { status: StatusKey; label?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${map[status]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${map[status] ?? ""}`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {label ?? statusLabels[status]}

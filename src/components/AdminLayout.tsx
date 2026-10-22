@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { AdminNotificationBell } from "@/components/AdminNotificationBell";
 import { AlternarTema } from "@/components/AlternarTema";
 import { ContadorNotificacoes } from "@/components/ContadorNotificacoes";
+import { useAdminRole } from "@/lib/use-admin-role";
 import { useNotificacoesAdmin, type ModuloNotificacao } from "@/lib/notificacoes-admin";
 
 // "Comprovantes" fica disponível para Analista e Gerência — a Gerência sempre tem, no
@@ -44,7 +45,7 @@ export function getAdminRole() {
 export function AdminLayout() {
   const loc = useLocation();
   const [open, setOpen] = useState(false);
-  const role = getAdminRole();
+  const role = useAdminRole();
   const isGerencia = role === "gerencia";
   const { itens: notificacoes } = useNotificacoesAdmin();
   // Só notificações REAIS não lidas alimentam o menu (as demonstrativas ficam apenas no sino).

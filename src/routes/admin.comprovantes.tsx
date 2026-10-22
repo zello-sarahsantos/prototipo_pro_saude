@@ -19,7 +19,7 @@ import { PlanilhaStatusBadge } from "@/components/PlanilhaStatusBadge";
 import { DocPreview } from "@/components/DocPreview";
 import { CamposExtraidosForm } from "@/components/CamposExtraidosForm";
 import { DivergenciaAprovacaoModal } from "@/components/DivergenciaAprovacaoModal";
-import { getAdminRole } from "@/components/AdminLayout";
+import { useAdminRole } from "@/lib/use-admin-role";
 import {
   beneficiariosPagamento,
   formatCompetencia,
@@ -125,7 +125,7 @@ function nomeBeneficiario(id: string): string {
 }
 
 function Comprovantes() {
-  const role = getAdminRole();
+  const role = useAdminRole();
   const isGerencia = role === "gerencia";
   const autor = isGerencia ? gerenteReferencia : analistaReferencia;
   const etapaAtual: "analista" | "gerencia" = isGerencia ? "gerencia" : "analista";

@@ -84,3 +84,6 @@ out/
 
 # TanStack Router (cache local)
 .tanstack/
+
+# Arquivo gerado por engano na raiz (git fetch)
+FETCH_HEAD

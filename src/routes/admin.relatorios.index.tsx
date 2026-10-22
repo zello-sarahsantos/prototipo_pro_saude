@@ -63,7 +63,9 @@ function VisaoGeralRelatorios() {
   const campo = useRef<HTMLInputElement>(null);
   const q = normalizar(busca);
   const competenciaMaisRecente = competenciasParaFechamento[competenciasParaFechamento.length - 1];
-  const resumo = getResumoFechamento(competenciaMaisRecente);
+  // `getResumoFechamento` lê o localStorage: no servidor (e na hidratação) o resumo fica indisponível ("—"); ao montar, os valores reais entram.
+  const [resumo, setResumo] = useState<ReturnType<typeof getResumoFechamento> | null>(null);
+  useEffect(() => setResumo(getResumoFechamento(competenciaMaisRecente)), [competenciaMaisRecente]);
 
   // Atalho "/" foca a pesquisa (fora de campos de texto).
   useEffect(() => {
@@ -136,19 +138,19 @@ function VisaoGeralRelatorios() {
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-xl bg-muted/60 p-3">
               <p className="text-xs text-muted-foreground">Adimplentes</p>
-              <p className="text-xl font-bold text-status-aprovado-fg">{resumo.adimplentes}</p>
+              <p className="text-xl font-bold text-status-aprovado-fg">{resumo?.adimplentes ?? "—"}</p>
             </div>
             <div className="rounded-xl bg-muted/60 p-3">
               <p className="text-xs text-muted-foreground">Inadimplentes</p>
-              <p className="text-xl font-bold text-status-rejeitado-fg">{resumo.inadimplentes}</p>
+              <p className="text-xl font-bold text-status-rejeitado-fg">{resumo?.inadimplentes ?? "—"}</p>
             </div>
             <div className="rounded-xl bg-muted/60 p-3">
               <p className="text-xs text-muted-foreground">Requerem análise</p>
-              <p className="text-xl font-bold text-status-pendente-fg">{resumo.requerAnalise}</p>
+              <p className="text-xl font-bold text-status-pendente-fg">{resumo?.requerAnalise ?? "—"}</p>
             </div>
             <div className="col-span-2 sm:col-span-1 rounded-xl bg-muted/60 p-3">
               <p className="text-xs text-muted-foreground">Valor a pagar</p>
-              <p className="text-xl font-bold">{formatCurrency(resumo.valorTotalAdimplentes)}</p>
+              <p className="text-xl font-bold">{resumo ? formatCurrency(resumo.valorTotalAdimplentes) : "—"}</p>
             </div>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">

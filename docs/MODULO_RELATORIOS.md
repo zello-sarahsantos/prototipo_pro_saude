@@ -1994,7 +1994,7 @@ Modelos de referência: dois PDFs da GERDAB (Alterações e Inadimplentes) — *
 (leitura dos módulos), `relatorio-alteracoes-geracao.ts` (revisão, consolidação, emissão, exportação), `emissoes-relatorio.ts` (motor genérico de emissões), `massa-demonstracao-alteracoes.ts`,
 `src/routes/admin.relatorios.alteracoes.tsx`, `src/components/FluxoEmissaoAlteracoes.tsx`; motor de exportação
 (`relatorio-export*.ts`: `secoes[]`, `numeracao`, `ordenarPor`, `decimal`, `larguraPdf`, `dataEmissao`, todos **opcionais** — os
-relatórios existentes saem idênticos). Chaves de armazenamento: `relatorioAlteracoes`, `relatorioEmissoes` (motor genérico) e `massaDemoAlteracoes`; `relatorioAlteracoesVersoes` ficou sem uso.
+relatórios existentes saem idênticos). Chaves de armazenamento: `relatorioAlteracoes`, `relatorioEmissoes` (motor genérico) e `massaDemoAlteracoes`. A antiga chave de versões (`relatorioAlteracoesVersoes`) foi **removida** por nunca ter sido gravada; o histórico vive só em `relatorioEmissoes`.
 
 #### Registro e situações
 Um **registro** é uma linha candidata (titular + competência): nome, matrícula (o CPF só apoia a identificação), vínculo funcional
@@ -2308,6 +2308,24 @@ decisão definitiva:**
   registrada acima (ver bullet sobre isso mais acima nesta seção) — também afeta diretamente o
   volume de demonstração do Ressarcimento Retroativo e do Histórico do Fechamento (seções
   3.29-3.30), que hoje mostram poucos registros pelo mesmo motivo.
+
+### 5.x Dívida técnica — avisos de hidratação (SSR × localStorage) — Etapa 1 de estabilização
+
+O protótipo renderiza no servidor (sem `localStorage`) e hidrata no navegador (com os dados do `localStorage`/massas demonstrativas). Telas que **leem o
+`localStorage` durante a renderização** geram, em carga completa (F5/primeiro acesso), o aviso "Hydration failed" no console; o React refaz a árvore no
+cliente e a tela fica correta — **não há perda de dados nem de função**, e nenhuma regra de negócio é afetada. Situação (validada em 22/10/2026):
+
+| Rota | Divergência observada | Situação |
+|---|---|---|
+| `/admin/relatorios` (Central) | indicadores do Fechamento (2 × 0) | **Corrigido**: resumo calculado após montar (placeholder "—" no HTML inicial) |
+| `/admin/relatorios/pagamentos` | contagem (3 × 1) | **Pendente** |
+| `/admin/retroativos` | filtro "Com atualização (1)" × "Com atualização" | **Pendente** |
+| `/admin/comprovantes` | cartão a mais na lista | **Pendente** |
+| `/admin/requerimentos` | lista × cartão de lista vazia | **Pendente** |
+
+Já corrigidos por divergência de **perfil** (`prosaude_role`): `AdminLayout` (menu "Parâmetros" e nome do usuário), `/admin/parametros` e o texto "Perfil ativo"
+de `/admin/comprovantes`, via `useAdminRole` (`src/lib/use-admin-role.ts`). Direção recomendada para as pendentes (fora desta etapa): ler o armazenamento
+só após montar (estado + efeito) ou com `useSyncExternalStore` e *snapshot* de servidor, **sem** alterar persistência, massas demonstrativas ou históricos.
 
 ## 6. Backlog de refinamento (rodada posterior)
 
