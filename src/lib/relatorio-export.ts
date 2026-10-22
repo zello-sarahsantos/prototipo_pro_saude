@@ -13,7 +13,9 @@
  * legado (ver `docs/MODULO_RELATORIOS.md`, seção de Exportação).
  */
 
-export type TipoColunaExport = "texto" | "numero" | "moeda" | "percentual";
+/** "decimal": número com 2 casas e vírgula, sem símbolo de moeda nem separador de milhar ("4000,00") — formato dos
+ *  modelos de relatório enviados ao NURFI (Relatório de Alterações). "moeda" continua "R$ 4.000,00". */
+export type TipoColunaExport = "texto" | "numero" | "moeda" | "percentual" | "decimal";
 
 export interface ColunaExport<T> {
   /** Cabeçalho exibido — igual ao já usado na tela (nunca um nome técnico/coluna interna). */
@@ -24,6 +26,18 @@ export interface ColunaExport<T> {
   align?: "left" | "center" | "right";
   /** Largura aproximada em caracteres — usada para a largura de coluna no XLSX. */
   width?: number;
+  /** Largura da coluna no PDF, em mm (opcional). Sem ela, o PDF distribui a largura automaticamente (comportamento de sempre). */
+  larguraPdf?: number;
+}
+
+/** Uma seção de um relatório com várias tabelas (ex.: Ativos/Inativos × Boletos/ASSEFAZ/ASSETRAN), cada uma com título
+ *  próprio. Usada via `RelatorioExportSpec.secoes`. */
+export interface SecaoExport<T> {
+  /** Título da seção, impresso como primeira linha do cabeçalho da tabela (repetido em cada página da seção). */
+  titulo: string;
+  /** Nome da aba no XLSX (opcional; senão deriva do título, máx. 31 caracteres, sem repetir nomes). */
+  nomeAba?: string;
+  linhas: T[];
 }
 
 export interface LinhaTotalExport {
@@ -62,12 +76,27 @@ export interface RelatorioExportSpec<T> {
    *  colunas consecutivas, na ordem; a soma dos `span` deve ser igual a `colunas.length`. Rótulo
    *  vazio = célula sem título (ex.: a coluna de descrição). Usado pelo Relatório NUPLA. */
   gruposCabecalho?: { rotulo: string; span: number }[];
+  /** Documentos com data de EMISSÃO própria (ex.: versão definitiva de um relatório): ISO 8601. Quando informada, o cabeçalho traz
+   *  "Data de emissão" (esta) e "Data de exportação" (o momento do download) em vez do "Gerado em" — reexportar uma versão antiga
+   *  preserva a emissão original. Omitida = "Gerado em" como sempre. */
+  dataEmissao?: string;
   /** Nome da aba no XLSX; se omitido, deriva do título (máx. 31 caracteres). */
   nomeAba?: string;
   /** Notas explicativas impressas abaixo da tabela (PDF) e em linhas após o total (XLSX). */
   notas?: string[];
-  /** Linhas já filtradas exatamente como exibidas na tela — nunca só a página visual atual. */
+  /** Linhas já filtradas exatamente como exibidas na tela — nunca só a página visual atual. Com `secoes`, é ignorado
+   *  (use `[]`). */
   linhas: T[];
+  /** Opcional. Relatório com várias tabelas: PDF = uma seção por página (quebra automática se passar de uma), XLSX = uma
+   *  aba por seção. As seções vazias não são impressas (`manterSecoesVazias` as imprime com a mensagem "Sem registros").
+   *  Sem `secoes`, o comportamento é exatamente o de sempre. `linhaTotal` não é usado em modo de seções. */
+  secoes?: SecaoExport<T>[];
+  manterSecoesVazias?: boolean;
+  /** Só com `secoes`. Ordena as linhas de cada seção em ordem alfabética (pt-BR, sem distinguir acento/caixa) pela chave
+   *  informada. Omitido = mantém a ordem recebida. */
+  ordenarPor?: (linha: T) => string;
+  /** Só com `secoes`. Acrescenta uma última coluna de numeração (1..n) que **recomeça em cada seção**. */
+  numeracao?: { cabecalho: string };
   linhaTotal?: LinhaTotalExport;
   /** Base do nome do arquivo, sem extensão e sem acentos/espaços (ex.: "pro-saude_visao_operadoras_2026-09"). */
   nomeArquivoBase: string;
@@ -76,7 +105,42 @@ export interface RelatorioExportSpec<T> {
 }
 
 export function decidirOrientacao<T>(spec: RelatorioExportSpec<T>): "portrait" | "landscape" {
-  return spec.orientacaoPdf ?? (spec.colunas.length > 5 ? "landscape" : "portrait");
+  return spec.orientacaoPdf ?? (spec.colunas.length + (spec.secoes && spec.numeracao ? 1 : 0) > 5 ? "landscape" : "portrait");
+}
+
+/** Seção já preparada para impressão: linhas ordenadas e, quando pedido, com o número QT da própria seção. */
+export interface SecaoPreparada<T> {
+  titulo: string;
+  nomeAba: string;
+  linhas: { linha: T; qt?: number }[];
+}
+
+/** Ordem alfabética pt-BR (ignora acento e caixa; números em ordem natural) — a mesma para PDF e XLSX. */
+export const compararAlfabetico = (a: string, b: string) => a.localeCompare(b, "pt-BR", { sensitivity: "base", numeric: true });
+
+/** Nome de aba válido e único: máx. 31 caracteres, sem `* ? : \ / [ ]`; repetições ganham sufixo " (2)", " (3)". */
+function nomesDeAbaUnicos(nomes: string[]): string[] {
+  const usados = new Set<string>();
+  return nomes.map((bruto) => {
+    const base = (bruto.replace(/[*?:\\/[\]]/g, "-").trim() || "Relatório").slice(0, 31);
+    let nome = base;
+    for (let n = 2; usados.has(nome.toLowerCase()); n++) {
+      const sufixo = ` (${n})`;
+      nome = base.slice(0, 31 - sufixo.length) + sufixo;
+    }
+    usados.add(nome.toLowerCase());
+    return nome;
+  });
+}
+
+/** Único ponto que decide seções, ordenação e numeração QT — PDF e XLSX consomem exatamente o mesmo resultado. */
+export function prepararSecoes<T>(spec: RelatorioExportSpec<T>): SecaoPreparada<T>[] {
+  const secoes = (spec.secoes ?? []).filter((s) => spec.manterSecoesVazias || s.linhas.length > 0);
+  const abas = nomesDeAbaUnicos(secoes.map((s) => s.nomeAba ?? s.titulo));
+  return secoes.map((s, i) => {
+    const ordenadas = spec.ordenarPor ? [...s.linhas].sort((a, b) => compararAlfabetico(spec.ordenarPor!(a), spec.ordenarPor!(b))) : [...s.linhas];
+    return { titulo: s.titulo, nomeAba: abas[i], linhas: ordenadas.map((linha, k) => ({ linha, qt: spec.numeracao ? k + 1 : undefined })) };
+  });
 }
 
 /** Formata um valor de célula para exibição textual (PDF e fallback do XLSX) — moeda/percentual
@@ -85,6 +149,9 @@ export function formatarValorExport(valor: string | number, tipo: TipoColunaExpo
   if (typeof valor === "string") return valor;
   if (tipo === "moeda") {
     return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+  if (tipo === "decimal") {
+    return valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false });
   }
   if (tipo === "percentual") {
     return `${valor.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
@@ -107,6 +174,12 @@ export function formatarDataHoraGeracao(data: Date = new Date()): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Linhas de data do cabeçalho — única regra, usada por PDF e XLSX. */
+export function linhasDeData<T>(spec: RelatorioExportSpec<T>): string[] {
+  if (!spec.dataEmissao) return [`Gerado em: ${formatarDataHoraGeracao()}`];
+  return [`Data de emissão: ${formatarDataHoraGeracao(new Date(spec.dataEmissao))}`, `Data de exportação: ${formatarDataHoraGeracao()}`];
 }
 
 /** Texto da linha de filtros/parâmetros do relatório — "Filtros: Todos" quando nada está ativo,

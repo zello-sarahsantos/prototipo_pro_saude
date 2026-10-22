@@ -44,6 +44,16 @@ export const PROSAUDE_STORAGE_KEYS = {
   // Edição cadastral pela GERDAB (ficha do servidor): valores alterados (sobrepõem o cadastro-base) e trilha de alterações.
   servidorCadastroValores: "prosaude_servidor_cadastro_valores",
   servidorCadastroHistorico: "prosaude_servidor_cadastro_historico",
+  // Relatório de Alterações (NURFI): registros de movimentações (com histórico de intervenções) e marcador da massa demonstrativa.
+  relatorioAlteracoes: "prosaude_relatorio_alteracoes",
+  massaDemoAlteracoes: "prosaude_massa_demo_alteracoes",
+  // Reservada (sem uso): o fluxo de versões foi substituído por emissões independentes (`relatorioEmissoes`).
+  relatorioAlteracoesVersoes: "prosaude_relatorio_alteracoes_versoes",
+  // Emissões independentes de relatórios (motor genérico `emissoes-relatorio.ts`; usado pelos Relatórios de Alterações e de Suspensões).
+  relatorioEmissoes: "prosaude_relatorio_emissoes",
+  // Relatório de Suspensões (NURFI): registros (com histórico) e marcador da massa demonstrativa.
+  relatorioSuspensoes: "prosaude_relatorio_suspensoes",
+  massaDemoSuspensoes: "prosaude_massa_demo_suspensoes",
   /** Data simulada do protótipo (limitação de demonstração — ver `dias-uteis.ts`). */
   dataReferenciaPrototipo: "prosaude_data_referencia",
 } as const;

@@ -1609,3 +1609,69 @@ Prazos e alertas documentais (`PainelExpansao.tsx`, `PaineisIndicadores.tsx`; cl
 ### 29.4 Pendências de decisão visual
 1. A Área da Associação mantém o estilo Tailwind/slate; unificar com `.gd` exigiria decisão própria.
 2. Paginação do relatório de ressarcimento é "Mostrar mais" (10 por vez); uma paginação numerada exigiria decisão.
+
+---
+
+## 30. Relatório de Alterações (NURFI) — `/admin/relatorios/alteracoes`
+
+> Referência visual aprovada: capturas do fluxo de Revisão → Pré-visualização → Confirmação → Emissão concluída, Histórico e Inclusão/Conferência.
+> Reaproveita os tokens Tailwind das seções 4–5, o `Dialog` e os selos de status; nada novo no Design System.
+
+### 30.1 Tela principal
+- Link "Relatórios" (azul), título 30 px/700, subtítulo e, à direita, ações: **Buscar movimentações** (azul claro, ícone de atualizar), **+ Incluir alteração**, **Histórico**
+  (secundários) e **Exportar relatório** (primário). Abaixo: seletor "COMPETÊNCIA" (caixa-alta 12 px) e o chip "Pagamento <mês seguinte>".
+- Três cartões (raio 16 px): **Alterações identificadas**, **Prontas para o relatório** (verde), **Precisam de conferência** (âmbar).
+- Cartão "Movimentações da competência" com abas Ativos/Inativos (setas ←/→; "Vínculo a conferir" só quando necessário), busca e chips
+  Todas/Boletos/ASSEFAZ/ASSETRAN (selecionado = fundo escuro). Tabela: Matrícula · Nome (+ "Ver origem: …") · Movimentação · Valor NURFI ·
+  Observação NURFI (caixa cinza, 2 linhas) · Situação · Ação. Situação: **Conferir** (âmbar + motivo), **Pronto** (verde) com a etiqueta
+  **"Emitido no Relatório N"** (azul claro) e **Descartada** (cinza). Valor: R$, **Pendente** (âmbar) ou **Não aplicável**. Ação: **Conferir**
+  (primário) / **Revisar** (secundário azul) / **Reabrir**. Abaixo de 1024 px a linha vira cartão. Exemplos de demonstração: links discretos no rodapé.
+
+### 30.2 Modais de emissão
+Modal largo (`max-w-5xl`, até 92 vh, cabeçalho e rodapé fixos, corpo rolável). Cabeçalho: eyebrow azul em caixa-alta (REVISÃO · PRÉ-VISUALIZAÇÃO ·
+CONFIRMAÇÃO · EMISSÃO CONCLUÍDA), título "Relatório de Alterações — Setembro/2026" e "Pagamento: Outubro/2026".
+- **Revisão:** três contadores (selecionados / bloqueados / prontos não selecionados), caixa azul "Como funciona", lista com caixa de seleção,
+  selo "Será incluído"/"Será reemitido", selos âmbar de bloqueio e "Emitido no Relatório N"; botões "Consultar registros já emitidos" (contorno azul)
+  e "Selecionar todos os prontos"; rodapé: "Continuar conferência" · "Visualizar relatório (N)".
+- **Pré-visualização/Confirmação/Concluída:** "papel" branco com "DETRAN-DF · PRÓ-SAÚDE", título, **"Relatório N"**, competências, linha preta,
+  seções "ATIVOS · BOLETOS" (cabeçalho cinza) e tabela; nota tracejada sobre continuação em nova página; cartão lateral "Documento" (ou
+  "Arquivos disponíveis": Baixar PDF · Baixar Excel · Consultar histórico). Caixa azul de confirmação; caixa verde de sucesso; caixa âmbar de
+  **duplicidade** (checkbox obrigatório) quando houver reemissão.
+- **Histórico:** lista "Relatório N — Setembro/2026 · Emitido em … · responsável · n registros" com **Visualizar / PDF / Excel**.
+
+### 30.3 Diálogo de inclusão/conferência
+Seções numeradas: **1. Movimentação** (beneficiário, matrícula, tipo, motivo, competência, pagamento, vínculo, origem; "+ Adicionar outra
+movimentação"), **2. Valor a informar ao NURFI** (campo grande, quatro cartões de referência "Informação não disponível", opção "O valor não é
+aplicável" com justificativa), **3. Observação NURFI**, caixa âmbar "Justificativa da revisão" (registro já pronto) e "Ver detalhes e histórico"
+(origem, comparação de planilhas, antes/agora, histórico, descarte/reabertura). Rodapé fixo com a lista do que falta (âmbar) e **Cancelar ·
+Salvar como rascunho · Confirmar análise e incluir** (desabilitado enquanto houver pendência impeditiva).
+
+### 30.5 Tabelas de Alterações e Suspensões — legibilidade e responsividade
+Nomes quebram só entre palavras; o selo "Demonstrativo" e os selos/botões de estado não quebram (`whitespace-nowrap`); a observação NURFI mostra 3 linhas
+e **"Ver observação completa / Recolher"** (`CelulaObservacao`, `aria-expanded`, texto completo também no `title`). A partir de 1024 px a tabela usa grade de
+7 colunas com largura mínima de 1092 px e **rolagem horizontal controlada** (região com foco por teclado); abaixo de 1024 px cada registro vira um cartão empilhado.
+
+### 30.4 Documentos exportados e acessibilidade
+PDF paisagem no padrão institucional com **número do relatório**, competências, responsável e datas de emissão/exportação no cabeçalho; sem o
+rodapé do SEI. Diálogos com foco inicial, foco preso, Esc e retorno do foco ao botão de origem (`useRetornoDeFoco`); campos rotulados; erros em
+`role="alert"`; contraste ≥ 4,5:1 nos temas claro e escuro (textos secundários usam `text-foreground/75–80`).
+
+---
+
+## 31. Relatório de Suspensões (NURFI) e pesquisa na Central de Relatórios
+
+- **Central de Relatórios:** cabeçalho com eyebrow "Módulo de Relatórios"; destaque do **Fechamento de Pagamento** (cartão com raio 16 px, quatro indicadores em
+  blocos internos `bg-muted/60`, competência no rodapé; oculto durante a pesquisa); seção "Todos os relatórios" com contador "X de 10".
+- **Pesquisa:** campo `type="search"` grande (altura 56 px, raio 16 px, fundo de cartão, `shadow-md`, lupa de 20 px, atalho visual `/`), placeholder
+  "Pesquisar relatórios…", rótulo acessível oculto, `role="search"`; sem resultados, mensagem "Nenhum relatório encontrado" em cartão tracejado.
+- **Filtros:** pílulas Todos/Financeiro/Documentação/Cadastro/Gerencial com contador, `aria-pressed`; ativa em azul institucional.
+- **Cartões:** duas colunas ≥ 768 px (uma abaixo), raio 16 px, ícone em bloco `bg-primary/10`, título, descrição até 3 linhas (`line-clamp-3`, quebra só se a
+  palavra não couber) e seta; sem repetir a categoria, que aparece no cabeçalho do grupo (rótulo em caixa alta, divisória e quantidade) quando o filtro é "Todos".
+  Validado em 320, 375, 768 e 1440 px nos temas claro e escuro, sem rolagem horizontal.
+- **Relatório de Suspensões:** mesma estrutura visual do Relatório de Alterações (§30): cabeçalho, três cartões de resumo, tabela com abas Ativos/Inativos e
+  chips de origem, modais de revisão/pré-visualização/confirmação/emissão concluída/histórico e diálogo de conferência. Diferenças: **sem** "Buscar
+  movimentações"; botão "Incluir suspensão"; coluna "Situação" mostra **Suspender** (neutro), **Permanece suspenso** (âmbar) ou **Excluir** (vermelho) com a
+  pessoa afetada ("titular" ou "dependente Fulano (parentesco)") e o motivo; o diálogo tem a seção "Situação" com o bloco "Quem é afetado" (titular ou
+  dependente identificado, com aviso de que a medida não se estende ao grupo familiar). Estados Conferir/Pronto/Descartada e etiqueta "Emitido no Relatório N"
+  iguais ao §30. Contraste, foco e responsividade verificados nos temas claro e escuro.
+

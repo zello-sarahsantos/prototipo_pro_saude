@@ -45,6 +45,7 @@ import { Route as AssociacaoRequerimentoIncluirDependenteRouteImport } from './r
 import { Route as AssociacaoRequerimentoExclusaoRouteImport } from './routes/associacao.requerimento.exclusao'
 import { Route as AssociacaoGerenciamentoIdRouteImport } from './routes/associacao.gerenciamento.$id'
 import { Route as AdminServidoresIdRouteImport } from './routes/admin.servidores.$id'
+import { Route as AdminRelatoriosSuspensoesRouteImport } from './routes/admin.relatorios.suspensoes'
 import { Route as AdminRelatoriosRetroativosRouteImport } from './routes/admin.relatorios.retroativos'
 import { Route as AdminRelatoriosPagamentosRouteImport } from './routes/admin.relatorios.pagamentos'
 import { Route as AdminRelatoriosNuplaRouteImport } from './routes/admin.relatorios.nupla'
@@ -52,6 +53,7 @@ import { Route as AdminRelatoriosNegociacoesRouteImport } from './routes/admin.r
 import { Route as AdminRelatoriosGerencialRouteImport } from './routes/admin.relatorios.gerencial'
 import { Route as AdminRelatoriosDocumentacaoRouteImport } from './routes/admin.relatorios.documentacao'
 import { Route as AdminRelatoriosConsolidacoesRouteImport } from './routes/admin.relatorios.consolidacoes'
+import { Route as AdminRelatoriosAlteracoesRouteImport } from './routes/admin.relatorios.alteracoes'
 import { Route as AdminPlanilhasIdRouteImport } from './routes/admin.planilhas.$id'
 import { Route as AdminNegociacoesRessarcimentoRouteImport } from './routes/admin.negociacoes.ressarcimento'
 import { Route as AdminNegociacoesRecebidosRouteImport } from './routes/admin.negociacoes.recebidos'
@@ -252,6 +254,12 @@ const AdminServidoresIdRoute = AdminServidoresIdRouteImport.update({
   path: '/servidores/$id',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminRelatoriosSuspensoesRoute =
+  AdminRelatoriosSuspensoesRouteImport.update({
+    id: '/relatorios/suspensoes',
+    path: '/relatorios/suspensoes',
+    getParentRoute: () => AdminRoute,
+  } as any)
 const AdminRelatoriosRetroativosRoute =
   AdminRelatoriosRetroativosRouteImport.update({
     id: '/relatorios/retroativos',
@@ -291,6 +299,12 @@ const AdminRelatoriosConsolidacoesRoute =
   AdminRelatoriosConsolidacoesRouteImport.update({
     id: '/relatorios/consolidacoes',
     path: '/relatorios/consolidacoes',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminRelatoriosAlteracoesRoute =
+  AdminRelatoriosAlteracoesRouteImport.update({
+    id: '/relatorios/alteracoes',
+    path: '/relatorios/alteracoes',
     getParentRoute: () => AdminRoute,
   } as any)
 const AdminPlanilhasIdRoute = AdminPlanilhasIdRouteImport.update({
@@ -365,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/admin/negociacoes/recebidos': typeof AdminNegociacoesRecebidosRoute
   '/admin/negociacoes/ressarcimento': typeof AdminNegociacoesRessarcimentoRoute
   '/admin/planilhas/$id': typeof AdminPlanilhasIdRoute
+  '/admin/relatorios/alteracoes': typeof AdminRelatoriosAlteracoesRoute
   '/admin/relatorios/consolidacoes': typeof AdminRelatoriosConsolidacoesRoute
   '/admin/relatorios/documentacao': typeof AdminRelatoriosDocumentacaoRoute
   '/admin/relatorios/gerencial': typeof AdminRelatoriosGerencialRoute
@@ -372,6 +387,7 @@ export interface FileRoutesByFullPath {
   '/admin/relatorios/nupla': typeof AdminRelatoriosNuplaRoute
   '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/relatorios/retroativos': typeof AdminRelatoriosRetroativosRoute
+  '/admin/relatorios/suspensoes': typeof AdminRelatoriosSuspensoesRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
   '/associacao/requerimento/exclusao': typeof AssociacaoRequerimentoExclusaoRoute
@@ -418,6 +434,7 @@ export interface FileRoutesByTo {
   '/admin/negociacoes/recebidos': typeof AdminNegociacoesRecebidosRoute
   '/admin/negociacoes/ressarcimento': typeof AdminNegociacoesRessarcimentoRoute
   '/admin/planilhas/$id': typeof AdminPlanilhasIdRoute
+  '/admin/relatorios/alteracoes': typeof AdminRelatoriosAlteracoesRoute
   '/admin/relatorios/consolidacoes': typeof AdminRelatoriosConsolidacoesRoute
   '/admin/relatorios/documentacao': typeof AdminRelatoriosDocumentacaoRoute
   '/admin/relatorios/gerencial': typeof AdminRelatoriosGerencialRoute
@@ -425,6 +442,7 @@ export interface FileRoutesByTo {
   '/admin/relatorios/nupla': typeof AdminRelatoriosNuplaRoute
   '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/relatorios/retroativos': typeof AdminRelatoriosRetroativosRoute
+  '/admin/relatorios/suspensoes': typeof AdminRelatoriosSuspensoesRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
   '/associacao/requerimento/exclusao': typeof AssociacaoRequerimentoExclusaoRoute
@@ -472,6 +490,7 @@ export interface FileRoutesById {
   '/admin/negociacoes/recebidos': typeof AdminNegociacoesRecebidosRoute
   '/admin/negociacoes/ressarcimento': typeof AdminNegociacoesRessarcimentoRoute
   '/admin/planilhas/$id': typeof AdminPlanilhasIdRoute
+  '/admin/relatorios/alteracoes': typeof AdminRelatoriosAlteracoesRoute
   '/admin/relatorios/consolidacoes': typeof AdminRelatoriosConsolidacoesRoute
   '/admin/relatorios/documentacao': typeof AdminRelatoriosDocumentacaoRoute
   '/admin/relatorios/gerencial': typeof AdminRelatoriosGerencialRoute
@@ -479,6 +498,7 @@ export interface FileRoutesById {
   '/admin/relatorios/nupla': typeof AdminRelatoriosNuplaRoute
   '/admin/relatorios/pagamentos': typeof AdminRelatoriosPagamentosRoute
   '/admin/relatorios/retroativos': typeof AdminRelatoriosRetroativosRoute
+  '/admin/relatorios/suspensoes': typeof AdminRelatoriosSuspensoesRoute
   '/admin/servidores/$id': typeof AdminServidoresIdRoute
   '/associacao/gerenciamento/$id': typeof AssociacaoGerenciamentoIdRoute
   '/associacao/requerimento/exclusao': typeof AssociacaoRequerimentoExclusaoRoute
@@ -527,6 +547,7 @@ export interface FileRouteTypes {
     | '/admin/negociacoes/recebidos'
     | '/admin/negociacoes/ressarcimento'
     | '/admin/planilhas/$id'
+    | '/admin/relatorios/alteracoes'
     | '/admin/relatorios/consolidacoes'
     | '/admin/relatorios/documentacao'
     | '/admin/relatorios/gerencial'
@@ -534,6 +555,7 @@ export interface FileRouteTypes {
     | '/admin/relatorios/nupla'
     | '/admin/relatorios/pagamentos'
     | '/admin/relatorios/retroativos'
+    | '/admin/relatorios/suspensoes'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
     | '/associacao/requerimento/exclusao'
@@ -580,6 +602,7 @@ export interface FileRouteTypes {
     | '/admin/negociacoes/recebidos'
     | '/admin/negociacoes/ressarcimento'
     | '/admin/planilhas/$id'
+    | '/admin/relatorios/alteracoes'
     | '/admin/relatorios/consolidacoes'
     | '/admin/relatorios/documentacao'
     | '/admin/relatorios/gerencial'
@@ -587,6 +610,7 @@ export interface FileRouteTypes {
     | '/admin/relatorios/nupla'
     | '/admin/relatorios/pagamentos'
     | '/admin/relatorios/retroativos'
+    | '/admin/relatorios/suspensoes'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
     | '/associacao/requerimento/exclusao'
@@ -633,6 +657,7 @@ export interface FileRouteTypes {
     | '/admin/negociacoes/recebidos'
     | '/admin/negociacoes/ressarcimento'
     | '/admin/planilhas/$id'
+    | '/admin/relatorios/alteracoes'
     | '/admin/relatorios/consolidacoes'
     | '/admin/relatorios/documentacao'
     | '/admin/relatorios/gerencial'
@@ -640,6 +665,7 @@ export interface FileRouteTypes {
     | '/admin/relatorios/nupla'
     | '/admin/relatorios/pagamentos'
     | '/admin/relatorios/retroativos'
+    | '/admin/relatorios/suspensoes'
     | '/admin/servidores/$id'
     | '/associacao/gerenciamento/$id'
     | '/associacao/requerimento/exclusao'
@@ -924,6 +950,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminServidoresIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/relatorios/suspensoes': {
+      id: '/admin/relatorios/suspensoes'
+      path: '/relatorios/suspensoes'
+      fullPath: '/admin/relatorios/suspensoes'
+      preLoaderRoute: typeof AdminRelatoriosSuspensoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/relatorios/retroativos': {
       id: '/admin/relatorios/retroativos'
       path: '/relatorios/retroativos'
@@ -971,6 +1004,13 @@ declare module '@tanstack/react-router' {
       path: '/relatorios/consolidacoes'
       fullPath: '/admin/relatorios/consolidacoes'
       preLoaderRoute: typeof AdminRelatoriosConsolidacoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios/alteracoes': {
+      id: '/admin/relatorios/alteracoes'
+      path: '/relatorios/alteracoes'
+      fullPath: '/admin/relatorios/alteracoes'
+      preLoaderRoute: typeof AdminRelatoriosAlteracoesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/planilhas/$id': {
@@ -1044,6 +1084,7 @@ interface AdminRouteChildren {
   AdminNegociacoesRecebidosRoute: typeof AdminNegociacoesRecebidosRoute
   AdminNegociacoesRessarcimentoRoute: typeof AdminNegociacoesRessarcimentoRoute
   AdminPlanilhasIdRoute: typeof AdminPlanilhasIdRoute
+  AdminRelatoriosAlteracoesRoute: typeof AdminRelatoriosAlteracoesRoute
   AdminRelatoriosConsolidacoesRoute: typeof AdminRelatoriosConsolidacoesRoute
   AdminRelatoriosDocumentacaoRoute: typeof AdminRelatoriosDocumentacaoRoute
   AdminRelatoriosGerencialRoute: typeof AdminRelatoriosGerencialRoute
@@ -1051,6 +1092,7 @@ interface AdminRouteChildren {
   AdminRelatoriosNuplaRoute: typeof AdminRelatoriosNuplaRoute
   AdminRelatoriosPagamentosRoute: typeof AdminRelatoriosPagamentosRoute
   AdminRelatoriosRetroativosRoute: typeof AdminRelatoriosRetroativosRoute
+  AdminRelatoriosSuspensoesRoute: typeof AdminRelatoriosSuspensoesRoute
   AdminServidoresIdRoute: typeof AdminServidoresIdRoute
   AdminNegociacoesIndexRoute: typeof AdminNegociacoesIndexRoute
   AdminRelatoriosIndexRoute: typeof AdminRelatoriosIndexRoute
@@ -1072,6 +1114,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminNegociacoesRecebidosRoute: AdminNegociacoesRecebidosRoute,
   AdminNegociacoesRessarcimentoRoute: AdminNegociacoesRessarcimentoRoute,
   AdminPlanilhasIdRoute: AdminPlanilhasIdRoute,
+  AdminRelatoriosAlteracoesRoute: AdminRelatoriosAlteracoesRoute,
   AdminRelatoriosConsolidacoesRoute: AdminRelatoriosConsolidacoesRoute,
   AdminRelatoriosDocumentacaoRoute: AdminRelatoriosDocumentacaoRoute,
   AdminRelatoriosGerencialRoute: AdminRelatoriosGerencialRoute,
@@ -1079,6 +1122,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminRelatoriosNuplaRoute: AdminRelatoriosNuplaRoute,
   AdminRelatoriosPagamentosRoute: AdminRelatoriosPagamentosRoute,
   AdminRelatoriosRetroativosRoute: AdminRelatoriosRetroativosRoute,
+  AdminRelatoriosSuspensoesRoute: AdminRelatoriosSuspensoesRoute,
   AdminServidoresIdRoute: AdminServidoresIdRoute,
   AdminNegociacoesIndexRoute: AdminNegociacoesIndexRoute,
   AdminRelatoriosIndexRoute: AdminRelatoriosIndexRoute,

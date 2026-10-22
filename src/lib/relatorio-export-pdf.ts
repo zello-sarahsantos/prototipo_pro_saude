@@ -11,8 +11,9 @@ import autoTable from "jspdf-autotable";
 import {
   CABECALHO_INSTITUCIONAL,
   decidirOrientacao,
+  prepararSecoes,
   formatarValorExport,
-  formatarDataHoraGeracao,
+  linhasDeData,
   textoFiltros,
   baixarBlob,
   type RelatorioExportSpec,
@@ -90,50 +91,96 @@ export function buildRelatorioPdfBlob<T>(spec: RelatorioExportSpec<T>): Blob {
     doc.text(textoFiltros(spec.filtrosAplicados), MARGEM, y);
     y += 5;
   }
-  doc.text(`Gerado em: ${formatarDataHoraGeracao()}`, MARGEM, y);
-  y += 3;
+  linhasDeData(spec).forEach((linha, i, todas) => {
+    doc.text(linha, MARGEM, y);
+    y += i < todas.length - 1 ? 5 : 3;
+  });
   doc.setTextColor(0, 0, 0);
 
-  const head: (string | { content: string; colSpan: number; styles?: Record<string, unknown> })[][] = [];
-  if (spec.gruposCabecalho && spec.gruposCabecalho.length > 0) {
-    head.push(spec.gruposCabecalho.map((g) => ({ content: g.rotulo, colSpan: g.span, styles: { halign: "center" } })));
-  }
-  head.push(spec.colunas.map((c) => c.header));
-  const body = spec.linhas.map((linha) =>
-    spec.colunas.map((c) => formatarValorExport(c.valor(linha), c.tipo)),
-  );
-  if (spec.linhaTotal) {
-    body.push([
-      spec.linhaTotal.label,
-      ...spec.linhaTotal.valores.map((v, i) =>
-        v === null || v === undefined ? "" : formatarValorExport(v, spec.colunas[i + 1]?.tipo),
-      ),
-    ]);
-  }
-
-  const columnStyles: Record<number, { halign: "left" | "center" | "right" }> = {};
-  spec.colunas.forEach((c, i) => {
-    columnStyles[i] = { halign: c.align ?? (c.tipo === "texto" || !c.tipo ? "left" : "right") };
-  });
-
-  autoTable(doc, {
-    startY: y + 3,
-    head,
-    body,
-    margin: { left: MARGEM, right: MARGEM, bottom: 16 },
-    styles: { font: "times", fontSize: 9, cellPadding: 2.2, lineColor: [200, 200, 200], lineWidth: 0.1 },
-    headStyles: { fillColor: [221, 221, 221], textColor: [0, 0, 0], fontStyle: "bold", halign: "center" },
-    alternateRowStyles: { fillColor: [246, 246, 246] },
-    columnStyles,
-    showHead: "everyPage",
-    didParseCell: (data) => {
-      // Linha de total (última linha, quando existir) em negrito, sem alternância de cor.
-      if (spec.linhaTotal && data.row.section === "body" && data.row.index === body.length - 1) {
-        data.cell.styles.fontStyle = "bold";
-        data.cell.styles.fillColor = [255, 255, 255];
+  if (spec.secoes) {
+    // Várias tabelas: cada seção começa em página própria; o título da seção é a primeira linha do cabeçalho da tabela
+    // (repetido em cada página da seção). A numeração QT recomeça em cada seção (ver `prepararSecoes`).
+    const secoes = prepararSecoes(spec);
+    const colunasTabela = spec.colunas.length + (spec.numeracao ? 1 : 0);
+    const alinhamentos: ("left" | "center" | "right")[] = spec.colunas.map((c) => c.align ?? (c.tipo === "texto" || !c.tipo ? "left" : "right"));
+    if (spec.numeracao) alinhamentos.push("right");
+    const estilosColuna: Record<number, { halign: "left" | "center" | "right"; cellWidth?: number }> = {};
+    const largurasPdf = spec.colunas.map((c) => c.larguraPdf);
+    const usarLarguras = largurasPdf.every((l) => l !== undefined);
+    alinhamentos.forEach((a, i) => (estilosColuna[i] = { halign: a, ...(usarLarguras && i < largurasPdf.length ? { cellWidth: largurasPdf[i] } : {}) }));
+    if (usarLarguras && spec.numeracao) estilosColuna[largurasPdf.length] = { halign: "right", cellWidth: 18 };
+    if (secoes.length === 0) {
+      doc.setFont("times", "italic");
+      doc.setFontSize(10);
+      doc.text("Nenhum registro para os parâmetros informados.", MARGEM, y + 8);
+    }
+    secoes.forEach((secao, i) => {
+      if (i > 0) {
+        doc.addPage();
+        y = 18;
       }
-    },
-  });
+      const head = [
+        [{ content: secao.titulo, colSpan: colunasTabela, styles: { halign: "center" as const } }],
+        [...spec.colunas.map((c) => c.header), ...(spec.numeracao ? [spec.numeracao.cabecalho] : [])],
+      ];
+      const body = secao.linhas.length
+        ? secao.linhas.map(({ linha, qt }) => [...spec.colunas.map((c) => formatarValorExport(c.valor(linha), c.tipo)), ...(qt !== undefined ? [String(qt)] : [])])
+        : [[{ content: "Sem registros.", colSpan: colunasTabela, styles: { halign: "center" as const, fontStyle: "italic" as const } }]];
+      autoTable(doc, {
+        startY: i === 0 ? y + 3 : y,
+        head,
+        body,
+        margin: { left: MARGEM, right: MARGEM, bottom: 16 },
+        styles: { font: "times", fontSize: 9, cellPadding: 2.2, lineColor: [200, 200, 200], lineWidth: 0.1 },
+        headStyles: { fillColor: [221, 221, 221], textColor: [0, 0, 0], fontStyle: "bold", halign: "center" },
+        alternateRowStyles: { fillColor: [246, 246, 246] },
+        columnStyles: estilosColuna,
+        showHead: "everyPage",
+      });
+    });
+  } else {
+  const head: (string | { content: string; colSpan: number; styles?: Record<string, unknown> })[][] = [];
+    if (spec.gruposCabecalho && spec.gruposCabecalho.length > 0) {
+      head.push(spec.gruposCabecalho.map((g) => ({ content: g.rotulo, colSpan: g.span, styles: { halign: "center" } })));
+    }
+    head.push(spec.colunas.map((c) => c.header));
+    const body = spec.linhas.map((linha) =>
+      spec.colunas.map((c) => formatarValorExport(c.valor(linha), c.tipo)),
+    );
+    if (spec.linhaTotal) {
+      body.push([
+        spec.linhaTotal.label,
+        ...spec.linhaTotal.valores.map((v, i) =>
+          v === null || v === undefined ? "" : formatarValorExport(v, spec.colunas[i + 1]?.tipo),
+        ),
+      ]);
+    }
+  
+    const columnStyles: Record<number, { halign: "left" | "center" | "right" }> = {};
+    spec.colunas.forEach((c, i) => {
+      columnStyles[i] = { halign: c.align ?? (c.tipo === "texto" || !c.tipo ? "left" : "right") };
+    });
+  
+    autoTable(doc, {
+      startY: y + 3,
+      head,
+      body,
+      margin: { left: MARGEM, right: MARGEM, bottom: 16 },
+      styles: { font: "times", fontSize: 9, cellPadding: 2.2, lineColor: [200, 200, 200], lineWidth: 0.1 },
+      headStyles: { fillColor: [221, 221, 221], textColor: [0, 0, 0], fontStyle: "bold", halign: "center" },
+      alternateRowStyles: { fillColor: [246, 246, 246] },
+      columnStyles,
+      showHead: "everyPage",
+      didParseCell: (data) => {
+        // Linha de total (última linha, quando existir) em negrito, sem alternância de cor.
+        if (spec.linhaTotal && data.row.section === "body" && data.row.index === body.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fillColor = [255, 255, 255];
+        }
+      },
+    });
+  
+}
 
   if (spec.notas && spec.notas.length > 0) {
     const ultimo = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
