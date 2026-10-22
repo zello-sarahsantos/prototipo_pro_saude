@@ -46,6 +46,28 @@ export function ContadorNotificacoes({ itens, rotulo, className = "", modal, ind
   const lista = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const n = itens.length;
+  // Indicadores do menu (sem modal): abrem ao passar o mouse e permanecem enquanto o ponteiro estiver no círculo ou na lista;
+  // o clique "fixa" a lista aberta. Em toque (sem hover) vale só o clique.
+  const porHover = useRef(false);
+  const temporizador = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelarFechamento = () => clearTimeout(temporizador.current);
+  const entrou = (e: React.PointerEvent) => {
+    if (modal || e.pointerType !== "mouse") return;
+    cancelarFechamento();
+    if (!aberto) {
+      porHover.current = true;
+      setAberto(true);
+    }
+  };
+  const saiu = (e: React.PointerEvent) => {
+    if (modal || e.pointerType !== "mouse" || !porHover.current) return;
+    cancelarFechamento();
+    temporizador.current = setTimeout(() => {
+      porHover.current = false;
+      setAberto(false);
+    }, 200);
+  };
+  useEffect(() => cancelarFechamento, []);
 
   useLayoutEffect(() => {
     if (!aberto || modal) return;
@@ -59,7 +81,11 @@ export function ContadorNotificacoes({ itens, rotulo, className = "", modal, ind
       setPos(abaixo >= altura + 12 || abaixo >= r.top ? { top: r.bottom + 8, left } : { bottom: window.innerHeight - r.top + 8, left });
     };
     calcular();
-    const fechar = () => setAberto(false);
+    // A rolagem da própria lista (captura de scroll em qualquer elemento) não deve fechá-la; só a rolagem do restante da página.
+    const fechar = (e: Event) => {
+      if (e.target instanceof Node && lista.current?.contains(e.target)) return;
+      setAberto(false);
+    };
     window.addEventListener("resize", calcular);
     window.addEventListener("scroll", fechar, true);
     return () => {
@@ -83,6 +109,10 @@ export function ContadorNotificacoes({ itens, rotulo, className = "", modal, ind
       document.removeEventListener("touchstart", fora);
       document.removeEventListener("keydown", tecla);
     };
+  }, [aberto]);
+
+  useEffect(() => {
+    if (!aberto) porHover.current = false;
   }, [aberto]);
 
   useEffect(() => {
@@ -134,8 +164,15 @@ export function ContadorNotificacoes({ itens, rotulo, className = "", modal, ind
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            cancelarFechamento();
+            if (porHover.current) {
+              porHover.current = false; // abriu por hover: o clique fixa a lista aberta
+              return;
+            }
             setAberto((v) => !v);
           }}
+          onPointerEnter={entrou}
+          onPointerLeave={saiu}
           className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold leading-none tabular-nums shrink-0 cursor-pointer ${modal ? "notif-dash" : "bg-destructive text-destructive-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"} ${className}`}
         >
           {n}
@@ -156,13 +193,15 @@ export function ContadorNotificacoes({ itens, rotulo, className = "", modal, ind
             ref={lista}
             role="dialog"
             aria-label={`Notificações não lidas — ${rotulo}`}
+            onPointerEnter={entrou}
+            onPointerLeave={saiu}
             style={{ position: "fixed", zIndex: 80, width: Math.min(360, (typeof window !== "undefined" ? window.innerWidth : 360) - 24), visibility: pos ? "visible" : "hidden", ...pos }}
             className="bg-card text-foreground rounded-xl border border-border shadow-elevated overflow-hidden"
           >
             <div className="px-4 py-2.5 border-b border-border text-xs font-semibold">
               {rotulo} · {n} {n === 1 ? "não lida" : "não lidas"}
             </div>
-            <div className="max-h-[320px] overflow-y-auto">
+            <div className="max-h-[320px] overflow-y-auto overscroll-contain">
               {itens.map((item) => (
                 <button key={item.id} type="button" onClick={() => abrir(item)} className="w-full text-left px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted bg-primary/10">
                   <span className="flex items-baseline justify-between gap-2">
