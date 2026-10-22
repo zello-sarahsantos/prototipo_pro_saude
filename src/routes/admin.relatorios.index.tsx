@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
+import { useAdminRole } from "@/lib/use-admin-role";
 import { competenciasParaFechamento, formatCompetencia, getResumoFechamento } from "@/lib/fechamento-pagamento";
 
 export const Route = createFileRoute("/admin/relatorios/")({
@@ -79,7 +80,12 @@ function VisaoGeralRelatorios() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const encontrados = RELATORIOS.filter((r) => !q || normalizar(textoBusca(r)).includes(q));
+  // O Relatório de Suspensões é de uso interno da GERDAB (Analista e Gerência): para Servidor e Associação o cartão nem aparece
+  // (a rota continua protegida por `GuardaPerfilAdmin`). Os demais relatórios não mudam.
+  const perfil = useAdminRole();
+  const acessoGerdab = perfil === "analista" || perfil === "gerencia";
+  const disponiveis = RELATORIOS.filter((r) => r.to !== "/admin/relatorios/suspensoes" || acessoGerdab);
+  const encontrados = disponiveis.filter((r) => !q || normalizar(textoBusca(r)).includes(q));
   const contagem = (c: Categoria) => encontrados.filter((r) => r.categoria === c).length;
   const visiveis = encontrados.filter((r) => filtro === "Todos" || r.categoria === filtro);
   const grupos = CATEGORIAS.map((c) => ({ c, itens: visiveis.filter((r) => r.categoria === c) })).filter((g) => g.itens.length > 0);
@@ -163,7 +169,7 @@ function VisaoGeralRelatorios() {
         <div className="flex items-baseline justify-between gap-3">
           <h2 id="todos-relatorios" className="text-lg font-bold">Todos os relatórios</h2>
           <p role="status" className="text-sm text-muted-foreground">
-            {visiveis.length} de {RELATORIOS.length}
+            {visiveis.length} de {disponiveis.length}
           </p>
         </div>
 

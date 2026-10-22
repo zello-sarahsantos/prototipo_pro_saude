@@ -7,7 +7,7 @@ import { proximoNumeroEmissao } from "@/lib/emissoes-relatorio";
 import { ROTULO_VINCULO } from "@/lib/relatorio-alteracoes";
 import { chaveSecao, SECOES_RELATORIO, type LinhaRelatorio } from "@/lib/relatorio-alteracoes-geracao";
 import { ROTULO_CLASSIFICACAO, useRegistrosSuspensoes, type RegistroSuspensao } from "@/lib/relatorio-suspensoes";
-import { emitirSuspensoes, montarSpecSuspensoes, prepararSuspensoes, revisarSuspensoes, useEmissoesSuspensoes, type EmissaoSuspensoes } from "@/lib/relatorio-suspensoes-geracao";
+import { emitirSuspensoes, FORMATO_TITULO_ATUAL, montarSpecSuspensoes, tituloSecaoDaEmissao, prepararSuspensoes, revisarSuspensoes, useEmissoesSuspensoes, type EmissaoSuspensoes } from "@/lib/relatorio-suspensoes-geracao";
 
 const BTN_PRIMARIO = "inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
 const BTN_SECUNDARIO = "inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:pointer-events-none";
@@ -30,7 +30,7 @@ export async function baixarEmissaoSuspensoes(e: EmissaoSuspensoes, formato: "pd
 /* ── Documento (papel) ───────────────────────────────────────────────────────────────────────────────────────────── */
 
 /** Pré-visualização do documento: cabeçalho com o NÚMERO do relatório, competências, e uma tabela por seção não vazia. */
-export function DocumentoRelatorioSuspensoes({ numero, referencia, pagamento, linhas, emissao, children }: { numero: number; referencia: string; pagamento: string; linhas: LinhaRelatorio[]; emissao?: { geradoEm: string; responsavel: string }; children?: React.ReactNode }) {
+export function DocumentoRelatorioSuspensoes({ numero, referencia, pagamento, linhas, emissao, parametros, children }: { numero: number; referencia: string; pagamento: string; linhas: LinhaRelatorio[]; parametros?: Record<string, string>; emissao?: { geradoEm: string; responsavel: string }; children?: React.ReactNode }) {
   return (
     <article aria-label={`Documento do Relatório de Suspensões ${numero}`} className="rounded-lg border border-border bg-card px-6 py-8 sm:px-10 shadow-sm text-foreground">
       {children}
@@ -57,9 +57,7 @@ export function DocumentoRelatorioSuspensoes({ numero, referencia, pagamento, li
             if (doGrupo.length === 0) return null;
             return (
               <section key={chaveSecao(s.vinculo, s.origem)} aria-label={`${ROTULO_VINCULO[s.vinculo]} · ${s.origem}`}>
-                <h4 className="bg-muted px-3 py-2 text-xs font-bold uppercase tracking-wide">
-                  {ROTULO_VINCULO[s.vinculo]} · {s.origem}
-                </h4>
+                <h4 className="bg-muted px-3 py-2 text-xs font-bold tracking-wide">{tituloSecaoDaEmissao(referencia, pagamento, s.vinculo, s.origem, parametros)}</h4>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[560px]">
                     <thead>
@@ -108,12 +106,12 @@ function CabecalhoModal({ etapa, referencia, pagamento }: { etapa: string; refer
 
 type Etapa = "revisao" | "previa" | "confirmacao" | "concluida";
 
-export function FluxoEmissaoSuspensoes({ competencia, responsavel, onFechar, onAbrirHistorico }: { competencia: string; responsavel: string; onFechar: () => void; onAbrirHistorico: () => void }) {
+export function FluxoEmissaoSuspensoes({ competencia, pagamento: pagamentoDoRelatorio, responsavel, onFechar, onAbrirHistorico }: { competencia: string; pagamento?: string; responsavel: string; onFechar: () => void; onAbrirHistorico: () => void }) {
   const retornarFoco = useRetornoDeFoco("main h1");
   const registros = useRegistrosSuspensoes();
   const emissoes = useEmissoesSuspensoes();
   const [etapa, setEtapa] = useState<Etapa>("revisao");
-  const [pagEscolhida, setPagEscolhida] = useState<string | undefined>(undefined);
+  const [pagEscolhida, setPagEscolhida] = useState<string | undefined>(pagamentoDoRelatorio);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [inicializado, setInicializado] = useState<string | null>(null);
   const [mostrarEmitidos, setMostrarEmitidos] = useState(false);
@@ -131,10 +129,10 @@ export function FluxoEmissaoSuspensoes({ competencia, responsavel, onFechar, onA
   // Seleção inicial: todos os prontos AINDA NÃO EMITIDOS. Registros já emitidos nunca vêm marcados.
   useEffect(() => {
     const chave = `${competencia}|${pag ?? ""}`;
-    if (inicializado === chave || !pag) return;
+    if (inicializado === chave || !pag || revisao.itens.length === 0) return; // sem registros carregados (1ª renderização) não há o que marcar
     setSelecionados(new Set(prontosNaoEmitidos.map((i) => i.registro.id)));
     setInicializado(chave);
-  }, [pag, competencia, prontosNaoEmitidos, inicializado]);
+  }, [pag, competencia, prontosNaoEmitidos, inicializado, revisao.itens.length]);
 
   const prep = useMemo(() => (pag ? prepararSuspensoes(competencia, pag, registros, selecionados) : null), [competencia, pag, registros, selecionados]);
   const jaEmitidosSelecionados = prontos.filter((i) => selecionados.has(i.registro.id) && i.emitidoEm.length > 0);
@@ -194,7 +192,20 @@ export function FluxoEmissaoSuspensoes({ competencia, responsavel, onFechar, onA
                 <strong>Como funciona:</strong> registros marcados entrarão neste relatório. Ao desmarcar uma pessoa, ela permanece pronta para uma próxima emissão. Registros com pendências ficam bloqueados até a conferência ser concluída. Registros já emitidos ficam ocultos por padrão.
               </p>
 
-              {revisao.pagamentosDisponiveis.length > 1 && (
+              {pagamentoDoRelatorio && (
+                <div role={revisao.itens.some((i) => !i.pronto && i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio) ? "alert" : "note"} className="rounded-xl border border-border px-4 py-3 text-sm space-y-1">
+                  <p>
+                    <strong>Este relatório:</strong> referência {formatCompetencia(competencia)} · pagamento {formatCompetencia(pagamentoDoRelatorio)}. Só entram registros com exatamente estas duas competências.
+                  </p>
+                  {revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).length > 0 && (
+                    <p className="text-status-pendente-fg">
+                      Inconsistência: {revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).length} registro(s) conferido(s) têm outra competência de pagamento ({[...new Set(revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).map((i) => formatCompetencia(i.registro.competenciaPagamento)))].join(", ")}) e ficam fora desta emissão, sem alteração. Emita-os em um relatório separado, escolhendo aquela competência de pagamento.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!pagamentoDoRelatorio && revisao.pagamentosDisponiveis.length > 1 && (
                 <label className="block text-sm max-w-sm">
                   Competência de pagamento deste relatório
                   <select value={pagEscolhida ?? ""} onChange={(e) => { setPagEscolhida(e.target.value || undefined); setInicializado(null); setSelecionados(new Set()); }} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -270,7 +281,7 @@ export function FluxoEmissaoSuspensoes({ competencia, responsavel, onFechar, onA
 
           {(etapa === "previa" || etapa === "confirmacao" || etapa === "concluida") && pag && (
             <div className="grid lg:grid-cols-[minmax(0,1fr)_16rem] gap-5 items-start">
-              <DocumentoRelatorioSuspensoes numero={etapa === "concluida" && emitida ? emitida.numero : numeroPrevisto} referencia={competencia} pagamento={pag} linhas={etapa === "concluida" && emitida ? emitida.linhas : prep?.linhas ?? []} emissao={etapa === "concluida" && emitida ? { geradoEm: emitida.geradoEm, responsavel: emitida.responsavel } : undefined}>
+              <DocumentoRelatorioSuspensoes numero={etapa === "concluida" && emitida ? emitida.numero : numeroPrevisto} referencia={competencia} pagamento={pag} parametros={etapa === "concluida" && emitida ? emitida.parametros : { formatoTitulo: FORMATO_TITULO_ATUAL }} linhas={etapa === "concluida" && emitida ? emitida.linhas : prep?.linhas ?? []} emissao={etapa === "concluida" && emitida ? { geradoEm: emitida.geradoEm, responsavel: emitida.responsavel } : undefined}>
                 {etapa === "confirmacao" && (
                   <div className="mb-6 rounded-xl border border-primary/30 bg-primary/5 px-5 py-4 text-sm">
                     <p className="font-bold text-base">Confirmar emissão do relatório?</p>
@@ -408,7 +419,7 @@ export function HistoricoEmissoesSuspensoes({ competencia, onFechar }: { compete
         <DialogContent onCloseAutoFocus={retornarFoco} className="max-w-5xl max-h-[92vh] overflow-hidden p-0 gap-0 flex flex-col">
           <CabecalhoModal etapa="Relatório emitido" referencia={ver.competenciaReferencia} pagamento={ver.competenciaPagamento} />
           <div className="flex-1 overflow-y-auto bg-muted/30 px-6 py-5">
-            <DocumentoRelatorioSuspensoes numero={ver.numero} referencia={ver.competenciaReferencia} pagamento={ver.competenciaPagamento} linhas={ver.linhas} emissao={{ geradoEm: ver.geradoEm, responsavel: ver.responsavel }} />
+            <DocumentoRelatorioSuspensoes numero={ver.numero} referencia={ver.competenciaReferencia} pagamento={ver.competenciaPagamento} linhas={ver.linhas} parametros={ver.parametros} emissao={{ geradoEm: ver.geradoEm, responsavel: ver.responsavel }} />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-card px-6 py-4">
             <button type="button" onClick={() => baixarEmissaoSuspensoes(ver, "pdf")} className={BTN_CONTORNO}>

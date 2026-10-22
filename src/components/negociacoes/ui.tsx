@@ -8,7 +8,7 @@ import { FINALIDADES_DOCUMENTO, TIPOS_DOCUMENTO_NEGOCIACAO, ROTULO_SITUACAO, for
 
 /** Perfis com acesso ao módulo (plano aprovado): Analista e Gerência. Servidor e Associação veem "Acesso restrito".
  *  Guarda só das rotas novas — o protótipo não tem sessão real (perfil vem de `localStorage.prosaude_role`). */
-export function GuardaPerfilAdmin({ children }: { children: ReactNode }) {
+export function GuardaPerfilAdmin({ children, modulo = "Módulo de Negociações" }: { children: ReactNode; /** Nome do módulo/relatório citado na mensagem de acesso restrito (padrão: Negociações). */ modulo?: string }) {
   const [perfil, setPerfil] = useState<string | null>(null);
   useEffect(() => setPerfil(getAdminRole()), []);
   if (perfil === null) return null;
@@ -19,7 +19,7 @@ export function GuardaPerfilAdmin({ children }: { children: ReactNode }) {
           <Lock size={22} color={V.muted} style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
             <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Acesso restrito</h1>
-            <p style={{ fontSize: 14, color: V.muted, margin: "6px 0 14px" }}>O Módulo de Negociações é de uso interno da GERDAB (perfis Analista e Gerência).</p>
+            <p style={{ fontSize: 14, color: V.muted, margin: "6px 0 14px" }}>{`O ${modulo} é de uso interno da GERDAB (perfis Analista e Gerência).`}</p>
             <Link to="/login" style={{ fontSize: 13, fontWeight: 600 }}>Ir para o login →</Link>
           </div>
         </div>

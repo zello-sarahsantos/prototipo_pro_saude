@@ -1,69 +1,135 @@
 /**
- * MASSA DE DEMONSTRAÇÃO do Relatório de Suspensões — SOMENTE PROTÓTIPO, 100% fictícia (nomes, matrículas "F1xxx" e valores).
- * Oito registros cobrindo as três classificações (Suspender, Permanece suspenso, Excluir), titular e dependente, e as seis combinações de
- * vínculo × origem de pagamento. Todos nascem "identificada" e com valor R$ 0,00 só como VALOR INICIAL DEMONSTRATIVO (a GERDAB pode
- * editar ou declarar "não aplicável"); nada aqui é critério de suspensão — as classificações foram escolhidas à mão para ilustrar.
+ * AMBIENTE DEMONSTRATIVO do Relatório de Suspensões — SOMENTE PROTÓTIPO, 100% fictício.
  *
- * Idempotente: ids fixos (`demo-sus-NN`), criados só se ainda não existirem; nunca sobrescreve registro editado, confirmado ou descartado.
- * Ação controlada: nunca é executada automaticamente ao abrir a tela.
+ * A demonstração NÃO insere registros diretamente na tabela. O fluxo é: **Restaurar demonstração** (limpa o que é demonstrativo e liga o
+ * ambiente) → tabela vazia → **Gerar situações da competência** → o mesmo código real de S5/S6 percorre as FONTES FICTÍCIAS isoladas
+ * (`fontes-suspensoes.ts`: comprovantes/Fechamento, pendências documentais, requerimentos de exclusão, planilhas e um histórico de suspensões
+ * já emitidas, tudo em memória) e preenche a tabela → conferir/editar/descartar/incluir → emitir.
+ *
+ * Isolamento: nada é gravado em comprovantes, planilhas, requerimentos, cadastro, pagamentos nem nas emissões reais. Enquanto o ambiente
+ * está ativo, os registros gerados e os incluídos manualmente nascem marcados "Demonstrativo" (e as emissões feitas com eles, também) — é isso
+ * que permite à restauração limpar SÓ o que é demonstrativo. Registros e emissões reais nunca são tocados.
+ *
+ * Cenários (competência demonstrativa Setembro/2026): Suspender por comprovante ausente (Boleto) e recusado (Boleto), por documentação
+ * (ASSEFAZ e Boleto, este último com mais de uma pendência); Permanece suspenso por comprovante anterior (Boleto) e por documentação
+ * (ASSETRAN em análise; ASSEFAZ aguardando envio); Excluir por requerimento aprovado (ASSEFAZ e ASSETRAN); investigações por dispensa de
+ * comprovante, por titular ausente de planilha (ASSEFAZ), por informação inconclusiva em planilha (status Atenção, ASSETRAN) e por
+ * continuidade sem como verificar a regularização; e uma pendência já regularizada que NÃO gera nova sugestão.
  */
+import { useSyncExternalStore } from "react";
 import { PROSAUDE_STORAGE_KEYS } from "./prosaude-storage";
-import { confirmarSuspensao, definirValorNaoAplicavelSuspensao, descartarSuspensao, registrarSuspensao, type NovoRegistroSuspensao } from "./relatorio-suspensoes";
+import { EVENTO_EMISSOES_RELATORIO, listarEmissoes, type EmissaoRelatorio } from "./emissoes-relatorio";
+import { removerSuspensoesDemonstrativas, type RegistroSuspensao } from "./relatorio-suspensoes";
+import { COMPETENCIA_DEMONSTRATIVA } from "./fontes-suspensoes";
+import type { LinhaRelatorio } from "./relatorio-alteracoes-geracao";
 
-const VERSAO = "2";
-const REF = "2026-09";
-const RESPONSAVEL = "Sistema (massa demonstrativa)";
+export { COMPETENCIA_DEMONSTRATIVA };
 
-/** Estado inicial de cada registro demonstrativo (aplicado SÓ na criação; nunca reaplicado a um registro existente). */
-type Estado = "conferir" | "pronto" | "descartada" | "valor_nao_aplicavel_pronto";
-type Demo = Omit<NovoRegistroSuspensao, "competenciaReferencia" | "origemInformacao" | "demonstrativo" | "referenciaOrigem"> & { estado: Estado };
+export const EVENTO_AMBIENTE_DEMO = "prosaude-ambiente-demo-suspensoes";
+/** Responsável gravado pelo próprio sistema: qualquer evento de outro responsável num registro demonstrativo indica intervenção do analista. */
+export const RESPONSAVEL_BUSCA_DEMONSTRATIVA = "Sistema (leitura dos módulos)";
 
-const DEMO: Demo[] = [
-  // Pronto
-  { id: "demo-sus-01", estado: "pronto", titular: { nome: "Lívia Cardoso Teste", matricula: "F1001" }, vinculo: "ativo", origemPagamento: "Boletos", classificacao: "suspender", afetado: { tipo: "titular" }, motivo: "sem_comprovante_pagamento", valorInformadoNurfi: 0 },
-  { id: "demo-sus-03", estado: "valor_nao_aplicavel_pronto", titular: { nome: "Nina Rezende Exemplo", matricula: "F1003" }, vinculo: "ativo", origemPagamento: "ASSETRAN", classificacao: "suspender", afetado: { tipo: "dependente", nomeDependente: "Otávio Rezende Demo", parentesco: "Filho(a)" }, motivo: "Não apresentou comprovante de nascimento" },
-  { id: "demo-sus-05", estado: "pronto", titular: { nome: "Quitéria Lobo Simulada", matricula: "F1005" }, vinculo: "inativo", origemPagamento: "ASSEFAZ", classificacao: "permanece_suspenso", afetado: { tipo: "titular" }, valorInformadoNurfi: 0 },
-  { id: "demo-sus-07", estado: "pronto", titular: { nome: "Sônia Valença Ilustrativa", matricula: "F1007" }, vinculo: "ativo", origemPagamento: "Boletos", classificacao: "excluir", afetado: { tipo: "dependente", nomeDependente: "Tiago Valença Demo", parentesco: "Enteado(a)" }, motivo: "perda_condicao_dependente", valorInformadoNurfi: 0 },
-  // Conferir (cada um com uma pendência diferente para testar a conferência)
-  { id: "demo-sus-02", estado: "conferir", titular: { nome: "Mateus Brandão Fictício", matricula: "F1002" }, vinculo: "ativo", origemPagamento: "ASSEFAZ", classificacao: "suspender", afetado: { tipo: "titular" }, motivo: "sem_documentacao" }, // valor pendente
-  { id: "demo-sus-04", estado: "conferir", titular: { nome: "Paulo Siqueira Modelo", matricula: "F1004" }, vinculo: "ativo", origemPagamento: "Boletos", classificacao: "permanece_suspenso", afetado: { tipo: "titular" }, valorInformadoNurfi: 0 }, // só falta confirmar
-  { id: "demo-sus-06", estado: "conferir", titular: { nome: "Rafael Tavares Amostra", matricula: "F1006" }, vinculo: "inativo", origemPagamento: "ASSETRAN", classificacao: "excluir", afetado: { tipo: "titular" }, valorInformadoNurfi: 0 }, // falta o motivo
-  { id: "demo-sus-08", estado: "conferir", titular: { nome: "Ulisses Prado Ficticio", matricula: "F1008" }, vinculo: "inativo", origemPagamento: "Boletos", classificacao: "excluir", afetado: { tipo: "titular" }, motivo: "excluido_do_plano", valorInformadoNurfi: 0 },
-  { id: "demo-sus-10", estado: "conferir", titular: { nome: "Viviane Castro Simulacao", matricula: "F1010" }, vinculo: "ativo", origemPagamento: "ASSETRAN", afetado: { tipo: "dependente", nomeDependente: "Wesley Castro Demo", parentesco: "Cônjuge" } }, // situação a classificar + valor pendente
-  // Descartada
-  { id: "demo-sus-09", estado: "descartada", titular: { nome: "Yara Mendes Demonstracao", matricula: "F1009" }, vinculo: "ativo", origemPagamento: "ASSEFAZ", classificacao: "suspender", afetado: { tipo: "titular" }, motivo: "sem_comprovante_pagamento", valorInformadoNurfi: 0 },
-];
-
-export interface ResultadoMassaSuspensoes {
-  criados: number;
-  jaExistentes: number;
-}
-
-/**
- * Cria os registros que ainda não existem (ids fixos `demo-sus-NN`). Idempotente: carregar de novo não duplica nem altera nada que já
- * exista (editado, confirmado, descartado ou emitido). Só roda por ação explícita da GERDAB na tela — nunca ao abrir a página.
- */
-export function carregarMassaDemonstracaoSuspensoes(): ResultadoMassaSuspensoes {
-  if (typeof window === "undefined") return { criados: 0, jaExistentes: 0 };
-  let criados = 0;
-  let jaExistentes = 0;
-  for (const { estado, ...d } of DEMO) {
-    const { registro, criado } = registrarSuspensao({ ...d, competenciaReferencia: REF, origemInformacao: "manual", demonstrativo: true, referenciaOrigem: { modulo: "demonstrativo", registroId: d.id, rotulo: "Massa demonstrativa" } }, RESPONSAVEL);
-    if (!criado) {
-      jaExistentes++;
-      continue;
-    }
-    criados++;
-    if (estado === "valor_nao_aplicavel_pronto") definirValorNaoAplicavelSuspensao(registro.id, true, RESPONSAVEL, "Valor demonstrativo: dependente sem reflexo financeiro (exemplo fictício).");
-    if (estado === "pronto" || estado === "valor_nao_aplicavel_pronto") confirmarSuspensao(registro.id, RESPONSAVEL);
-    if (estado === "descartada") descartarSuspensao(registro.id, RESPONSAVEL, "Exemplo fictício de registro descartado na conferência.");
-  }
+export const ambienteDemoAtivo = () => {
+  if (typeof window === "undefined") return false;
   try {
-    localStorage.setItem(PROSAUDE_STORAGE_KEYS.massaDemoSuspensoes, VERSAO);
+    return localStorage.getItem(PROSAUDE_STORAGE_KEYS.ambienteDemoSuspensoes) === "1";
+  } catch {
+    return false;
+  }
+};
+export function definirAmbienteDemo(ativo: boolean) {
+  try {
+    if (ativo) localStorage.setItem(PROSAUDE_STORAGE_KEYS.ambienteDemoSuspensoes, "1");
+    else localStorage.removeItem(PROSAUDE_STORAGE_KEYS.ambienteDemoSuspensoes);
   } catch {
     /* sem armazenamento */
   }
-  return { criados, jaExistentes };
+  window.dispatchEvent(new Event(EVENTO_AMBIENTE_DEMO));
+}
+const assinar = (aviso: () => void) => {
+  window.addEventListener(EVENTO_AMBIENTE_DEMO, aviso);
+  window.addEventListener("storage", aviso);
+  return () => {
+    window.removeEventListener(EVENTO_AMBIENTE_DEMO, aviso);
+    window.removeEventListener("storage", aviso);
+  };
+};
+/** Ambiente demonstrativo ativo? (falso no servidor e na hidratação; o valor real entra logo depois). */
+export const useAmbienteDemo = () => useSyncExternalStore(assinar, ambienteDemoAtivo, () => false);
+
+/* ── Restauração ─────────────────────────────────────────────────────────────────────────────────────────────── */
+
+export interface DiagnosticoRestauracaoSuspensoes {
+  /** Registros demonstrativos que serão removidos (geração demonstrativa e inclusões manuais feitas no ambiente demonstrativo). */
+  aRemover: RegistroSuspensao[];
+  /** Destes, quantos tiveram intervenção do analista (edição, conferência ou descarte). */
+  editados: number;
+  descartados: number;
+  /** Inclusões manuais feitas no ambiente demonstrativo (sem origem automática). */
+  manuais: number;
+  /** Emissões feitas SOMENTE com registros demonstrativos: serão removidas do histórico. */
+  emissoesDemonstrativas: EmissaoRelatorio<LinhaRelatorio>[];
+  /** Emissões com qualquer linha real: NUNCA são removidas (e protegem os registros que contêm). */
+  emissoesMantidas: number;
+  /** Registros demonstrativos que constam numa emissão mantida: permanecem. */
+  protegidos: RegistroSuspensao[];
+  /** Registros reais (não demonstrativos): preservados. */
+  reaisPreservados: number;
 }
 
-export const TOTAL_MASSA_SUSPENSOES = DEMO.length;
+const ehEmissaoDemonstrativa = (e: EmissaoRelatorio<LinhaRelatorio>) => e.linhas.length > 0 && e.linhas.every((l) => l.demonstrativo === true);
+
+/** Delimita o alcance da limpeza (função pura: não grava nada). */
+export function diagnosticarRestauracaoSuspensoes(registros: RegistroSuspensao[], emissoes: EmissaoRelatorio<LinhaRelatorio>[]): DiagnosticoRestauracaoSuspensoes {
+  const mantidas = emissoes.filter((e) => !ehEmissaoDemonstrativa(e));
+  const idsMantidos = new Set(mantidas.flatMap((e) => e.registroIds));
+  const demos = registros.filter((r) => r.demonstrativo);
+  const protegidos = demos.filter((r) => idsMantidos.has(r.id));
+  const aRemover = demos.filter((r) => !idsMantidos.has(r.id));
+  const editado = (r: RegistroSuspensao) => r.historico.some((e) => e.responsavel !== RESPONSAVEL_BUSCA_DEMONSTRATIVA);
+  return {
+    aRemover,
+    editados: aRemover.filter(editado).length,
+    descartados: aRemover.filter((r) => r.situacao === "descartada").length,
+    manuais: aRemover.filter((r) => !r.sugestao).length,
+    emissoesDemonstrativas: emissoes.filter(ehEmissaoDemonstrativa),
+    emissoesMantidas: mantidas.length,
+    protegidos,
+    reaisPreservados: registros.length - demos.length,
+  };
+}
+
+export interface ResultadoRestauracaoSuspensoes {
+  registrosRemovidos: number;
+  emissoesRemovidas: number;
+  protegidos: number;
+}
+
+/**
+ * Restaura o ambiente demonstrativo: remove SÓ os registros demonstrativos (e as emissões compostas apenas por eles), limpando junto os
+ * descartes, as conferências e os controles de geração (guardados nos próprios registros), e liga o ambiente. Não toca registros reais, emissões
+ * com qualquer linha real nem dados de outros módulos. Deixa a tabela vazia para uma nova execução de "Gerar situações da competência".
+ */
+export function restaurarAmbienteDemonstrativo(registros: RegistroSuspensao[]): ResultadoRestauracaoSuspensoes {
+  const emissoes = listarEmissoes<LinhaRelatorio>("suspensoes");
+  const diag = diagnosticarRestauracaoSuspensoes(registros, emissoes);
+  const idsMantidos = new Set(diag.protegidos.map((r) => r.id));
+  const rm = removerSuspensoesDemonstrativas(idsMantidos);
+  let emissoesRemovidas = 0;
+  if (diag.emissoesDemonstrativas.length > 0) {
+    const ids = new Set(diag.emissoesDemonstrativas.map((e) => e.id));
+    try {
+      const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.relatorioEmissoes);
+      const todas = raw ? (JSON.parse(raw) as EmissaoRelatorio[]) : [];
+      const restantes = todas.filter((e) => !(e.tipoRelatorio === "suspensoes" && ids.has(e.id)));
+      emissoesRemovidas = todas.length - restantes.length;
+      if (restantes.length > 0) localStorage.setItem(PROSAUDE_STORAGE_KEYS.relatorioEmissoes, JSON.stringify(restantes));
+      else localStorage.removeItem(PROSAUDE_STORAGE_KEYS.relatorioEmissoes);
+      window.dispatchEvent(new Event(EVENTO_EMISSOES_RELATORIO));
+    } catch {
+      /* sem armazenamento */
+    }
+  }
+  definirAmbienteDemo(true);
+  return { registrosRemovidos: rm.removidos, emissoesRemovidas, protegidos: diag.protegidos.length };
+}

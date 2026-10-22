@@ -1987,8 +1987,7 @@ existentes.
 cadastral dos beneficiários ou o valor do auxílio-saúde (alteração de valor, inclusão, reinclusão e movimentações de dependentes).
 Não se limita a reajustes. É um instrumento de **comunicação administrativa**: gerar o relatório **não altera** cadastro, valores,
 comprovantes, requerimentos nem pagamentos, não suspende nem exclui beneficiários e não cria documentos no SEI **[Confirmado]**.
-Modelos de referência: dois PDFs da GERDAB (Alterações e Inadimplentes) — **não** são fonte de dados. O relatório de Suspensões
-**não** faz parte deste módulo (etapa futura).
+Modelos de referência: dois PDFs da GERDAB (Alterações e Inadimplentes) — **não** são fonte de dados. O Relatório de Suspensões tem seção própria (§3.34).
 
 **Arquivos:** `src/lib/relatorio-alteracoes.ts` (modelo, armazenamento, auditoria, observações), `relatorio-alteracoes-sugestoes.ts`
 (leitura dos módulos), `relatorio-alteracoes-geracao.ts` (revisão, consolidação, emissão, exportação), `emissoes-relatorio.ts` (motor genérico de emissões), `massa-demonstracao-alteracoes.ts`,
@@ -2096,63 +2095,93 @@ Excel: uma aba por seção ("Ativos - Boletos"…), matrícula como **texto** (p
 
 ### 3.34 Relatório de Suspensões (NURFI) — `/admin/relatorios/suspensoes`
 
-> **Legenda:** **[Confirmado]** = definido pelo responsável do produto; **[Hipótese]** = adotada no protótipo, **depende da GERDAB**; **[Demonstrativo]** = dado fictício.
+> **Legenda:** **[Confirmado]** = definido pelo responsável do produto; **[Hipótese]** = adotada no protótipo, **depende da GERDAB**; **[Demonstrativo]** = dado fictício; **[Limitação]** = restrição do protótipo.
 >
-> **Atenção — validação pendente:** as **regras operacionais** deste relatório (o que gera "Suspender", como se determina "Permanece suspenso", motivos
-> de "Excluir", valor, obrigatoriedade do motivo, representação do dependente no documento) **ainda dependem de validação com a GERDAB**. O que está
-> implementado é a estrutura de conferência e emissão; os itens marcados **[Hipótese]** e a lista "Regras que dependem de validação" abaixo **não são regras confirmadas**.
+> **Validação pendente com a GERDAB:** o que está implementado é a estrutura de geração, conferência e emissão. Os critérios operacionais finais (itens da lista "Pontos que dependem de validação" ao fim desta seção) **ainda dependem de validação com a GERDAB** e **não** são regras confirmadas.
 
-**Objetivo.** Permitir à GERDAB conferir e comunicar ao NURFI três situações: **Suspender** (nova suspensão), **Permanece suspenso** (suspensão anterior ainda
-não regularizada) e **Excluir** (perda de elegibilidade ou cancelamento de titular ou dependente). As três classificações são **operacionais, escolhidas e
-confirmadas pela GERDAB** **[Confirmado]**. O sistema **não identifica nem decide** suspensões, permanências ou exclusões, **não lê** comprovantes, planilhas
-de associações, ressarcimentos de meses anteriores ou pendências documentais para sugeri-las (nenhum adaptador de leitura existe) e **a emissão não altera
-cadastro, elegibilidade, pagamentos nem a situação real dos beneficiários** **[Confirmado]**. O botão "Buscar movimentações" não existe neste relatório.
+**Objetivo.** Permitir à GERDAB conferir e comunicar ao NURFI três situações: **Suspender**, **Permanece suspenso** e **Excluir**. É comunicação administrativa: **a emissão não altera cadastro, elegibilidade, pagamentos nem a situação real de nenhum beneficiário** **[Confirmado]**. O sistema **sugere** registros a partir das fontes disponíveis, mas nada é confirmado sem a conferência do analista ou da Gerência.
 
-**Arquivos (independentes do Relatório de Alterações, que não foi alterado):** `src/lib/relatorio-suspensoes.ts` (modelo, auditoria, pendências),
-`relatorio-suspensoes-geracao.ts` (revisão, consolidação, emissão, exportação), `massa-demonstracao-suspensoes.ts`, `src/components/FluxoEmissaoSuspensoes.tsx`,
-`src/routes/admin.relatorios.suspensoes.tsx`; reutiliza o **motor genérico** `emissoes-relatorio.ts` (`tipoRelatorio = "suspensoes"`) e o motor de exportação.
-Chaves: `relatorioSuspensoes`, `massaDemoSuspensoes`, `relatorioEmissoes`.
+**Perfis [Confirmado].** Analista GERDAB e Gerência GERDAB usam todas as funcionalidades. A rota é protegida pela guarda já usada em Negociações (`GuardaPerfilAdmin`, `localStorage.prosaude_role`): **Servidor** e **Associação** veem "Acesso restrito" (sem tabela nem botões), e o cartão do relatório **não aparece** para eles na Central de Relatórios. **[Limitação]** o protótipo não tem sessão real; o menu lateral do Admin continua o mesmo para todos os perfis (não há item de menu específico deste relatório) e as demais telas administrativas não ganharam guarda.
 
-**Registro.** Beneficiário titular (nome e matrícula), vínculo (Ativo/Inativo), origem de pagamento (Boletos/ASSEFAZ/ASSETRAN), competências de referência e
-pagamento, **situação** (Suspender / Permanece suspenso / Excluir), **pessoa afetada** (o titular **ou um dependente identificado**, com parentesco), **motivo**
-(referências dos modelos da GERDAB e da Instrução nº 492/2023, lista aberta com texto livre), **valor informado ao NURFI**, observação NURFI editável,
-origem da informação, estado da conferência e **histórico append-only** (responsável, data/hora, justificativa, valor anterior/novo). Estados: **Conferir**
-(identificada), **Pronto** (confirmada, sem pendência impeditiva) e **Descartada** (com justificativa; pode ser reaberta). Alterar um registro confirmado
-exige justificativa.
+**Arquivos:** `src/lib/relatorio-suspensoes.ts` (modelo, auditoria, pendências, observações), `relatorio-suspensoes-sugestoes.ts` (fontes, geração e continuidade), `relatorio-suspensoes-geracao.ts` (revisão, consolidação, emissão, títulos e exportação), `fontes-suspensoes.ts` (contrato das fontes e **fontes demonstrativas fictícias isoladas**), `massa-demonstracao-suspensoes.ts` (ambiente demonstrativo e restauração), `src/components/FluxoEmissaoSuspensoes.tsx`, `src/routes/admin.relatorios.suspensoes.tsx`; reutiliza o motor genérico `emissoes-relatorio.ts` (`tipoRelatorio = "suspensoes"`, **sem alteração**) e o motor de exportação. Chaves de armazenamento: `relatorioSuspensoes`, `relatorioEmissoes`, `ambienteDemoSuspensoes` (liga o ambiente demonstrativo).
 
-**Dependentes [Confirmado].** Cada registro afeta **uma** pessoa; a suspensão ou exclusão de um dependente **nunca** é aplicada ao grupo familiar. Na
-conferência o dependente é identificado individualmente (nome, vínculo e motivo). Na exportação a linha mantém **matrícula e nome do titular** e a **observação
-descreve o dependente** (ex.: "Excluir. Dependente Fulano (enteado(a)): Perdeu a condição de dependente."). Mais de uma situação do mesmo titular na competência
-geram **uma linha** (observações reunidas sem frases repetidas); duas situações diferentes para o **próprio titular** (ex.: Suspender × Excluir) ou valores
-diferentes **bloqueiam** a emissão até a GERDAB corrigir.
+#### Fluxo operacional
+1. **Selecionar a competência de referência** (e ver o pagamento: o cabeçalho lista a(s) competência(s) de pagamento **gravadas nos registros** — nunca presume "mês seguinte").
+2. **Gerar situações da competência** (botão principal): consulta as fontes e **insere direto na tabela "Situações da competência"**, em **Conferir**, os registros identificados para a competência selecionada. A tela mostra uma confirmação compacta ("Situações geradas: N registros incluídos…, sendo… suspensões, permanências de suspensão, exclusões e investigações") com "Ver detalhes" por fonte; a tabela recebe o foco e os registros novos ficam destacados.
+3. **Conferir e ajustar** cada registro (diálogo): situação, pessoa afetada, motivo, competências, pendência, requerimento, observação NURFI; descartar o indevido; **incluir manualmente** outros (botão "Incluir suspensão").
+4. **Confirmar** os corretos (ficam **Pronto**: confirmado e sem pendência impeditiva).
+5. **Exportar relatório** (revisão → pré-visualização → confirmação → emissão concluída) e **Histórico** de emissões (Visualizar, PDF, Excel).
 
-**Valor [Confirmado].** Valor inicial **R$ 0,00 apenas na massa demonstrativa** (reflete a coluna dos modelos de referência), editável pela GERDAB; "não
-aplicável" é um estado próprio, com justificativa. Não há valor fixo como regra. Em branco = pendente (impeditivo). Diferente do Relatório de Alterações,
-**R$ 0,00 é aceito** aqui (nos modelos a coluna é 0,00).
+**Gerar situações × Restaurar demonstração.** "Gerar situações da competência" **consulta as fontes e cria os registros** para conferência — é o único caminho que preenche a tabela. "Restaurar demonstração" **não insere registros**: limpa o que é demonstrativo e liga o **ambiente demonstrativo**, no qual a mesma geração consulta **fontes fictícias isoladas** (ver "Massa demonstrativa"). Não existe botão "Carregar dados de demonstração". A tela traz uma frase curta explicando a diferença.
 
-**Pendências impeditivas:** situação não escolhida, dependente não identificado, motivo ausente (para Suspender e Excluir) **[Hipótese]**, competência
-inválida ou estimada, valor pendente, vínculo/origem/matrícula ausentes, observação vazia, conflitos de valor ou de situação do titular.
+#### Registro e estados
+Beneficiário titular (nome e matrícula), vínculo (Ativo/Inativo), origem de pagamento (Boletos/ASSEFAZ/ASSETRAN), **competência de referência** e **competência de pagamento** (separadas), situação (**Suspender / Permanece suspenso / Excluir**, ou **"A verificar"** quando é investigação), **pessoa afetada** (titular ou **um** dependente identificado), motivo (lista de referência + texto livre), observação NURFI, origem da informação, estado (**Conferir**, **Pronto**, **Descartada**) e **histórico de auditoria append-only** (responsável, data/hora, justificativa, campos anterior/novo). Alterar um registro **confirmado** exige justificativa. Registros antigos continuam válidos: todos os campos acrescentados depois são **opcionais** (sem migração).
 
-**Fluxo igual ao do Relatório de Alterações:** seletor de competência de referência (pagamento sugerido como mês seguinte), abas Ativos/Inativos, filtros
-Boletos/ASSEFAZ/ASSETRAN, busca por nome/matrícula, indicadores (identificados, prontos, precisam de conferência), conferência individual, inclusão manual,
-revisão → pré-visualização → confirmação → emissão concluída, histórico, **emissões independentes numeradas por competência** (sem justificativa),
-reemissão com **confirmação de duplicidade**, "Emitido no Relatório N", PDF e Excel (uma aba por seção, QT por seção, número do relatório, datas de emissão e
-de exportação) sempre a partir do snapshot. **Massa demonstrativa** (10 registros fictícios, Setembro/2026): botão **"Carregar dados de demonstração"** no cabeçalho da tela (nunca automático).
-Cobre Suspender/Permanece suspenso/Excluir, titular e dependente, Ativos e Inativos, Boletos/ASSEFAZ/ASSETRAN e os estados **Conferir** (cada um com uma
-pendência diferente: valor, motivo, situação a classificar, só confirmar), **Pronto** (inclusive um com valor "não aplicável") e **Descartada**. Carregar de novo
-não duplica nem altera registros existentes. **"Restaurar demonstração"** (com confirmação) remove e recria só os exemplos **ainda não emitidos**; registros
-reais, manuais e relatórios emitidos não são tocados.
+**Valor [Confirmado].** Todo registro comunica **R$ 0,00** (não haverá ressarcimento para a situação e a competência indicadas): valor fixo, **não editável**, sem "Não aplicável". Valores gravados em registros antigos ficam preservados no registro e no histórico, mas **não são usados**; emissões já feitas mantêm os valores do seu snapshot.
 
-#### Regras que dependem de validação da GERDAB (nada disto é automático hoje)
-1. O que **cria** "Suspender": ausência de comprovante de pagamento? de documentação (como "comprovante de nascimento" nos modelos)? decisão explícita?
-2. Como se determina "Permanece suspenso" (suspensão em competência anterior? registro manual?) e quando uma suspensão termina (reinclusão com comprovante).
-3. Motivos válidos de "Excluir" (falecimento, exoneração, perda de dependência, cancelamento) e se a data de exclusão deve constar na observação.
-4. Se o valor é sempre 0,00, sempre "não aplicável" ou depende do caso; se o valor é obrigatório para todas as situações.
-5. Se o dependente deve ter linha própria no documento (hoje: linha do titular + observação).
-6. Como determinar a origem de pagamento de beneficiários de associação (planilhas não marcam inadimplentes).
-7. Se o motivo é obrigatório para Suspender e Excluir (hipótese atual) e opcional para Permanece suspenso.
-8. Se algum módulo (comprovantes, histórico de Fechamento etc.) poderá, no futuro, **sugerir** registros — sempre como "a conferir", nunca como decisão.
-9. Prefixo numérico dos títulos ("06 - …"): mesma hipótese do Relatório de Alterações (mês de pagamento), parametrizável.
+**Observação NURFI [Confirmado].** Obrigatória para o registro ser Pronto: deve informar a situação, o motivo (quando há) e, para dependente, o nome do dependente; em exclusão, o alcance (grupo familiar × somente o dependente) e o requerimento. É sugerida automaticamente (ex.: "Suspender. Comprovante de pagamento referente a junho/2026 não apresentado.") e **permanece editável**; a sugestão só substitui o texto enquanto ele não foi editado.
+
+#### Competências e pendências
+- **Chave da pendência (`pendenciaRef`)** (opcional): tipo `comprovante_pagamento` (com a **competência do comprovante**) ou `documentacao_obrigatoria` (com o **documento**). Um comprovante de outra competência **não regulariza** o ausente; documento apresentado **não** equivale a aprovado pela GERDAB.
+- **Competências afetadas:** comprovante ⇒ somente a sua competência; documentação ⇒ informadas pelo analista (início e fim). **A competência inicial nunca é presumida** (nem pelo vencimento do prazo): fica impeditiva até o analista conferi-la ("Conferi a competência inicial"); mudar as competências exige conferir de novo.
+- **Referência × pagamento:** a competência de pagamento **não vem das fontes**. Em registros gerados automaticamente ela reaproveita a já **conferida** nos demais registros da competência ou é pré-preenchida como o mês seguinte e **marcada "a conferir"** (impeditiva até o analista confirmar "Conferi as competências"). Registros de uma mesma referência com pagamentos diferentes não entram juntos numa emissão (a revisão exige escolher o pagamento).
+- **Lacuna registrada:** a relação entre a data de aprovação documental e a liberação financeira retroativa **não está definida** e não é presumida.
+
+#### Titular, dependentes e exclusões
+- Dependentes **não têm matrícula**: o registro é do titular; um registro afeta **uma** pessoa e **nunca** é estendido automaticamente ao grupo familiar. Na emissão, tudo do mesmo titular, competência e origem vira **uma linha** (matrícula e nome do titular), com as observações reunidas sem frases repetidas; o dependente é descrito na observação. Duas situações diferentes para o **próprio titular** na mesma linha bloqueiam a emissão até serem corrigidas.
+- **Excluir** exige **requerimento de exclusão aprovado**, informado e **conferido** pelo analista: origem "requerimento de associação" (decisão persistida; a aprovação é **relida na fonte antes de confirmar** e, se mudou ou não pôde ser confirmada, o vínculo é atualizado e a confirmação é recusada até nova conferência) ou "conferência manual" (referência e aprovação declaradas pelo analista; **requerimentos individuais do Admin não são fonte**, pois a decisão não é persistida). O sistema não cria requerimentos nem aprovações.
+- **Exclusão do titular** ⇒ abrange **todo o grupo familiar** (a observação diz isso); registros de dependentes do mesmo grupo **não geram linha própria** nem são descartados em silêncio: ficam citados na observação, em `movimentos` e em `registroIds`. **Exclusão de dependente** ⇒ exclusiva do dependente; o titular permanece (a observação diz isso).
+- Quando a fonte não informa se a exclusão atinge titular ou dependente, o registro nasce com **"quem é afetado" a conferir** (impeditivo).
+
+#### Geração automática — fontes (somente leitura)
+| Fonte | O que gera | Limitação |
+|---|---|---|
+| **Comprovantes e Fechamento** (classificação existente por titular e competência) | Comprovante **ausente** ou **recusado** ⇒ **Suspender**, preso à competência do comprovante. **Dispensa registrada** ou **retroativo negado** ⇒ **investigação** | Cobre as competências fechadas e a comprovação individual (Boletos) do cenário de dados do protótipo; origem Associação não tem comprovante individual |
+| **Pendências documentais** | Pendência **vencida** ⇒ **Suspender** por documentação (competências afetadas em branco para o analista); **sem prazo** ⇒ investigação; dentro do prazo ⇒ ignorada | Cobre apenas o **servidor de referência** do protótipo; o vencimento do prazo não define a competência inicial |
+| **Requerimentos de exclusão** | Requerimento de **associação aprovado** ⇒ **Excluir** com o requerimento vinculado e "quem é afetado" a conferir | Só requerimentos de associação têm decisão persistida |
+| **Planilhas das associações** | **Status Atenção** ou titular **ausente** em relação ao mês anterior ⇒ apenas **investigação** (sem classificação) | Planilha não prova inadimplência: **nunca** gera Suspender |
+| **Histórico de suspensões (continuidade)** | **Permanece suspenso** (ver abaixo) | Só suspensões já **emitidas** com `pendenciaRef` servem de evidência |
+
+**Fontes reais × demonstrativas.** A tabela acima descreve as fontes **reais**. No ambiente demonstrativo os mesmos leitores consultam as fontes fictícias isoladas (ver abaixo).
+
+**Respeito à competência selecionada.** Fontes com competência própria (comprovantes, planilhas) só geram registros **daquela** competência; o que a fonte identifica para **outras** competências **não é inserido em silêncio** — aparece na confirmação com atalho para a competência. Fontes sem competência própria (pendências documentais, requerimentos) entram na competência selecionada.
+
+**Investigação** = informação que **não permite concluir**: nasce **sem classificação** ("A verificar"), mostra o que foi encontrado, por que não conclui e o que verificar, e **não pode ser emitida** até o analista classificar e conferir. Nunca afirma inadimplência.
+
+**Idempotência.** Cada sugestão tem uma **chave** (fonte + pessoa + competência + tipo) e uma **impressão** do estado da origem: a mesma chave com a mesma impressão **nunca é recriada** (nem se descartada, confirmada ou emitida) — executar de novo não duplica e **não sobrescreve** edições; uma sugestão **descartada** só reaparece se a informação de origem mudar de forma relevante; registro aberto cuja origem mudou é sinalizado ("reconfira"), sem ser alterado. Pendência cuja suspensão já foi emitida não é gerada de novo como "Suspender" (é tratada pela continuidade). Registros manuais equivalentes evitam duplicidade.
+
+#### Permanece suspenso (continuidade por pendência específica)
+Sugerido somente quando: (1) existe **suspensão efetivamente emitida** de competência anterior com a **mesma pendência** (`pendenciaRef`, mesmo titular e mesma pessoa afetada); e (2) a pendência **continua sem regularização**, verificada por tipo — **comprovante**: no Fechamento da **própria competência da pendência** (adimplente = regularizada; inadimplente = aberta; em análise = apresentado, **ainda não aprovado**); **documento**: aprovado pela GERDAB = regularizado; entregue e não aprovado ou aguardando envio = aberta. Só existe verificação documental para o servidor de referência. O novo registro **preserva a competência original da pendência e as competências afetadas**; a competência selecionada é só a do relatório; para documentação, a conferência da competência inicial do registro anterior é **informação histórica** e o novo registro **exige a sua própria conferência**. Quando há entrega ainda não aprovada, a observação diz isso (não afirma "não apresentou").
+**Não é evidência:** suspensão anterior só sugerida, em Conferir, Pronto não emitida ou descartada; registro sem `pendenciaRef`; matrícula ou comprovante de outro mês. Com suspensão anterior não emitida e pendência aberta ou **sem como verificar a regularização** ⇒ **investigação**; regularizada ⇒ nada é sugerido.
+
+#### Emissões, títulos, histórico e exportações
+- **Emissões independentes** (motor genérico, sem alteração): número sequencial por tipo e competência de referência, snapshot imutável, sem justificativa; **reemissão** de registro já emitido exige **confirmação explícita de duplicidade** (registrada); só registros **Prontos** entram; investigações e Conferir ficam fora.
+- **Seções:** vínculo × origem (Ativos/Inativos × Boleto/ASSEFAZ/ASSETRAN), seções vazias não são impressas. **Título de cada seção** (formato `v2`): "Relatório de Suspensões — Ativos — Boleto — Referente a junho/2026 — Pagamento outubro/2026 — Inadimplentes". **QT** numera os **titulares de 1 a N em cada seção** (dependentes consolidados na linha do titular não contam). Colunas: Matrícula, Nome, mês de pagamento (R$ 0,00), Observações NURFI, QT.
+- **Versionamento do título:** emissões novas gravam `parametros.formatoTitulo = "v2"`; **emissões antigas (sem o campo) são reexportadas com o título e os valores originais** (inclusive prefixo numérico e "N/A"). Snapshots nunca são alterados; PDF e Excel (uma aba por seção) são sempre gerados **a partir do snapshot**, com número do relatório e datas de emissão e de exportação.
+
+#### Competências do relatório e pesquisa de servidores
+- **Competências são parâmetros do relatório.** A tela principal traz **Competência (referência)** e **Pagamento**; o pagamento começa vazio e **Gerar situações**, **Incluir suspensão** e **Exportar relatório** exigem que ele esteja selecionado. Registros gerados ou incluídos manualmente recebem exatamente essas duas competências. Na conferência elas aparecem **somente leitura**.
+- **Sem mistura.** Cada emissão tem **uma** combinação referência × pagamento (cabeçalho, registros e snapshot próprios; numeração por competência de referência). Registros conferidos com outro pagamento ficam fora, com aviso (tela, diálogo e revisão da emissão) e bloqueio defensivo em `prepararSuspensoes`; **nunca são corrigidos automaticamente**. Para emiti-los, seleciona-se o outro pagamento e emite-se um relatório separado. Não houve alteração no motor de emissões (`emissoes-relatorio.ts`) nem nas emissões históricas.
+- **Parâmetros no ambiente demonstrativo × operacional.** "Restaurar demonstração" preenche referência setembro/2026 e pagamento outubro/2026 (a tabela segue vazia até "Gerar situações"); no ambiente operacional o pagamento **nunca é presumido**: nem ao trocar a referência, nem ao recarregar (só é pré-selecionado quando todos os registros ativos da referência já têm o mesmo pagamento).
+- **Competência da pendência ≠ competência do relatório.** `pendenciaRef.competencia` (ex.: comprovante de junho) é mantida à parte da referência/pagamento do relatório.
+- **Pesquisa de servidores** (`cadastro-servidores-busca.ts`, `SeletorServidorCadastral`): campo com sugestões por nome ou matrícula sobre o cadastro existente (Cadastro de servidores, titular/grupo do Módulo de Pagamento e, só no ambiente demonstrativo, as pessoas fictícias). Somente leitura; copia nome, matrícula, CPF, vínculo, origem de pagamento (quando confiável) e dependentes **para o registro**. O afetado é o titular ou um dependente cadastrado (ou "não consta", a conferir). Nome/matrícula não são editáveis livremente: há **Trocar servidor**. Vínculo/origem vindos do cadastro só mudam por **ajuste excepcional** com justificativa (fica no histórico do registro; o cadastro não é tocado). Divergência entre a fonte da sugestão e o cadastro é **apresentada** ao analista, com "Usar o valor do cadastro" opcional. **Limitação — base de servidores:** a base completa de servidores (e dos dependentes nominais) depende de integração futura com a base institucional; no protótipo a pesquisa cobre apenas os cadastros mockados já existentes (Cadastro de servidores, titular/grupo do Módulo de Pagamento e, no ambiente demonstrativo, as pessoas fictícias). **Grupo familiar** como afetado não foi implementado: o modelo aprovado só prevê titular ou dependente individual.
+
+#### Ambiente demonstrativo (massa) e restauração
+**Fluxo:** (1) **Restaurar demonstração** (com confirmação) → (2) a tabela **fica vazia** ("Nenhuma situação registrada nesta competência. Clique em 'Gerar situações da competência'…") → (3) selecionar a competência (Setembro/2026 vem selecionada) e **Gerar situações da competência** → (4) a tabela é preenchida pelo **mesmo código real de S5/S6** → (5) conferir, editar, alterar, descartar, incluir manualmente → (6) emitir os **Prontos**.
+- **Fontes fictícias isoladas** (`fontes-suspensoes.ts`, em memória, sem armazenamento): Fechamento/comprovantes (ausente, recusado, dispensado, regular), pendências documentais vencidas (com mais de uma pendência no mesmo titular), requerimentos de exclusão `DEMO-REQ-2026-000N` (aprovados e um pendente), planilhas das associações (titular ausente e linha com status Atenção) e um **histórico fictício de suspensões já emitidas** (evidência da continuidade; **nunca** se mistura com as emissões reais). **Nenhum dado de comprovantes, planilhas, requerimentos, cadastro, pagamentos ou emissões reais é criado ou alterado.**
+- **Cenários gerados em Setembro/2026** (14 registros): Suspender (comprovante ausente e recusado — Boleto; documentação — ASSEFAZ e Boleto, este com duas pendências independentes); Permanece suspenso (comprovante de junho — Boleto; documentação — ASSETRAN com documento entregue e não aprovado; documentação — ASSEFAZ aguardando envio); Excluir por requerimento aprovado (ASSEFAZ e ASSETRAN, com "quem é afetado" a conferir); investigações (comprovante dispensado, titular ausente de planilha, linha Atenção, continuidade sem como verificar a regularização). Uma pendência já regularizada (aprovada) **não gera** nova sugestão.
+- Enquanto o ambiente está ativo (faixa "Ambiente demonstrativo ativo"), registros gerados e inclusões manuais nascem **"Demonstrativo"**, e as emissões feitas com eles também; "Sair do ambiente demonstrativo" volta a consultar as fontes reais (sem apagar nada).
+- **Restaurar demonstração** pede confirmação que **delimita o alcance**: apaga **só** os registros demonstrativos da fila (com os descartes, conferências e controles de geração que carregam — informa quantos tiveram intervenção do analista, quantos foram descartados e quantas inclusões manuais foram feitas no ambiente) e as **emissões compostas apenas por registros demonstrativos** (lista quais); **não toca** registros reais/manuais, emissões com qualquer linha real (e os registros que elas contêm) nem dados de outros módulos. Depois liga o ambiente e deixa a tabela vazia, permitindo repetir a geração.
+
+#### Pontos que dependem de integração ou validação com a GERDAB (nada disto é automático/confirmado hoje)
+1. Critérios finais do que **gera "Suspender"**: ausência de comprovante, de documentação ou de informação em planilha — em especial **que dado de planilha configura irregularidade** (hoje só investigação).
+2. **Competência inicial** das pendências documentais e relação entre aprovação documental e liberação financeira retroativa.
+3. **Competência de pagamento** efetivamente usada pelo NURFI em cada relatório (hoje informada/conferida pelo analista).
+4. Definição de **regularização** por tipo de pendência para toda a base (hoje: Fechamento no cenário do protótipo e documentos só do servidor de referência) e fonte oficial de aprovação de documentos.
+5. **Requerimentos de exclusão individuais** (decisão não persistida) e de **titular × dependente** (o requerimento de associação não informa).
+6. Motivos válidos de "Excluir" e se a data de exclusão deve constar na observação; obrigatoriedade do motivo.
+7. Representação do dependente no documento (hoje: linha do titular + observação) e prefixo numérico dos títulos antigos (não usado nas emissões novas).
+8. Integração com fontes reais de comprovantes, planilhas e requerimentos além do cenário de dados do protótipo; sessão e permissões reais por perfil.
 
 **Central de Relatórios (`/admin/relatorios`) — reorganizada.** Cabeçalho do módulo ("Módulo de Relatórios"); **destaque do Fechamento de Pagamento** com os
 quatro indicadores dinâmicos (adimplentes, inadimplentes, requerem análise, valor a pagar) e a competência de referência; abaixo, a seção **"Todos os relatórios"**
@@ -2162,7 +2191,7 @@ real, ignora acentos e maiúsculas e considera nome, descrição, categoria e pa
 quantidade); sem resultado, "Nenhum relatório encontrado". Os 10 relatórios: **Financeiro (6)** — Fechamento de Pagamento (repetido do destaque, mesma rota),
 Ressarcimento de meses anteriores, Ressarcimento de Negociações, Relatório de Alterações (NURFI), Relatório de Suspensões (NURFI), Movimentações do Pró-Saúde — NUPLA;
 **Documentação (2)** — Histórico de Comprovações, Documentação e Pendências; **Cadastro (1)** — Beneficiários / Contratos; **Gerencial (1)** — Visões Gerenciais.
-Durante uma pesquisa o destaque é ocultado. Rotas, indicadores e conteúdo dos relatórios não foram alterados.
+Durante uma pesquisa o destaque é ocultado. Rotas, indicadores e conteúdo dos relatórios não foram alterados. Para os perfis **Servidor** e **Associação** o cartão do Relatório de Suspensões **não aparece** (a rota também é protegida; ver §3.34).
 
 ---
 

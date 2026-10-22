@@ -6,8 +6,10 @@
  *  - Só registros PRONTOS (confirmados e sem pendência impeditiva) podem ser emitidos.
  *  - Uma linha por TITULAR + competência de referência + origem de pagamento (matrícula e nome do titular). A situação de um
  *    dependente aparece na OBSERVAÇÃO da linha — nunca se estende ao grupo familiar. Observações reunidas sem frases repetidas.
- *  - Valores nunca somados; valores diferentes no mesmo grupo bloqueiam. Duas classificações diferentes para o próprio TITULAR
- *    na mesma linha (ex.: Suspender e Excluir) também bloqueiam — a GERDAB corrige na conferência.
+ *  - O valor de toda linha é R$ 0,00 ({@link VALOR_SUSPENSAO}): os valores gravados em registros antigos NÃO são usados nem reescritos.
+ *    Duas classificações diferentes para o próprio TITULAR na mesma linha (ex.: Suspender e Excluir) bloqueiam — a GERDAB corrige na conferência.
+ *  - QT: titulares numerados de 1 a N em CADA seção (vínculo × origem); dependentes consolidados na linha do titular não são contados.
+ *  - Título de seção: formato "v2" (gravado na emissão em `parametros.formatoTitulo`); emissões sem esse parâmetro mantêm o título original.
  *  - Cada emissão é independente (número sequencial por competência), sem justificativa; reemissão exige confirmação de duplicidade.
  *  - Emitir não altera nenhum cadastro, pagamento, elegibilidade ou situação real de beneficiário.
  */
@@ -15,7 +17,7 @@ import { emissoesDaCompetencia, numerosEmitidosPorRegistro, registrarEmissao, us
 import { compararAlfabetico, type RelatorioExportSpec, type SecaoExport } from "./relatorio-export";
 import { ROTULO_VINCULO, identificadorTitular, type VinculoFuncional } from "./relatorio-alteracoes";
 import { chaveSecao, consolidarObservacoes, mesPorExtenso, prefixoSugerido, SECOES_RELATORIO, type Bloqueio, type LinhaRelatorio } from "./relatorio-alteracoes-geracao";
-import { estadoDoValorSuspensao, impeditivasSuspensao, listarSuspensoes, pendenciasSuspensao, ROTULO_CLASSIFICACAO, type RegistroSuspensao } from "./relatorio-suspensoes";
+import { impeditivasSuspensao, listarSuspensoes, pendenciasSuspensao, ROTULO_CLASSIFICACAO, VALOR_SUSPENSAO, type RegistroSuspensao } from "./relatorio-suspensoes";
 
 export const TIPO_RELATORIO_SUSPENSOES = "suspensoes";
 export type EmissaoSuspensoes = EmissaoRelatorio<LinhaRelatorio>;
@@ -27,10 +29,26 @@ const nomeMes = mesPorExtenso;
 
 export const tituloEmissaoSuspensoes = (numero: number, ref: string, pag: string) => `Relatório de Suspensões — Relatório ${numero} — referente a ${nomeMes(ref)} com pagamento em ${nomeMes(pag)}/${pag.slice(0, 4)}`;
 
-/** Título de seção no padrão dos PDFs da GERDAB; o prefixo numérico é um PARÂMETRO (hipótese: mês de pagamento — ver alterações). */
+/** Formato de título gravado nas emissões novas (`parametros.formatoTitulo`). Ausente = emissão antiga, que mantém o título original. */
+export const FORMATO_TITULO_ATUAL = "v2";
+
+const mesAno = (c: string) => `${new Date(Number(c.slice(0, 4)), Number(c.slice(5, 7)) - 1, 1).toLocaleString("pt-BR", { month: "long" })}/${c.slice(0, 4)}`;
+const ROTULO_ORIGEM_TITULO: Record<string, string> = { Boletos: "Boleto" };
+
+/** "Relatório de Suspensões — Ativos — Boleto — Referente a junho/2026 — Pagamento outubro/2026 — Inadimplentes". */
+export function tituloSecaoSuspensoesV2(ref: string, pag: string, v: VinculoFuncional, origem: string): string {
+  return `Relatório de Suspensões — ${rotuloVinculoTitulo(v)} — ${ROTULO_ORIGEM_TITULO[origem] ?? origem} — Referente a ${mesAno(ref)} — Pagamento ${mesAno(pag)} — Inadimplentes`;
+}
+
+/** Título de seção no padrão dos PDFs da GERDAB (formato ORIGINAL, usado só por emissões antigas); o prefixo numérico é um PARÂMETRO. */
 export function tituloSecaoSuspensoes(ref: string, pag: string, v: VinculoFuncional, origem: string, prefixo?: string): string {
   const p = (prefixo ?? prefixoSugerido(pag)).trim();
   return `${p ? `${p} - ` : ""}Relatório de suspensões Pró-saúde dos ${rotuloVinculoTitulo(v)} - referente a ${nomeMes(ref)} com pagamento em ${nomeMes(pag)}/${pag.slice(0, 4)} - ${origem.toUpperCase()} - ${v === "ativo" ? "ATIVOS" : "INATIVOS"} - SUSPENSÕES`;
+}
+
+/** Título da seção conforme o formato gravado na emissão (`parametros.formatoTitulo`); sem ele, o título original da emissão antiga. */
+export function tituloSecaoDaEmissao(ref: string, pag: string, v: VinculoFuncional, origem: string, parametros?: Record<string, string>): string {
+  return parametros?.formatoTitulo === FORMATO_TITULO_ATUAL ? tituloSecaoSuspensoesV2(ref, pag, v, origem) : tituloSecaoSuspensoes(ref, pag, v, origem, parametros?.prefixoTitulo);
 }
 
 /* ── Revisão ───────────────────────────────────────────────────────────────────────────────────────────────────── */
@@ -53,7 +71,8 @@ export function revisarSuspensoes(ref: string, pagamentoEscolhido?: string, regi
   const daCompetencia = registros.filter((r) => r.competenciaReferencia === ref && r.situacao !== "descartada");
   const prontosBrutos = daCompetencia.filter((r) => r.situacao === "confirmada" && impeditivasSuspensao(r).length === 0);
   const pagamentos = [...new Set(prontosBrutos.map((r) => r.competenciaPagamento))].sort();
-  const pagamento = pagamentoEscolhido && pagamentos.includes(pagamentoEscolhido) ? pagamentoEscolhido : pagamentos.length === 1 ? pagamentos[0] : undefined;
+  // O pagamento escolhido pelo analista no relatório vale mesmo sem registro pronto nele (os demais ficam bloqueados como divergentes).
+  const pagamento = pagamentoEscolhido ?? (pagamentos.length === 1 ? pagamentos[0] : undefined);
   const itens = daCompetencia
     .map<ItemRevisaoSuspensao>((r) => {
       const emi = emitidos.get(r.id) ?? [];
@@ -75,12 +94,14 @@ export interface PreparacaoSuspensoes {
   podeGerar: boolean;
 }
 
-const centavos = (v: number) => Math.round(v * 100);
-
 /** Consolida os registros SELECIONADOS (devem ser prontos) em linhas do titular. Pura: não grava nada. */
 export function prepararSuspensoes(ref: string, pag: string, registros: RegistroSuspensao[], selecionados: ReadonlySet<string>): PreparacaoSuspensoes {
-  const usados = registros.filter((r) => selecionados.has(r.id) && r.situacao === "confirmada" && r.competenciaReferencia === ref && r.competenciaPagamento === pag).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
   const bloqueios: Bloqueio[] = [];
+  // Defesa: registro selecionado com referência/pagamento diferentes dos do relatório NUNCA entra silenciosamente na emissão (nem é corrigido).
+  for (const r of registros.filter((x) => selecionados.has(x.id) && x.situacao !== "descartada" && (x.competenciaReferencia !== ref || x.competenciaPagamento !== pag))) {
+    bloqueios.push({ titular: r.titular.nome, registroIds: [r.id], motivos: [`Competências divergentes do relatório: referência ${r.competenciaReferencia.split("-").reverse().join("/")}, pagamento ${r.competenciaPagamento.split("-").reverse().join("/")} (o relatório é de ${ref.split("-").reverse().join("/")} · pagamento ${pag.split("-").reverse().join("/")})`] });
+  }
+  const usados = registros.filter((r) => selecionados.has(r.id) && r.situacao === "confirmada" && r.competenciaReferencia === ref && r.competenciaPagamento === pag).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
   for (const r of usados) {
     const imp = impeditivasSuspensao(r);
     if (imp.length) bloqueios.push({ titular: r.titular.nome, registroIds: [r.id], motivos: imp.map((x) => x.tabela) });
@@ -94,11 +115,6 @@ export function prepararSuspensoes(ref: string, pag: string, registros: Registro
   }
   const brutas: Omit<LinhaRelatorio, "qt">[] = [];
   for (const [chave, g] of grupos) {
-    const valores = [...new Set(g.filter((r) => r.valorInformadoNurfi !== undefined).map((r) => centavos(r.valorInformadoNurfi!)))];
-    if (valores.length > 1) {
-      bloqueios.push({ titular: g[0].titular.nome, registroIds: g.map((r) => r.id), motivos: [`Valores conflitantes no mesmo titular e origem (${valores.map((c) => (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })).join(" × ")}) — não são somados: informe o valor final`] });
-      continue;
-    }
     const classTitular = [...new Set(g.filter((r) => r.afetado.tipo === "titular").map((r) => r.classificacao))];
     if (classTitular.length > 1) {
       bloqueios.push({ titular: g[0].titular.nome, registroIds: g.map((r) => r.id), motivos: [`Situações diferentes para o próprio titular (${classTitular.map((c) => ROTULO_CLASSIFICACAO[c!]).join(" × ")}) — corrija na conferência`] });
@@ -109,17 +125,23 @@ export function prepararSuspensoes(ref: string, pag: string, registros: Registro
       continue;
     }
     const p = g[0];
+    // Exclusão do TITULAR = exclusão de todo o grupo familiar: a linha é uma só (a do titular). Registros de dependentes do mesmo grupo não
+    // geram linha própria nem são descartados em silêncio: ficam citados na observação, em `movimentos` e em `registroIds` (rastreabilidade).
+    const titularExcluido = g.some((r) => r.classificacao === "excluir" && r.afetado.tipo === "titular");
+    const absorvidos = titularExcluido ? g.filter((r) => r.afetado.tipo === "dependente") : [];
+    const observacaoLinha = titularExcluido
+      ? [consolidarObservacoes(g.filter((r) => r.afetado.tipo === "titular").map((r) => r.observacao)), absorvidos.length ? `Registros de dependentes abrangidos pela exclusão do grupo familiar: ${absorvidos.map((r) => `${r.afetado.nomeDependente} (${ROTULO_CLASSIFICACAO[r.classificacao!]})`).join("; ")}.` : ""].filter(Boolean).join(" ")
+      : consolidarObservacoes(g.map((r) => r.observacao));
     brutas.push({
       chave,
       vinculo: p.vinculo!,
       origem: p.origemPagamento!,
       matricula: p.titular.matricula!,
       nome: p.titular.nome,
-      valor: valores.length === 1 ? valores[0] / 100 : undefined,
-      valorNaoAplicavel: valores.length === 0 && g.some((r) => estadoDoValorSuspensao(r) === "nao_aplicavel") ? true : undefined,
-      observacao: consolidarObservacoes(g.map((r) => r.observacao)),
+      valor: VALOR_SUSPENSAO,
+      observacao: observacaoLinha,
       registroIds: g.map((r) => r.id),
-      movimentos: g.map((r) => `${ROTULO_CLASSIFICACAO[r.classificacao!]}${r.afetado.tipo === "dependente" ? ` (dependente ${r.afetado.nomeDependente})` : ""}`),
+      movimentos: g.map((r) => `${ROTULO_CLASSIFICACAO[r.classificacao!]}${r.afetado.tipo === "dependente" ? ` (dependente ${r.afetado.nomeDependente})${titularExcluido ? " — abrangido pela exclusão do titular" : ""}` : r.classificacao === "excluir" ? " (titular — grupo familiar)" : ""}`),
       demonstrativo: g.some((r) => r.demonstrativo),
     });
   }
@@ -131,7 +153,7 @@ export function prepararSuspensoes(ref: string, pag: string, registros: Registro
 }
 
 /** Emite um relatório INDEPENDENTE (sem justificativa). Reemissão de registro já emitido exige a confirmação explícita de duplicidade. */
-export function emitirSuspensoes(ref: string, pag: string, responsavel: string, selecionados: ReadonlySet<string>, opcoes: { reemissaoConfirmada?: boolean; prefixoTitulo?: string } = {}): EmissaoSuspensoes {
+export function emitirSuspensoes(ref: string, pag: string, responsavel: string, selecionados: ReadonlySet<string>, opcoes: { reemissaoConfirmada?: boolean } = {}): EmissaoSuspensoes {
   const registros = listarSuspensoes();
   const revisao = revisarSuspensoes(ref, pag, registros);
   const prontos = new Set(revisao.itens.filter((i) => i.pronto).map((i) => i.registro.id));
@@ -150,7 +172,7 @@ export function emitirSuspensoes(ref: string, pag: string, responsavel: string, 
     linhas: prep.linhas,
     registroIds: escolhidos,
     demonstrativo: prep.linhas.some((l) => l.demonstrativo),
-    parametros: { prefixoTitulo: (opcoes.prefixoTitulo ?? prefixoSugerido(pag)).trim() },
+    parametros: { formatoTitulo: FORMATO_TITULO_ATUAL },
     reemissao: jaEmitidos.length ? { registroIds: jaEmitidos, confirmadoPor: responsavel, dataHora: new Date().toISOString() } : undefined,
   });
 }
@@ -165,7 +187,7 @@ export function montarSpecSuspensoes(e: DadosEmissao): RelatorioExportSpec<Linha
   const pag = e.competenciaPagamento;
   const mesPag = nomeMes(pag);
   const secoes: SecaoExport<LinhaRelatorio>[] = SECOES_RELATORIO.map((s) => ({
-    titulo: tituloSecaoSuspensoes(ref, pag, s.vinculo, s.origem, e.parametros?.prefixoTitulo),
+    titulo: tituloSecaoDaEmissao(ref, pag, s.vinculo, s.origem, e.parametros),
     nomeAba: `${rotuloVinculoTitulo(s.vinculo)} - ${s.origem}`,
     linhas: e.linhas.filter((l) => l.vinculo === s.vinculo && l.origem === s.origem),
   }));
