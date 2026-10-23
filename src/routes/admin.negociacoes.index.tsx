@@ -118,8 +118,8 @@ function ConsultaNegociacoes() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span title="Os registros deste módulo são fictícios, para validar o fluxo do protótipo." style={{ fontSize: 11, fontWeight: 600, color: V.amber, background: V.amberSoft, padding: "3px 9px", borderRadius: 999 }}>Dados demonstrativos</span>
-          <Link to="/admin/negociacoes/nova" style={botaoPrimario}>
-            <Plus size={16} aria-hidden /> Nova negociação
+          <Link to="/admin/negociacoes/nova" style={{ ...botaoPrimario, height: 46, padding: "0 22px", fontSize: 15, gap: 8 }}>
+            <Plus size={18} aria-hidden /> Nova negociação
           </Link>
         </div>
       </header>
@@ -139,7 +139,9 @@ function ConsultaNegociacoes() {
         </div>
 
         <div className="neg-fila" style={{ ...cardBase, overflow: "hidden", borderLeft: `4px solid ${V.amber}` }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 16px", padding: "16px 20px" }}>
+          {/* O cabeçalho INTEIRO alterna a fila (indicador, título, texto e áreas livres). O botão não tem onClick próprio: o clique sobe ao
+              cabeçalho, então o teclado (Enter/Espaço no botão) faz o mesmo sem botões aninhados. As ações da tabela ficam fora do cabeçalho. */}
+          <div onClick={() => setFilaAberta((v) => !v)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 16px", padding: "16px 20px", cursor: "pointer" }}>
             <span aria-hidden style={{ width: 44, height: 44, borderRadius: 10, background: V.amberSoft, color: V.amber, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{fila.length}</span>
             <div style={{ flex: "1 1 260px", minWidth: 0 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Confirmações de pagamento pendentes</h3>
@@ -147,7 +149,7 @@ function ConsultaNegociacoes() {
                 {fila.length === 0 ? "Nenhuma parcela aguardando conferência nesta competência." : `${nMes} ${nMes === 1 ? "vence" : "vencem"} neste mês e ${nAtraso} ${nAtraso === 1 ? "permanece" : "permanecem"} em atraso. Confirme somente após validar o pagamento.`}
               </p>
             </div>
-            <button type="button" onClick={() => setFilaAberta((v) => !v)} aria-expanded={filaAberta} aria-controls="fila-confirmacoes" style={botaoPrimario}>
+            <button type="button" aria-expanded={filaAberta} aria-controls="fila-confirmacoes" style={botaoPrimario}>
               {filaAberta ? "Ocultar fila" : "Exibir fila"} <ChevronDown size={16} style={{ transform: filaAberta ? "rotate(180deg)" : "none", transition: "transform 180ms ease" }} />
             </button>
           </div>

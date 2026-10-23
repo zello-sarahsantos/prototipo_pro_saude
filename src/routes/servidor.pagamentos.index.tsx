@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   ChevronRight,
   FileUp,
@@ -10,6 +10,7 @@ import {
   Receipt,
   ArrowRight,
 } from "lucide-react";
+import { BotaoExpansao } from "@/components/ControleExpansao";
 import { ComprovanteStatusBadge } from "@/components/ComprovanteStatusBadge";
 import { ServidorComprovanteDetail } from "@/components/ServidorComprovanteDetail";
 import {
@@ -37,6 +38,9 @@ function PagamentosHome() {
   const associacao = getOrigemComprovacaoServidorLogado().associacao ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   const [detalhe, setDetalhe] = useState<{ comprovante: Comprovante; beneficiarioId?: string } | null>(null);
+  // Histórico de Comprovações: começa RECOLHIDO; o controle só mostra/oculta a listagem (dados e detalhes por competência não mudam).
+  const [historicoAberto, setHistoricoAberto] = useState(false);
+  const historicoId = useId();
 
   const comprovantes = useMemo(() => getComprovantesUnificados(), [refreshKey]);
   const daCompetenciaAtual = comprovantes.filter((c) => c.competencia === competenciaAtual);
@@ -202,18 +206,37 @@ function PagamentosHome() {
         </div>
       </section>
 
+      <Link
+        to="/servidor/comprovante-rendimentos"
+        className="flex items-center gap-3 bg-card rounded-xl p-3 border border-border hover:border-primary/40 transition"
+      >
+        <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <Receipt className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Comprovante de Rendimentos</p>
+          <p className="text-xs text-muted-foreground">Consulte os valores de auxílio-saúde recebidos por ano.</p>
+        </div>
+        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+      </Link>
+
       {historicoComprovacoes.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Histórico de Comprovações
-            </h3>
+        <section className="bg-card rounded-xl shadow-card border border-border overflow-hidden" aria-label="Histórico de Comprovações">
+          {/* Mesmo padrão do Dashboard e dos Prazos: ao expandir, o topo do cartão fica em azul claro. */}
+          <div
+            onClick={() => setHistoricoAberto((v) => !v)}
+            className={`p-4 space-y-3 cursor-pointer ${historicoAberto ? "bg-info/10 border-t-2 border-t-info/60 border-b border-b-info/30" : ""}`}>
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-semibold leading-snug">Histórico de Comprovações</h3>
+            <BotaoExpansao aberto={historicoAberto} controla={historicoId} />
           </div>
-          <p className="text-xs text-muted-foreground mb-2">
+          <p className="text-sm text-muted-foreground">
             Comprovações apresentadas por competência — o reembolso só ocorre após a análise e
             aprovação do comprovante.
           </p>
-          <div className="space-y-2">
+          </div>
+          {historicoAberto && (
+          <div id={historicoId} className="space-y-2 p-4">
             {historicoComprovacoes.map((linha) => (
               <button
                 key={linha.competencia}
@@ -246,22 +269,10 @@ function PagamentosHome() {
               </button>
             ))}
           </div>
+          )}
         </section>
       )}
 
-      <Link
-        to="/servidor/comprovante-rendimentos"
-        className="flex items-center gap-3 bg-card rounded-xl p-3 border border-border hover:border-primary/40 transition"
-      >
-        <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          <Receipt className="h-4 w-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">Comprovante de Rendimentos</p>
-          <p className="text-xs text-muted-foreground">Valores efetivamente recebidos, por ano.</p>
-        </div>
-        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-      </Link>
 
       {detalhe && (
         <ServidorComprovanteDetail

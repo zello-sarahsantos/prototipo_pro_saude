@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { dependentes, requerimentos, servidorAtual, formatCurrency, calcularReembolso } from "@/lib/mock-data";
-import { SolicitacaoDocumentoBanner, StatusDocumentoEnviadoCard } from "@/components/SolicitacaoDocumentoBanner";
+import { PrazosAlertasDocumentais } from "@/components/SolicitacaoDocumentoBanner";
 import { getPendenciasDocumentaisDoServidor, getStatusDocumentosDoServidor } from "@/lib/pendencias-documentais";
 import { ChevronRight, User, Info } from "lucide-react";
 
@@ -87,16 +87,12 @@ function Inicio() {
         <p className="text-xs text-muted-foreground">Matrícula {servidorAtual.matricula}</p>
       </section>
 
-      {pendenciasDocumento.map((p) => (
-        <SolicitacaoDocumentoBanner
-          key={p.id}
-          pendencia={p}
-          onEnviado={() => setSolicitacoesVersion((v) => v + 1)}
-        />
-      ))}
-      {statusDocumentosEnviados.map((s) => (
-        <StatusDocumentoEnviadoCard key={s.id} status={s} />
-      ))}
+      <PrazosAlertasDocumentais
+        pendencias={pendenciasDocumento}
+        enviados={statusDocumentosEnviados}
+        onEnviado={() => setSolicitacoesVersion((v) => v + 1)}
+        responsavelPadrao={servidorAtual.nome}
+      />
 
       <section className="bg-card rounded-xl p-4 shadow-card border border-border">
         <div className="flex justify-between items-start mb-3">

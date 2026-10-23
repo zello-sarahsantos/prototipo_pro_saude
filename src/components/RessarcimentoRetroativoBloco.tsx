@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronRight, Plus, RefreshCw, X } from "lucide-react";
+import { CheckCircle2, Plus, RefreshCw, X } from "lucide-react";
+import { ControleExpansaoVisual } from "@/components/ControleExpansao";
 import { formatCompetencia } from "@/lib/mock-data";
 import {
   ROTULO_STATUS,
@@ -110,14 +111,14 @@ export function RessarcimentoRetroativoBloco({
   }
 
   return (
-    <section className="bg-card rounded-xl border border-border shadow-card">
+    <section className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
         aria-expanded={aberto}
         aria-controls="ressarcimento-retroativo-conteudo"
         id="ressarcimento-retroativo-cabecalho"
-        className="w-full flex items-center gap-3 p-4 text-left rounded-xl hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[64px]"
+        className={`w-full flex items-start gap-3 p-4 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[64px] ${aberto ? "bg-info/10 hover:bg-info/10 border-t-2 border-t-info/60" : ""}`}
       >
         <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
           <RefreshCw className="h-5 w-5" />
@@ -129,10 +130,7 @@ export function RessarcimentoRetroativoBloco({
             um único pedido.
           </p>
         </div>
-        <ChevronRight
-          aria-hidden="true"
-          className={`h-5 w-5 text-muted-foreground shrink-0 transition-transform ${aberto ? "rotate-90" : ""}`}
-        />
+        <ControleExpansaoVisual aberto={aberto} />
       </button>
 
       {aberto && (
@@ -140,7 +138,7 @@ export function RessarcimentoRetroativoBloco({
           id="ressarcimento-retroativo-conteudo"
           role="region"
           aria-labelledby="ressarcimento-retroativo-cabecalho"
-          className="px-4 pb-4 pt-4 space-y-4 border-t border-border"
+          className="px-4 pb-4 pt-4 space-y-4 border-t border-info/30"
         >
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
