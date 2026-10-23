@@ -222,10 +222,10 @@ function RelatorioSuspensoes() {
       .sort((a, b) => (a.titular.matricula ?? "￿").localeCompare(b.titular.matricula ?? "￿", "pt-BR", { numeric: true }) || a.titular.nome.localeCompare(b.titular.nome, "pt-BR", { sensitivity: "base" }));
   }, [daCompetencia, aba, origem, busca, tipoFiltro]);
 
-  /** "Gerar situações da competência": inclui direto na tabela os registros identificados para a competência SELECIONADA (sem 2ª ação). */
+  /** "Buscar e preencher registros": inclui direto na tabela os registros identificados para a competência SELECIONADA (sem 2ª ação). */
   function gerarSituacoes() {
     if (!pagamentoSel) {
-      setAviso("Selecione a competência de pagamento do relatório antes de gerar as situações.");
+      setAviso("Selecione a competência de pagamento do relatório antes de buscar e preencher os registros.");
       return;
     }
     try {
@@ -246,13 +246,13 @@ function RelatorioSuspensoes() {
       }
       setTimeout(() => tabelaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "Não foi possível gerar as situações.");
+      setAviso(e instanceof Error ? e.message : "Não foi possível buscar e preencher os registros.");
     }
   }
 
   /**
    * Restaura o ambiente demonstrativo: remove SÓ os registros demonstrativos (e as emissões compostas apenas por eles), com os descartes,
-   * conferências e controles de geração que carregam, e deixa a tabela vazia para uma nova execução de "Gerar situações da competência".
+   * conferências e controles de geração que carregam, e deixa a tabela vazia para uma nova execução de "Buscar e preencher registros".
    * Registros e emissões reais nunca são tocados.
    */
   function restaurarDemonstracao() {
@@ -268,7 +268,7 @@ function RelatorioSuspensoes() {
     setOrigem("todas");
     setTipoFiltro("todos");
     setBusca("");
-    setAviso(`Demonstração restaurada: ${r.registrosRemovidos} registro(s) demonstrativo(s)${r.emissoesRemovidas ? ` e ${r.emissoesRemovidas} emissão(ões) de demonstração` : ""} removido(s).${r.protegidos ? ` ${r.protegidos} registro(s) constam em emissão real e foram mantidos.` : ""} Registros e emissões reais não foram tocados. Clique em “Gerar situações da competência” para preencher a tabela com os cenários fictícios.`);
+    setAviso(`Demonstração restaurada: ${r.registrosRemovidos} registro(s) demonstrativo(s)${r.emissoesRemovidas ? ` e ${r.emissoesRemovidas} emissão(ões) de demonstração` : ""} removido(s).${r.protegidos ? ` ${r.protegidos} registro(s) constam em emissão real e foram mantidos.` : ""} Registros e emissões reais não foram tocados. Clique em “Buscar e preencher registros” para preencher a tabela com os cenários fictícios.`);
   }
 
   const abas: { id: Aba; rotulo: string; n: number }[] = [
@@ -292,8 +292,8 @@ function RelatorioSuspensoes() {
             <button type="button" onClick={() => (pagamentoSel ? setAlteracao({ id: null }) : setAviso("Selecione a competência de pagamento do relatório antes de incluir uma suspensão."))} className={BTN_PRIMARIO}>
               <Plus className="h-4 w-4" /> Incluir suspensão
             </button>
-            <button type="button" onClick={gerarSituacoes} className={BTN_CONTORNO} title="Consulta as fontes disponíveis e insere, para conferência, os registros identificados na competência selecionada.">
-              <Sparkles className="h-4 w-4" /> Gerar situações da competência
+            <button type="button" onClick={gerarSituacoes} className={BTN_PRIMARIO} title="Consulta os dados da competência selecionada e preenche a tabela com os registros identificados para conferência pela GERDAB.">
+              <Sparkles className="h-4 w-4" /> Buscar e preencher registros
             </button>
             <button type="button" onClick={() => setConfirmarRemocao(true)} className={`${BTN_SECUNDARIO} border-dashed`} title="Prepara o ambiente fictício para apresentação e testes: limpa a demonstração anterior e deixa a tabela vazia para ser preenchida pela geração.">
               <FlaskConical className="h-4 w-4" /> Restaurar demonstração
@@ -334,7 +334,7 @@ function RelatorioSuspensoes() {
                 Relatório: <strong className="text-foreground">referência {formatCompetencia(competenciaSel)}</strong> · <strong className="text-foreground">pagamento {formatCompetencia(pagamentoSel)}</strong>. Gerar, incluir e emitir usam estas duas competências.
               </>
             ) : (
-              "Selecione a competência de pagamento para gerar situações, incluir suspensões e emitir o relatório."
+              "Selecione a competência de pagamento para buscar e preencher registros, incluir suspensões e emitir o relatório."
             )}
           </p>
         </div>
@@ -349,7 +349,7 @@ function RelatorioSuspensoes() {
       {ambienteDemo && (
         <p role="note" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-2 text-sm">
           <span>
-            <strong>Ambiente demonstrativo ativo:</strong> “Gerar situações da competência” consulta <strong>fontes fictícias isoladas</strong> (Setembro/2026); registros gerados ou incluídos agora ficam marcados “Demonstrativo”. Nada é gravado em outros módulos.
+            <strong>Ambiente demonstrativo ativo:</strong> “Buscar e preencher registros” consulta <strong>fontes fictícias isoladas</strong> (Setembro/2026); registros gerados ou incluídos agora ficam marcados “Demonstrativo”. Nada é gravado em outros módulos.
           </span>
           <button type="button" onClick={() => definirAmbienteDemo(false)} className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
             Sair do ambiente demonstrativo
@@ -446,7 +446,7 @@ function RelatorioSuspensoes() {
           <span className="text-right">Ação</span>
         </div>
         {filtrados.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? "Nenhuma situação registrada nesta competência. Confira as competências de referência e de pagamento e clique em “Gerar situações da competência” para identificar os registros que precisam de conferência." : "Nenhum registro encontrado com os filtros atuais."}</p>
+          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? "Nenhuma situação registrada nesta competência. Confira as competências de referência e de pagamento e clique em “Buscar e preencher registros” para identificar os registros que precisam de conferência." : "Nenhum registro encontrado com os filtros atuais."}</p>
         ) : (
           <ul className="divide-y divide-border border-t border-border">
             {filtrados.map((r) => (
@@ -551,7 +551,7 @@ function DialogConfirmaRemocao({ diagnostico, onFechar, onConfirmar }: { diagnos
       <DialogContent onCloseAutoFocus={retornarFoco}>
         <DialogTitle>Restaurar a demonstração?</DialogTitle>
         <DialogDescription>
-          A restauração limpa <strong>apenas o ambiente demonstrativo</strong> do Relatório de Suspensões e deixa a tabela vazia. Depois, “Gerar situações da competência” volta a preenchê-la com os cenários fictícios.
+          A restauração limpa <strong>apenas o ambiente demonstrativo</strong> do Relatório de Suspensões e deixa a tabela vazia. Depois, “Buscar e preencher registros” volta a preenchê-la com os cenários fictícios.
         </DialogDescription>
         <div className="space-y-3 text-sm">
           <div>
@@ -656,7 +656,7 @@ function ConfirmacaoGeracao({ resultado, distribuicao, abaAtual, onAba, detalhes
               </button>
             </span>
           ))}
-          . Selecione a competência e gere de novo para incluí-las com a referência original.
+          . Selecione a competência e use “Buscar e preencher registros” de novo para incluí-las com a referência original.
         </p>
       )}
       {detalhes && (

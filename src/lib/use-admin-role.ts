@@ -14,3 +14,11 @@ const perfilDoNavegador = () => localStorage.getItem("prosaude_role") || "gerenc
 export function useAdminRole<P extends string | null = "gerencia">(padrao: P = "gerencia" as P): string | P {
   return useSyncExternalStore<string | P>(assinar, perfilDoNavegador, () => padrao);
 }
+
+/**
+ * Regra ÚNICA de autorização dos relatórios internos da GERDAB (Suspensões, Alterações) e de Negociações: só Analista e Gerência.
+ * Usada pela guarda das rotas (`GuardaPerfilAdmin`) e pela visibilidade dos cartões na Central de Relatórios, para nunca divergirem.
+ * Compara o identificador técnico do perfil (`localStorage.prosaude_role`), sem espaços e sem diferenciar maiúsculas — nunca o nome exibido.
+ */
+export const PERFIS_GERDAB = ["analista", "gerencia"] as const;
+export const ehPerfilGerdab = (perfil: string | null | undefined): boolean => PERFIS_GERDAB.includes((perfil ?? "").trim().toLowerCase() as (typeof PERFIS_GERDAB)[number]);

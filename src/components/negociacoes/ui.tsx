@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Lock, Pencil, Calculator, Paperclip } from "lucide-react";
 import { getAdminRole } from "@/components/AdminLayout";
+import { ehPerfilGerdab } from "@/lib/use-admin-role";
 import { V } from "@/components/dashboard-gerdab/gd-ui";
 import { obterArquivo } from "@/lib/armazenamento-arquivos";
 import { FINALIDADES_DOCUMENTO, TIPOS_DOCUMENTO_NEGOCIACAO, ROTULO_SITUACAO, formatarCentavos, type CriterioParcelamento, type DocumentoNegociacao, type MemoriaCalculo, type SituacaoNegociacao } from "@/lib/negociacoes";
@@ -12,7 +13,7 @@ export function GuardaPerfilAdmin({ children, modulo = "Módulo de Negociações
   const [perfil, setPerfil] = useState<string | null>(null);
   useEffect(() => setPerfil(getAdminRole()), []);
   if (perfil === null) return null;
-  if (perfil !== "analista" && perfil !== "gerencia") {
+  if (!ehPerfilGerdab(perfil)) {
     return (
       <div className="gd" style={{ padding: 32, background: V.bg, minHeight: "100%" }}>
         <div role="alert" style={{ maxWidth: 520, margin: "40px auto", background: V.card, border: `1px solid ${V.border}`, borderRadius: 12, padding: 24, display: "flex", gap: 14 }}>

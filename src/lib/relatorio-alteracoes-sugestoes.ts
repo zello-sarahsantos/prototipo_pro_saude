@@ -18,18 +18,17 @@
  * NÃO consultados (por decisão): `movimentacoes-pro-saude.ts` e os números do Dashboard (demonstrativos, não são eventos
  * administrativos); `servidor-cadastro.ts` (só registra alteração de telefone — não é movimentação do auxílio).
  */
-import { formatCompetencia, servidoresList, type BeneficiarioPagamento, type Comprovante, type StatusComprovante } from "./mock-data";
-import { getBeneficiariosPagamentoAtual, getComprovantesUnificados, loadHistoricoFechamentos } from "./prosaude-storage";
-import { statusDoBeneficiarioNoDocumento } from "./comprovante-status";
-import { getAssociacaoModelo, getRegistrosAssociacaoAprovadosNaCompetencia, listarPlanilhasAssociacao, statusAtualPlanilha, type RegistroAssociacaoConsolidado } from "./planilhas-associacao";
-import { getClassificacaoAtivoInativoPorCpf, getMatriculaPorCpf, normalizarCpf } from "./base-institucional";
-import { listarRequerimentosAssociacao, statusAtualRequerimento, versaoVigenteRequerimento, tipoRequerimentoAssociacaoLabels } from "./requerimentos-associacao";
-import { getEstadoCompetencia, getSolicitacoesRetroativas } from "./ressarcimento-retroativo";
-import { registrarMovimentacao, type Movimento, type NovoRegistroAlteracao, type OrigemPagamento, type VinculoFuncional } from "./relatorio-alteracoes";
+import { formatCompetencia, type BeneficiarioPagamento, type StatusComprovante } from "./mock-data";
+import { getAssociacaoModelo, type RegistroAssociacaoConsolidado } from "./planilhas-associacao";
+import { normalizarCpf } from "./base-institucional";
+import { tipoRequerimentoAssociacaoLabels } from "./requerimentos-associacao";
+import { fontesDemonstracaoAlteracoes, fontesReais, type ComprovanteLite, type FontesAlteracao, type RessarcimentoLite } from "./fontes-alteracoes";
+import { registrarMovimentacao, ROTULO_PENDENCIA_VALOR, type Movimento, type NovoRegistroAlteracao, type OrigemPagamento, type PendenciaValorSugerido, type ValorSugerido, type VinculoFuncional } from "./relatorio-alteracoes";
 
-export type FonteSugestao = "comprovantes" | "requerimentos" | "planilhas_associacao" | "ressarcimentos" | "fechamento";
+export type FonteSugestao = "movimentacoes" | "comprovantes" | "requerimentos" | "planilhas_associacao" | "ressarcimentos" | "fechamento";
 
 export const ROTULO_FONTE: Record<FonteSugestao, string> = {
+  movimentacoes: "Movimentações registradas (natureza e motivo informados)",
   comprovantes: "Comprovantes individuais",
   requerimentos: "Requerimentos de Associação",
   planilhas_associacao: "Planilhas das associações",
@@ -60,13 +59,13 @@ class Contador {
   }
 }
 
-const cpfPorMatricula = (matricula?: string) => (matricula ? servidoresList.find((s) => s.matricula === matricula)?.cpf : undefined);
+const cpfPorMatricula = (f: FontesAlteracao, matricula?: string) => (matricula ? f.servidorPorMatricula(matricula)?.cpf : undefined);
 
 /** Vínculo funcional pela regra institucional já existente; sem situação confiável → `undefined` + pendência (nunca escolhe em silêncio). */
-function resolverVinculo(cpf?: string, matricula?: string): { vinculo?: VinculoFuncional; pendencia?: string } {
-  const alvo = cpf ?? cpfPorMatricula(matricula);
+function resolverVinculo(f: FontesAlteracao, cpf?: string, matricula?: string): { vinculo?: VinculoFuncional; pendencia?: string } {
+  const alvo = cpf ?? cpfPorMatricula(f, matricula);
   if (!alvo) return { pendencia: "Vínculo funcional (Ativo/Inativo) a conferir: titular sem CPF/matrícula correspondente na base." };
-  const c = getClassificacaoAtivoInativoPorCpf(alvo);
+  const c = f.vinculoPorCpf(alvo);
   return c.grupo && !c.requerConferencia ? { vinculo: c.grupo } : { pendencia: `Vínculo funcional (Ativo/Inativo) a conferir: ${c.motivo ?? "sem situação funcional confiável."}` };
 }
 
@@ -93,7 +92,7 @@ const mesAnterior = (c: string) => {
 
 const STATUS_APROVADOS: StatusComprovante[] = ["aprovado", "aprovado_com_ressalva", "retroativo_aprovado"];
 
-function titularDoGrupo(b: BeneficiarioPagamento, c: Comprovante, todos: BeneficiarioPagamento[]): { titular?: BeneficiarioPagamento; ehDependente: boolean } {
+function titularDoGrupo(b: BeneficiarioPagamento, c: ComprovanteLite, todos: BeneficiarioPagamento[]): { titular?: BeneficiarioPagamento; ehDependente: boolean } {
   if (b.parentesco === "Titular") return { titular: b, ehDependente: false };
   const titulares = todos.filter((x) => x.parentesco === "Titular");
   const doEnvio = titulares.find((t) => c.beneficiarioIds.includes(t.id));
@@ -105,14 +104,14 @@ function titularDoGrupo(b: BeneficiarioPagamento, c: Comprovante, todos: Benefic
  * a ação `valor_cadastral_atualizado` (com valor anterior/novo) — e o beneficiário permanece aprovado naquele comprovante.
  * Comprovante aprovado SEM essa ação nunca é prova de alteração; se houve divergência justificada pelo servidor, vira "a conferir".
  */
-export function lerSugestoesComprovantes(): ResultadoFonte {
-  const todosBen = getBeneficiariosPagamentoAtual();
+export function lerSugestoesComprovantes(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const todosBen = f.beneficiarios();
   const ignorados = new Contador();
   const sugestoes: SugestaoAlteracao[] = [];
-  const comprovantes = getComprovantesUnificados();
+  const comprovantes = f.comprovantes();
 
   for (const c of comprovantes) {
-    const acoes = c.aprovacoes ?? [];
+    const acoes = c.aprovacoes;
     const consideradas = new Set<string>();
 
     const base = (b: BeneficiarioPagamento) => {
@@ -120,7 +119,7 @@ export function lerSugestoesComprovantes(): ResultadoFonte {
       const conferencia: string[] = [];
       if (!titular) conferencia.push("Titular do grupo não identificado a partir do comprovante.");
       if (ehDependente) conferencia.push(`A informação refere-se ao beneficiário dependente ${b.nome}; confira o titular exibido.`);
-      const v = resolverVinculo(titular?.cpf, titular?.matricula);
+      const v = resolverVinculo(f, titular?.cpf, titular?.matricula);
       if (v.pendencia) conferencia.push(v.pendencia);
       return {
         titular: { nome: (titular ?? b).nome, matricula: titular?.matricula, cpf: titular?.cpf },
@@ -139,7 +138,7 @@ export function lerSugestoesComprovantes(): ResultadoFonte {
         ignorados.somar("Atualização de valor cadastral de beneficiário que não consta mais no cadastro");
         continue;
       }
-      const status = statusDoBeneficiarioNoDocumento(c, b.id);
+      const status = c.statusDoBeneficiario(b.id);
       if (!STATUS_APROVADOS.includes(status)) {
         ignorados.somar("Atualização de valor registrada, mas o comprovante não está aprovado para o beneficiário");
         continue;
@@ -149,7 +148,7 @@ export function lerSugestoesComprovantes(): ResultadoFonte {
       sugestoes.push({
         fonte: "comprovantes",
         ...info,
-        movimentos: [{ tipo: "alterar_valor" }],
+        movimentos: [{ tipo: "alterar_valor", ...(a.motivoAlteracao ? { motivo: a.motivoAlteracao } : {}) }],
         valores: a.valorNovo !== undefined ? { cadastrado: a.valorNovo } : {},
         referenciaOrigem: {
           modulo: "comprovantes",
@@ -162,16 +161,16 @@ export function lerSugestoesComprovantes(): ResultadoFonte {
             dataHora: a.data,
           },
         },
-        conferencia: [...info.conferencia, "Motivo da alteração (reajuste, mudança de plano etc.) não é registrado pelo fluxo de comprovantes: informe na conferência."],
+        conferencia: [...info.conferencia, ...(a.motivoAlteracao ? [] : ["Motivo da alteração (reajuste, mudança de plano etc.) não é registrado pela fonte: informe na conferência."])],
       });
     }
 
     // (b) Divergência de valor justificada e comprovante aprovado, sem atualização do cadastro: natureza não determinada.
-    for (const j of c.justificativasDivergencia ?? []) {
+    for (const j of c.justificativasDivergencia) {
       if (consideradas.has(j.beneficiarioId)) continue;
       const b = todosBen.find((x) => x.id === j.beneficiarioId);
       if (!b) continue;
-      const status = statusDoBeneficiarioNoDocumento(c, b.id);
+      const status = c.statusDoBeneficiario(b.id);
       if (!STATUS_APROVADOS.includes(status)) {
         ignorados.somar("Divergência de valor ainda em análise, recusada ou devolvida para correção");
         continue;
@@ -217,32 +216,40 @@ export function lerSugestoesComprovantes(): ResultadoFonte {
 /* ── 2. Requerimentos de Associação ─────────────────────────────────────────────────────────────────────────────── */
 
 /** Só requerimentos com decisão "aprovado" PERSISTIDA na versão vigente. Pendentes, em complementação ou negados nunca viram sugestão. */
-export function lerSugestoesRequerimentos(): ResultadoFonte {
-  const todos = listarRequerimentosAssociacao();
+export function lerSugestoesRequerimentos(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const todos = f.requerimentos();
   const ignorados = new Contador();
   const sugestoes: SugestaoAlteracao[] = [];
   for (const r of todos) {
-    const status = statusAtualRequerimento(r);
+    const status = r.status;
     if (status !== "aprovado") {
       ignorados.somar(status === "pendente_validacao" ? "Requerimento pendente de validação (não aprovado)" : status === "aguardando_complementacao" ? "Requerimento aguardando complementação (não aprovado)" : "Requerimento negado");
       continue;
     }
-    const versao = versaoVigenteRequerimento(r);
-    const decidido = versao.decisao!;
+    const versao = { versao: r.versao };
+    const decidido = { decididoEm: r.decididoEm!, decididoPor: r.decididoPor };
     const { origem, pendencia: pOrigem } = origemPorAssociacao(r.associacao);
-    const servidor = r.beneficiarioId ? servidoresList.find((s) => s.matricula === r.beneficiarioId) : undefined;
+    const servidor = r.beneficiarioId ? f.servidorPorMatricula(r.beneficiarioId) : undefined;
     const titularConhecido = r.tipo === "inclusao_no_plano" || r.tipo === "mudanca_plano";
-    const v = titularConhecido ? resolverVinculo(servidor?.cpf, servidor?.matricula) : { pendencia: "Vínculo funcional (Ativo/Inativo) a conferir: titular não identificado no requerimento." };
+    const v = titularConhecido ? resolverVinculo(f, servidor?.cpf, servidor?.matricula) : { pendencia: "Vínculo funcional (Ativo/Inativo) a conferir: titular não identificado no requerimento." };
     const movimentos: Movimento[] =
-      r.tipo === "inclusao_no_plano" ? [{ tipo: "incluir" }] : r.tipo === "inclusao_dependente" ? [{ tipo: "dependente_incluido" }] : r.tipo === "mudanca_plano" ? [{ tipo: "a_conferir", motivo: "mudou_de_plano" }] : [{ tipo: "a_conferir" }];
+      r.tipo === "inclusao_no_plano"
+        ? [{ tipo: "incluir", ...(r.motivo ? { motivo: r.motivo } : {}) }]
+        : r.tipo === "inclusao_dependente"
+          ? [{ tipo: "dependente_incluido" }]
+          : r.tipo === "mudanca_plano"
+            ? [{ tipo: "a_conferir", motivo: "mudou_de_plano" }]
+            : r.tipo === "exclusao" && r.alvo === "dependente"
+              ? [{ tipo: "dependente_excluido" }]
+              : [{ tipo: "a_conferir" }];
     const conferencia = [
       ...(pOrigem ? [pOrigem] : []),
       ...(v.pendencia ? [v.pendencia] : []),
       `Competência de referência estimada pelo mês da decisão (${formatCompetencia(mesDe(decidido.decididoEm))}): confira o mês de início do benefício.`,
       ...(titularConhecido ? [] : [`O requerimento identifica o beneficiário ${r.beneficiarioNome}, não necessariamente o titular: informe o titular na conferência.`]),
-      ...(r.tipo === "inclusao_no_plano" ? ["Motivo da inclusão (ex.: nova proposta) não é registrado no requerimento: informe na conferência."] : []),
+      ...(r.tipo === "inclusao_no_plano" && !r.motivo ? ["Motivo da inclusão (ex.: nova proposta) não é registrado no requerimento: informe na conferência."] : []),
       ...(r.tipo === "mudanca_plano" ? ["O requerimento não registra se houve alteração de valor."] : []),
-      ...(r.tipo === "exclusao" ? ["Requerimento de exclusão: confirme se é de dependente (Alterações) ou do plano/titular (Suspensões/Exclusões)."] : []),
+      ...(r.tipo === "exclusao" && r.alvo !== "dependente" ? ["Requerimento de exclusão: confirme se é de dependente (Alterações) ou do plano/titular (Suspensões/Exclusões)."] : []),
     ];
     sugestoes.push({
       fonte: "requerimentos",
@@ -277,26 +284,26 @@ const somenteDigitos = (c: string) => normalizarCpf(c);
  * titular novo). Toda sugestão é "a conferir": a natureza não é inventada e nenhuma diferença é tratada como alteração aprovada.
  * Sem planilha confirmada do mês anterior, não há base de comparação e nada é sugerido.
  */
-export function lerSugestoesPlanilhas(): ResultadoFonte {
-  const planilhas = listarPlanilhasAssociacao();
+export function lerSugestoesPlanilhas(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const planilhas = f.planilhas();
   const ignorados = new Contador();
   const sugestoes: SugestaoAlteracao[] = [];
   let lidos = 0;
 
   for (const p of planilhas) {
     lidos++;
-    if (statusAtualPlanilha(p) !== "aprovada") {
+    if (!p.aprovada) {
       ignorados.somar("Planilha sem análise financeira confirmada pela GERDAB");
       continue;
     }
     const anterior = planilhas.find((x) => x.associacao === p.associacao && x.competencia === mesAnterior(p.competencia));
-    if (!anterior || statusAtualPlanilha(anterior) !== "aprovada") {
+    if (!anterior || !anterior.aprovada) {
       ignorados.somar("Sem planilha confirmada do mês anterior para comparação (evidência insuficiente)");
       continue;
     }
     const { origem, pendencia: pOrigem } = origemPorAssociacao(p.associacao);
-    const atuais = getRegistrosAssociacaoAprovadosNaCompetencia(p.competencia).filter((g) => g.associacao === p.associacao);
-    const antes = new Map(getRegistrosAssociacaoAprovadosNaCompetencia(anterior.competencia).filter((g) => g.associacao === p.associacao).map((g) => [chaveGrupo(g), g]));
+    const atuais = f.registrosPlanilhaAprovados(p.competencia).filter((g) => g.associacao === p.associacao);
+    const antes = new Map(f.registrosPlanilhaAprovados(anterior.competencia).filter((g) => g.associacao === p.associacao).map((g) => [chaveGrupo(g), g]));
 
     for (const g of atuais) {
       const ant = antes.get(chaveGrupo(g));
@@ -327,8 +334,8 @@ export function lerSugestoesPlanilhas(): ResultadoFonte {
         ignorados.somar("Titular sem diferença entre as duas planilhas");
         continue;
       }
-      const v = resolverVinculo(g.cpfTitular);
-      const matricula = getMatriculaPorCpf(g.cpfTitular);
+      const v = resolverVinculo(f, g.cpfTitular);
+      const matricula = f.matriculaPorCpf(g.cpfTitular);
       sugestoes.push({
         fonte: "planilhas_associacao",
         titular: { nome: g.nomeTitular, matricula, cpf: g.cpfTitular },
@@ -364,8 +371,8 @@ export function lerSugestoesPlanilhas(): ResultadoFonte {
  * Pedidos pendentes/negados, outros motivos e a origem Associação (sem motivo no envio) não geram sugestão — e um ressarcimento
  * nunca é lido como prova de regularização de suspensão.
  */
-export function lerSugestoesRessarcimentos(): ResultadoFonte {
-  const solicitacoes = getSolicitacoesRetroativas();
+export function lerSugestoesRessarcimentos(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const solicitacoes = f.solicitacoesRetroativas();
   const ignorados = new Contador();
   const sugestoes: SugestaoAlteracao[] = [];
   for (const s of solicitacoes) {
@@ -374,7 +381,7 @@ export function lerSugestoesRessarcimentos(): ResultadoFonte {
         ignorados.somar("Origem Associação: o envio não informa a natureza da movimentação");
         continue;
       }
-      if (getEstadoCompetencia(s.origem, c) !== "aprovado") {
+      if (!c.aprovada) {
         ignorados.somar("Competência sem aprovação persistida (pendente ou negada)");
         continue;
       }
@@ -383,9 +390,9 @@ export function lerSugestoesRessarcimentos(): ResultadoFonte {
         ignorados.somar("Motivo do ressarcimento não indica movimentação de dependente (não é tratado como alteração)");
         continue;
       }
-      const ultima = c.decisoes[c.decisoes.length - 1];
-      const v = resolverVinculo(s.cpfTitular);
-      const matricula = getMatriculaPorCpf(s.cpfTitular);
+      const ultima = c.ultima;
+      const v = resolverVinculo(f, s.cpfTitular);
+      const matricula = f.matriculaPorCpf(s.cpfTitular);
       sugestoes.push({
         fonte: "ressarcimentos",
         titular: { nome: s.nomeTitular, matricula, cpf: s.cpfTitular },
@@ -418,24 +425,22 @@ export function lerSugestoesRessarcimentos(): ResultadoFonte {
  * Relatórios (snapshots) do Fechamento já gerados: titular inadimplente numa competência e adimplente na seguinte aparece como
  * "a conferir" (possível regularização/reinclusão). O Fechamento não registra a decisão de reinclusão — a GERDAB classifica.
  */
-export function lerSugestoesFechamento(): ResultadoFonte {
-  const snapshots = loadHistoricoFechamentos();
+export function lerSugestoesFechamento(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const linhasFechamento = f.linhasFechamento();
   const ignorados = new Contador();
   const sugestoes: SugestaoAlteracao[] = [];
   const porTitular = new Map<string, Map<string, { classificacao: "adimplente" | "inadimplente"; nome: string; matricula?: string; origem: "individual" | "associacao"; operadoraOuAssociacao: string }>>();
-  for (const sn of snapshots) {
-    for (const l of sn.linhas) {
-      const chave = l.matricula ?? l.beneficiarioId;
-      const m = porTitular.get(chave) ?? new Map();
-      m.set(l.competencia, { classificacao: l.classificacao, nome: l.nome, matricula: l.matricula, origem: l.origem, operadoraOuAssociacao: l.operadoraOuAssociacao });
-      porTitular.set(chave, m);
-    }
+  for (const l of linhasFechamento) {
+    const chave = l.matricula ?? l.beneficiarioId;
+    const m = porTitular.get(chave) ?? new Map();
+    m.set(l.competencia, { classificacao: l.classificacao, nome: l.nome, matricula: l.matricula, origem: l.origem, operadoraOuAssociacao: l.operadoraOuAssociacao });
+    porTitular.set(chave, m);
   }
   for (const [chave, porComp] of porTitular) {
     for (const [comp, atual] of porComp) {
       const prev = porComp.get(mesAnterior(comp));
       if (!prev || prev.classificacao !== "inadimplente" || atual.classificacao !== "adimplente") continue;
-      const v = resolverVinculo(undefined, atual.matricula);
+      const v = resolverVinculo(f, undefined, atual.matricula);
       const assoc = atual.origem === "associacao" ? origemPorAssociacao(atual.operadoraOuAssociacao.split("/").pop()?.trim()) : { origem: "Boletos" as OrigemPagamento, pendencia: undefined };
       sugestoes.push({
         fonte: "fechamento",
@@ -450,22 +455,101 @@ export function lerSugestoesFechamento(): ResultadoFonte {
       });
     }
   }
-  if (snapshots.length === 0) ignorados.somar("Nenhum relatório de Fechamento gerado ainda (sem histórico para comparar)");
-  return { fonte: "fechamento", lidos: snapshots.length, sugestoes, ignorados: ignorados.lista() };
+  if (linhasFechamento.length === 0) ignorados.somar("Nenhum relatório de Fechamento gerado ainda (sem histórico para comparar)");
+  return { fonte: "fechamento", lidos: linhasFechamento.length, sugestoes, ignorados: ignorados.lista() };
+}
+
+/* ── 6. Movimentações registradas (natureza e motivo informados) ────────────────────────────────────────────────── */
+
+/** Fonte que traz a NATUREZA e o MOTIVO já registrados na origem (ex.: reinclusão por comprovante). Não existe fonte real ainda: só a demonstrativa. */
+export function lerSugestoesInformadas(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const itens = f.movimentosInformados();
+  const sugestoes: SugestaoAlteracao[] = itens.map((it) => {
+    const v = resolverVinculo(f, it.titular.cpf, it.titular.matricula);
+    return {
+      fonte: "movimentacoes",
+      titular: it.titular,
+      vinculo: v.vinculo,
+      origemPagamento: it.origemPagamento,
+      competenciaReferencia: it.competencia,
+      movimentos: it.movimentos,
+      valores: {},
+      referenciaOrigem: { modulo: "movimentacoes", registroId: it.id, marcador: "informada", rotulo: "Movimentação registrada", decisao: { descricao: it.descricao, responsavel: it.responsavel, dataHora: it.data } },
+      conferencia: ["Natureza e motivo vêm do registro da movimentação: confira antes de confirmar.", ...(v.pendencia ? [v.pendencia] : [])],
+    };
+  });
+  return { fonte: "movimentacoes", lidos: itens.length, sugestoes, ignorados: [] };
+}
+
+/* ── Valor NURFI sugerido e impacto financeiro (reutiliza o resultado do Fechamento; nenhuma fórmula aqui) ───────── */
+
+const FONTE_VALOR = "Fechamento de Pagamento";
+const MOTIVO_DEPENDENTE = { dependente_incluido: "incluiu_dependente", dependente_excluido: "excluiu_dependente", dependente_reincluido: "reincluiu_dependente" } as const;
+
+/**
+ * Valor sugerido = `valorRessarcir` do Fechamento do TITULAR na competência de REFERÊNCIA: ressarcimento final do grupo familiar, já com teto e
+ * 90% aplicados pelo módulo de origem. Só é usado quando: o titular corresponde, o Fechamento da competência o classifica como ADIMPLENTE
+ * (validado), não é valor de retroativo (diferença) e não diverge do histórico gravado. Em qualquer outro caso NÃO há sugestão: o campo
+ * permanece pendente, com o motivo (nunca valor cadastrado/mensalidade bruta e nenhuma estimativa).
+ */
+export function avaliarValorSugerido(f: FontesAlteracao, titular: { matricula?: string; cpf?: string }, competencia: string): { sugerido?: ValorSugerido; pendencia?: PendenciaValorSugerido; atual?: RessarcimentoLite } {
+  if (!titular.matricula && !titular.cpf) return { pendencia: { tipo: "indisponivel", descricao: "Titular sem matrícula/CPF para localizar o resultado do Fechamento." } };
+  const atual = f.ressarcimentoAtual(titular, competencia);
+  if (!atual) return { pendencia: { tipo: "indisponivel", descricao: `O Fechamento não tem resultado de ressarcimento para o titular em ${formatCompetencia(competencia)}.` } };
+  if (atual.retroativo) return { atual, pendencia: { tipo: "indisponivel", descricao: "O resultado do Fechamento vem do ressarcimento retroativo (diferença), que não representa o ressarcimento final do grupo." } };
+  if (atual.classificacao !== "adimplente") return { atual, pendencia: { tipo: "nao_validado", descricao: `O Fechamento de ${formatCompetencia(competencia)} ainda não validou o titular (situação: ${atual.classificacao === "requer_analise" ? "requer análise" : "inadimplente"}).` } };
+  const hist = f.ressarcimentoHistorico(titular, competencia);
+  if (hist && Math.abs(hist.valorRessarcir - atual.valorRessarcir) > 0.004) return { atual, pendencia: { tipo: "divergente", descricao: `Fechamento atual ${real(atual.valorRessarcir)} × histórico gravado ${real(hist.valorRessarcir)} para ${formatCompetencia(competencia)}: confira qual vale.` } };
+  return { atual, sugerido: { valor: atual.valorRessarcir, fonte: FONTE_VALOR, competencia, descricao: `Ressarcimento final do grupo familiar (grupo de ${real(atual.valorGrupo)}, teto familiar e 90% já aplicados) apurado no Fechamento de ${formatCompetencia(competencia)}.` } };
+}
+
+/**
+ * Acrescenta à sugestão o valor sugerido (ou o motivo de estar pendente) e reflete o IMPACTO no ressarcimento final, comparando o resultado da
+ * competência com o histórico da anterior: alteração de valor sem mudança do ressarcimento (ex.: teto) NÃO é classificada como "Alterar valor"
+ * (a movimentação é mantida); movimentação de dependente ou mudança de plano que mudou o ressarcimento passa a "Alterar valor" com o motivo.
+ */
+export function enriquecerComFinanceiro(s: SugestaoAlteracao, f: FontesAlteracao): SugestaoAlteracao {
+  const ref = { matricula: s.titular.matricula, cpf: s.titular.cpf };
+  const av = avaliarValorSugerido(f, ref, s.competenciaReferencia);
+  const anterior = f.ressarcimentoHistorico(ref, mesAnterior(s.competenciaReferencia))?.valorRessarcir;
+  const mudou = av.sugerido && anterior !== undefined ? Math.abs(av.sugerido.valor - anterior) > 0.004 : undefined;
+  const notas: string[] = [];
+  let movimentos = s.movimentos;
+  if (mudou !== undefined) {
+    notas.push(`Ressarcimento final do grupo: ${real(anterior!)} (${formatCompetencia(mesAnterior(s.competenciaReferencia))}) → ${real(av.sugerido!.valor)} (${formatCompetencia(s.competenciaReferencia)}).`);
+    movimentos = s.movimentos.map((m): Movimento => {
+      // "Alterar valor" só existe quando o ressarcimento final mudou. Sem mudança, vale a NATUREZA efetiva comprovada (reajuste, mudança de plano);
+      // sem natureza comprovada, a movimentação é mantida para a GERDAB classificar (nunca descartada).
+      if (m.tipo === "alterar_valor" && !mudou) {
+        notas.push("O ressarcimento final não se alterou: a movimentação foi mantida, mas não é classificada como “Alterar valor”.");
+        return { ...m, tipo: m.motivo === "reajuste_plano" ? "reajuste_plano" : m.motivo === "mudou_de_plano" ? "mudanca_plano" : "a_conferir" };
+      }
+      if (!mudou && m.tipo === "a_conferir" && m.motivo === "mudou_de_plano") return { ...m, tipo: "mudanca_plano" };
+      if (mudou && (m.tipo === "dependente_incluido" || m.tipo === "dependente_excluido" || m.tipo === "dependente_reincluido")) return { tipo: "alterar_valor", motivo: m.motivo ?? MOTIVO_DEPENDENTE[m.tipo] };
+      if (mudou && m.tipo === "a_conferir" && m.motivo === "mudou_de_plano") return { ...m, tipo: "alterar_valor" };
+      return m;
+    });
+  }
+  return { ...s, movimentos, valorSugerido: av.sugerido, valorPendencia: av.pendencia, conferencia: [...(s.conferencia ?? []), ...notas, ...(av.pendencia ? [`${ROTULO_PENDENCIA_VALOR[av.pendencia.tipo]}: ${av.pendencia.descricao}`] : [])] };
 }
 
 /* ── Composição, diagnóstico e sincronização ────────────────────────────────────────────────────────────────────── */
 
 /** Lê todas as fontes (sem gravar nada). */
-export function lerTodasAsFontes(): ResultadoFonte[] {
-  return [lerSugestoesComprovantes(), lerSugestoesRequerimentos(), lerSugestoesPlanilhas(), lerSugestoesRessarcimentos(), lerSugestoesFechamento()];
+export function lerTodasAsFontes(f: FontesAlteracao = fontesReais()): ResultadoFonte[] {
+  return [lerSugestoesInformadas(f), lerSugestoesComprovantes(f), lerSugestoesRequerimentos(f), lerSugestoesPlanilhas(f), lerSugestoesRessarcimentos(f), lerSugestoesFechamento(f)].map((r) => ({ ...r, sugestoes: r.sugestoes.map((s) => enriquecerComFinanceiro(s, f)) }));
 }
+
+/** Fontes a consultar: as FICTÍCIAS isoladas no ambiente demonstrativo; as REAIS (somente leitura) fora dele. */
+export const fontesDoAmbiente = (demonstracao: boolean): FontesAlteracao => (demonstracao ? fontesDemonstracaoAlteracoes() : fontesReais());
 
 export interface ResultadoSincronizacao {
   novas: number;
   /** Já existiam (inclusive descartadas): nada foi criado nem alterado. */
   jaExistentes: number;
   porFonte: Record<FonteSugestao, { sugeridas: number; novas: number }>;
+  /** Sugestões das fontes para OUTRAS competências de referência (não inseridas quando há parâmetros do relatório). */
+  outrasCompetencias: number;
 }
 
 /**
@@ -473,20 +557,30 @@ export interface ResultadoSincronizacao {
  * Idempotente (ver `registrarMovimentacao`): reler não duplica, não sobrescreve edições e não recria sugestões descartadas.
  * Não deve ser chamada automaticamente ao abrir telas — a Etapa 4 a aciona por ação explícita da GERDAB.
  */
-export function sincronizarSugestoes(responsavel = "Sistema (leitura dos módulos)"): ResultadoSincronizacao {
+export function sincronizarSugestoes(responsavel = "Sistema (leitura dos módulos)", parametros?: { competenciaReferencia: string; competenciaPagamento: string }, opcoes: { demonstracao?: boolean } = {}): ResultadoSincronizacao {
+  const fontes = fontesDoAmbiente(!!opcoes.demonstracao);
   const porFonte = {} as ResultadoSincronizacao["porFonte"];
   let novas = 0;
   let jaExistentes = 0;
-  for (const r of lerTodasAsFontes()) {
+  let outrasCompetencias = 0;
+  for (const r of lerTodasAsFontes(fontes)) {
     porFonte[r.fonte] = { sugeridas: r.sugestoes.length, novas: 0 };
     for (const { fonte: _fonte, ...entrada } of r.sugestoes) {
       void _fonte;
-      const { criado } = registrarMovimentacao({ ...entrada, origemInformacao: "automatica" }, responsavel);
+      // Com parâmetros do relatório: só a competência de referência selecionada é registrada, e ela recebe o pagamento selecionado
+      // (nunca o "mês seguinte" presumido). O que a fonte aponta para outras referências NÃO é inserido (apenas contado).
+      if (parametros && entrada.competenciaReferencia !== parametros.competenciaReferencia) {
+        outrasCompetencias++;
+        continue;
+      }
+      // Ambiente demonstrativo: registros nascem "Demonstrativo" e com origem própria (nunca colidem com a origem de um registro real).
+      const demo = fontes.demonstracao ? { demonstrativo: true, referenciaOrigem: entrada.referenciaOrigem ? { ...entrada.referenciaOrigem, registroId: entrada.referenciaOrigem.registroId ? `demo:${entrada.referenciaOrigem.registroId}` : undefined } : undefined } : {};
+      const { criado } = registrarMovimentacao({ ...entrada, ...(parametros ? { competenciaPagamento: parametros.competenciaPagamento } : {}), ...demo, origemInformacao: "automatica" }, responsavel);
       if (criado) {
         novas++;
         porFonte[r.fonte].novas++;
       } else jaExistentes++;
     }
   }
-  return { novas, jaExistentes, porFonte };
+  return { novas, jaExistentes, porFonte, outrasCompetencias };
 }

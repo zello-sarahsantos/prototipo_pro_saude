@@ -114,7 +114,7 @@ export type TipoSugestaoSuspensao = "suspensao" | "exclusao" | "investigacao";
 export const ROTULO_TIPO_SUGESTAO: Record<TipoSugestaoSuspensao, string> = { suspensao: "Sugestão de suspensão", exclusao: "Sugestão de exclusão", investigacao: "Investigação" };
 
 /**
- * Origem de um registro criado por "Gerar situações da competência". `chave` identifica a pendência (fonte + pessoa + competência + tipo) e
+ * Origem de um registro criado por "Buscar e preencher registros". `chave` identifica a pendência (fonte + pessoa + competência + tipo) e
  * `fingerprint` o estado da informação de origem quando foi lida: a mesma chave com o mesmo fingerprint nunca é recriada (nem se descartada);
  * só uma mudança relevante na origem (outro fingerprint) permite uma nova sugestão após descarte.
  * Investigação = informação encontrada que NÃO permite concluir a situação: nasce sem classificação e nunca afirma inadimplência.
@@ -196,7 +196,7 @@ export interface RegistroSuspensao {
   observacaoEditada: boolean;
   origemInformacao: OrigemInformacao;
   referenciaOrigem?: ReferenciaOrigem;
-  /** S5 (opcional): registro criado por "Gerar situações da competência". Ausente em registros manuais e antigos. */
+  /** S5 (opcional): registro criado por "Buscar e preencher registros". Ausente em registros manuais e antigos. */
   sugestao?: SugestaoSuspensao;
   /** S5: a fonte não permite saber se a exclusão atinge o titular ou um dependente — o analista precisa conferir quem é afetado (texto = o que conferir). */
   afetadoAConferir?: string;

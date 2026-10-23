@@ -1,27 +1,38 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, FlaskConical, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, FlaskConical, Plus, Sparkles, Search, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { getAdminRole } from "@/components/AdminLayout";
+import { GuardaPerfilAdmin } from "@/components/negociacoes/ui";
 import { CelulaObservacao } from "@/components/CelulaObservacao";
 import { FluxoEmissao, HistoricoEmissoes } from "@/components/FluxoEmissaoAlteracoes";
-import { formatCompetencia, formatCurrency, servidoresList } from "@/lib/mock-data";
+import { formatCompetencia, formatCurrency } from "@/lib/mock-data";
+import { SeletorServidorCadastral } from "@/components/SeletorServidorCadastral";
+import { consultarServidorCadastral, ROTULO_FONTE_CADASTRAL, type ServidorCadastral } from "@/lib/cadastro-servidores-busca";
 import { getDataReferencia } from "@/lib/dias-uteis";
-import { getAssociacaoResponsavelPorCpf, getClassificacaoAtivoInativoPorCpf } from "@/lib/base-institucional";
 import { responsavelCadastro } from "@/lib/servidor-cadastro";
 import { useRetornoDeFoco } from "@/lib/use-retorno-foco";
 import { numerosEmitidosPorRegistro } from "@/lib/emissoes-relatorio";
-import { garantirMassaDemonstracaoAlteracoes } from "@/lib/massa-demonstracao-alteracoes";
-import { idsEmitidos } from "@/lib/emissoes-relatorio";
+import {
+  definirAmbienteDemoAlteracoes,
+  diagnosticarRestauracaoAlteracoes,
+  restaurarAmbienteDemonstrativoAlteracoes,
+  useAmbienteDemoAlteracoes,
+  COMPETENCIA_DEMONSTRATIVA_ALTERACOES,
+  PAGAMENTO_DEMONSTRATIVO_ALTERACOES,
+  type DiagnosticoRestauracaoAlteracoes,
+} from "@/lib/massa-demonstracao-alteracoes";
+import { pessoasDemonstrativasAlteracoes } from "@/lib/fontes-alteracoes";
+import { listarEmissoes } from "@/lib/emissoes-relatorio";
 import { useEmissoesAlteracoes } from "@/lib/relatorio-alteracoes-geracao";
-import { lerTodasAsFontes, ROTULO_FONTE, sincronizarSugestoes, type ResultadoFonte, type ResultadoSincronizacao } from "@/lib/relatorio-alteracoes-sugestoes";
+import { fontesDoAmbiente, lerTodasAsFontes, ROTULO_FONTE, sincronizarSugestoes, type ResultadoFonte, type ResultadoSincronizacao } from "@/lib/relatorio-alteracoes-sugestoes";
 import {
   atualizarDados,
+  confirmarCompetenciasRegistro,
   atualizarMovimentos,
   atualizarObservacao,
   atualizarValorInformado,
   avaliarRegistro,
-  competenciaPagamentoPadrao,
   confirmarRegistro,
   definirValorNaoAplicavel,
   descartarRegistro,
@@ -29,9 +40,9 @@ import {
   MOTIVOS_REFERENCIA,
   ORIGENS_PAGAMENTO,
   pendenciasAmigaveis,
+  ROTULO_PENDENCIA_VALOR,
   reabrirRegistro,
   registrarMovimentacao,
-  removerRegistrosDemonstrativos,
   ROTULO_TIPO,
   sugerirObservacao,
   textoDoMotivo,
@@ -44,12 +55,28 @@ import {
 } from "@/lib/relatorio-alteracoes";
 
 export const Route = createFileRoute("/admin/relatorios/alteracoes")({
-  component: RelatorioAlteracoes,
+  component: RelatorioAlteracoesProtegido,
 });
+
+/** Acesso restrito aos perfis da GERDAB (Analista e Gerência) — mesma guarda do Relatório de Suspensões e de Negociações. */
+function RelatorioAlteracoesProtegido() {
+  return (
+    <GuardaPerfilAdmin modulo="Relatório de Alterações">
+      <RelatorioAlteracoes />
+    </GuardaPerfilAdmin>
+  );
+}
+
+/** "AAAA-MM" + n meses. */
+function somarMeses(c: string, n: number): string {
+  const [a, m] = c.split("-").map(Number);
+  const d = new Date(a, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
 /* ── Utilitários ─────────────────────────────────────────────────────────────────────────────────────────────── */
 
-const TIPOS: TipoMovimentacao[] = ["incluir", "reincluir", "alterar_valor", "dependente_incluido", "dependente_excluido", "dependente_reincluido"];
+const TIPOS: TipoMovimentacao[] = ["incluir", "reincluir", "alterar_valor", "mudanca_plano", "reajuste_plano", "dependente_incluido", "dependente_excluido", "dependente_reincluido"];
 const ROTULO_FONTE_MODULO: Record<string, string> = {
   comprovantes: "Comprovantes individuais",
   requerimentos: "Requerimentos de Associação",
@@ -93,7 +120,7 @@ function lerValor(texto: string): number | undefined {
 /** Rótulo curto da movimentação para a tabela: "Reajuste do plano", "Inclusão de dependente", "Alteração de valor"… */
 function rotuloMovimentacao(movs: Movimento[]): string {
   return movs
-    .map((m) => (m.tipo === "alterar_valor" ? (m.motivo ? textoDoMotivo(m.motivo) : "Alteração de valor") : m.tipo === "a_conferir" ? "Movimentação a classificar" : m.motivo && m.tipo !== "dependente_incluido" && m.tipo !== "dependente_excluido" && m.tipo !== "dependente_reincluido" ? `${ROTULO_TIPO[m.tipo]} — ${textoDoMotivo(m.motivo)}` : ROTULO_TIPO[m.tipo]))
+    .map((m) => (m.dependente ? `${ROTULO_TIPO[m.tipo]}: ${m.dependente.nome}${m.dependente.pendenteValidacao ? " (a validar)" : ""}` : null) ?? (m.tipo === "alterar_valor" ? (m.motivo ? textoDoMotivo(m.motivo) : "Alteração de valor") : m.tipo === "a_conferir" ? "Movimentação a classificar" : m.motivo && m.tipo !== "dependente_incluido" && m.tipo !== "dependente_excluido" && m.tipo !== "dependente_reincluido" && m.tipo !== "mudanca_plano" && m.tipo !== "reajuste_plano" ? `${ROTULO_TIPO[m.tipo]} — ${textoDoMotivo(m.motivo)}` : ROTULO_TIPO[m.tipo]))
     .join(" + ");
 }
 
@@ -137,12 +164,14 @@ function RelatorioAlteracoes() {
   const [origem, setOrigem] = useState<FiltroOrigem>("todas");
   const [busca, setBusca] = useState("");
   const [busy, setBusy] = useState(false);
+  const [detalhesGeracao, setDetalhesGeracao] = useState(false);
   const [resultadoBusca, setResultadoBusca] = useState<{ sync: ResultadoSincronizacao; fontes: ResultadoFonte[]; em: string } | null>(null);
   const [alteracao, setAlteracao] = useState<{ id: string | null } | null>(null);
   const [fluxoAberto, setFluxoAberto] = useState(false);
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [confirmarRemocao, setConfirmarRemocao] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [pagamentoSel, setPagamentoSel] = useState<string | null>(null);
 
   // Competência inicial: a mais recente que já tem registros; senão, o mês anterior à data de referência.
   useEffect(() => {
@@ -156,10 +185,21 @@ function RelatorioAlteracoes() {
   const daCompetencia = useMemo(() => registros.filter((r) => r.competenciaReferencia === competenciaSel), [registros, competenciaSel]);
   const ativos = daCompetencia.filter((r) => r.situacao !== "descartada");
   const prontas = ativos.filter(prontoDoRegistro).length;
+  const pagamentosDaCompetencia = useMemo(() => [...new Set(ativos.map((r) => r.competenciaPagamento))].sort(), [ativos]);
+  // Competência de pagamento do RELATÓRIO: escolhida pelo analista junto com a de referência; nunca presumida como "mês seguinte".
+  const pagamentoDemoRef = useRef<string | null>(null);
+  useEffect(() => {
+    setPagamentoSel(pagamentoDemoRef.current ?? (pagamentosDaCompetencia.length === 1 ? pagamentosDaCompetencia[0] : null));
+    pagamentoDemoRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [competenciaSel]);
+  const opcoesPagamento = useMemo(() => [...new Set([...Array.from({ length: 6 }, (_, i) => somarMeses(competenciaSel, i + 1)), ...pagamentosDaCompetencia])].sort(), [competenciaSel, pagamentosDaCompetencia]);
+  const divergentes = useMemo(() => (pagamentoSel ? ativos.filter((r) => r.competenciaPagamento !== pagamentoSel) : []), [ativos, pagamentoSel]);
+  const exigirPagamento = (acao: string) => setAviso(`Selecione a competência de pagamento do relatório antes de ${acao}.`);
   const emitidos = useMemo(() => numerosEmitidosPorRegistro("alteracoes", competenciaSel), [competenciaSel, emissoes]);
   const contagemAba = { ativo: daCompetencia.filter((r) => r.vinculo === "ativo").length, inativo: daCompetencia.filter((r) => r.vinculo === "inativo").length, sem_vinculo: daCompetencia.filter((r) => !r.vinculo).length };
-  const temDemonstrativo = registros.some((r) => r.demonstrativo);
-  const demoCarregada = registros.some((r) => r.id.startsWith("demo-alt-"));
+  const ambienteDemo = useAmbienteDemoAlteracoes();
+  const diagnosticoRestauracao = useMemo(() => diagnosticarRestauracaoAlteracoes(registros, listarEmissoes("alteracoes")), [registros, emissoes]);
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -170,28 +210,34 @@ function RelatorioAlteracoes() {
       .sort((a, b) => (a.titular.matricula ?? "￿").localeCompare(b.titular.matricula ?? "￿", "pt-BR", { numeric: true }) || a.titular.nome.localeCompare(b.titular.nome, "pt-BR", { sensitivity: "base" }));
   }, [daCompetencia, aba, origem, busca]);
 
-  function buscarMovimentacoes() {
+  function gerarSituacoes() {
     setBusy(true);
     try {
-      const fontes = lerTodasAsFontes();
-      const sync = sincronizarSugestoes(responsavel);
+      if (!pagamentoSel) return exigirPagamento("buscar e preencher os registros");
+      // No ambiente demonstrativo as fontes consultadas são as FICTÍCIAS isoladas; fora dele, as reais (somente leitura).
+      const fontes = lerTodasAsFontes(fontesDoAmbiente(ambienteDemo));
+      const sync = sincronizarSugestoes(responsavel, { competenciaReferencia: competenciaSel, competenciaPagamento: pagamentoSel }, { demonstracao: ambienteDemo });
       setResultadoBusca({ sync, fontes, em: new Date().toISOString() });
+      setDetalhesGeracao(false); // detalhamento recolhido: abre só quando o usuário pedir
       setAviso(null);
     } finally {
       setBusy(false);
     }
   }
 
-  function carregarDemonstracao() {
-    garantirMassaDemonstracaoAlteracoes();
-    setCompetencia("2026-09");
-    setAviso("Exemplos de demonstração carregados (competência Setembro/2026). Eles estão identificados como “Demonstrativo” e não são dados oficiais.");
-  }
-
-  function removerDemonstracao() {
-    const r = removerRegistrosDemonstrativos(idsEmitidos("alteracoes"));
+  /** "Restaurar demonstração": limpa SÓ o que é demonstrativo, liga o ambiente e seleciona referência set/2026 e pagamento out/2026 (só aqui). A tabela fica vazia. */
+  function restaurarDemonstracao() {
+    const r = restaurarAmbienteDemonstrativoAlteracoes(registros);
     setConfirmarRemocao(false);
-    setAviso(`Exemplos de demonstração removidos: ${r.removidos}.${r.mantidosPorVersao ? ` ${r.mantidosPorVersao} foram mantidos por constarem em relatórios emitidos (que são imutáveis).` : ""} Registros reais e manuais não foram tocados.`);
+    // O efeito de troca de referência só dispara se a referência mudar; o marcador não pode sobrar para uma troca posterior.
+    pagamentoDemoRef.current = competenciaSel === COMPETENCIA_DEMONSTRATIVA_ALTERACOES ? null : PAGAMENTO_DEMONSTRATIVO_ALTERACOES;
+    setCompetencia(COMPETENCIA_DEMONSTRATIVA_ALTERACOES);
+    setPagamentoSel(PAGAMENTO_DEMONSTRATIVO_ALTERACOES);
+    setResultadoBusca(null);
+    setAba("ativo");
+    setOrigem("todas");
+    setBusca("");
+    setAviso(`Demonstração restaurada: ${r.registrosRemovidos} registro(s) demonstrativo(s)${r.emissoesRemovidas ? ` e ${r.emissoesRemovidas} emissão(ões) de demonstração` : ""} removido(s).${r.protegidos ? ` ${r.protegidos} foram mantidos por constarem em emissões com registros reais.` : ""} Referência Setembro/2026 e pagamento Outubro/2026 selecionados; clique em “Buscar e preencher registros” para gerar os cenários.`);
   }
 
   const abas: { id: Aba; rotulo: string; n: number }[] = [
@@ -212,16 +258,19 @@ function RelatorioAlteracoes() {
             <p className="text-sm text-foreground/75 mt-1">Confira as movimentações da competência e prepare o relatório para envio ao NURFI.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={buscarMovimentacoes} disabled={busy} className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
-              <RefreshCw className="h-4 w-4" /> Buscar movimentações
+            <button type="button" onClick={() => (pagamentoSel ? setAlteracao({ id: null }) : exigirPagamento("incluir uma alteração"))} className={BTN_PRIMARIO}>
+              <Plus className="h-4 w-4" /> Incluir alteração
             </button>
-            <button type="button" onClick={() => setAlteracao({ id: null })} className={BTN_SECUNDARIO}>
-              <Plus className="h-4 w-4 text-primary" /> <span className="text-primary">Incluir alteração</span>
+            <button type="button" onClick={gerarSituacoes} disabled={busy} className={BTN_PRIMARIO} title="Consulta os dados da competência selecionada e preenche a tabela com os registros identificados para conferência pela GERDAB.">
+              <Sparkles className="h-4 w-4" /> Buscar e preencher registros
+            </button>
+            <button type="button" onClick={() => setConfirmarRemocao(true)} className={`${BTN_SECUNDARIO} border-dashed`} title="Prepara o ambiente fictício para apresentação e testes: limpa a demonstração anterior, seleciona referência setembro/2026 e pagamento outubro/2026 e deixa a tabela vazia para ser preenchida por “Buscar e preencher registros”.">
+              <FlaskConical className="h-4 w-4" /> Restaurar demonstração
             </button>
             <button type="button" onClick={() => setHistoricoAberto(true)} className={`${BTN_SECUNDARIO} text-primary`}>
               Histórico
             </button>
-            <button type="button" onClick={() => setFluxoAberto(true)} className={BTN_PRIMARIO}>
+            <button type="button" onClick={() => (pagamentoSel ? setFluxoAberto(true) : exigirPagamento("emitir"))} className={BTN_PRIMARIO}>
               Exportar relatório
             </button>
           </div>
@@ -229,7 +278,7 @@ function RelatorioAlteracoes() {
         <div className="flex flex-wrap items-center gap-3 border-b border-border pb-4">
           <label className="flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
             Competência
-            <select value={competenciaSel} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência de referência" className="rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <select value={competenciaSel} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência de referência" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               {meses.map((m) => (
                 <option key={m} value={m}>
                   {formatCompetencia(m)}
@@ -237,18 +286,52 @@ function RelatorioAlteracoes() {
               ))}
             </select>
           </label>
-          <span className="rounded-xl bg-muted px-3 py-2 text-sm text-foreground/80" title="Sugerida como o mês seguinte (art. 18 da Instrução nº 492/2023); cada registro pode ser conferido individualmente.">
-            Pagamento <strong className="text-foreground">{formatCompetencia(competenciaPagamentoPadrao(competenciaSel))}</strong>
-          </span>
+          <label className="flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
+            Pagamento
+            <select value={pagamentoSel ?? ""} onChange={(e) => setPagamentoSel(e.target.value || null)} aria-label="Competência de pagamento" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              <option value="">Selecione…</option>
+              {opcoesPagamento.map((m) => (
+                <option key={m} value={m}>
+                  {formatCompetencia(m)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-xs text-foreground/75 max-w-md">
+            {pagamentoSel ? (
+              <>
+                Relatório: <strong className="text-foreground">referência {formatCompetencia(competenciaSel)}</strong> · <strong className="text-foreground">pagamento {formatCompetencia(pagamentoSel)}</strong>. Gerar, incluir e emitir usam estas duas competências.
+              </>
+            ) : (
+              "Selecione a competência de pagamento para buscar e preencher registros, incluir alterações e emitir o relatório."
+            )}
+          </p>
         </div>
       </header>
+
+      {ambienteDemo && (
+        <p role="note" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-2 text-sm">
+          <span>
+            <strong>Ambiente demonstrativo ativo:</strong> “Buscar e preencher registros” consulta <strong>fontes fictícias isoladas</strong> (Setembro/2026); registros gerados ou incluídos agora ficam marcados “Demonstrativo”. Nada é gravado em outros módulos.
+          </span>
+          <button type="button" onClick={() => definirAmbienteDemoAlteracoes(false)} className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
+            Sair do ambiente demonstrativo
+          </button>
+        </p>
+      )}
+
+      {divergentes.length > 0 && (
+        <p role="alert" className="rounded-xl border border-status-pendente-fg/40 bg-status-pendente-bg px-4 py-3 text-sm">
+          <strong>Competências divergentes:</strong> {divergentes.length} registro(s) desta referência têm pagamento diferente de {formatCompetencia(pagamentoSel!)} ({[...new Set(divergentes.map((r) => formatCompetencia(r.competenciaPagamento)))].join(", ")}). Eles <strong>não entram</strong> na emissão de {formatCompetencia(pagamentoSel!)} e não foram corrigidos automaticamente: selecione aquela competência de pagamento para emiti-los em um relatório separado.
+        </p>
+      )}
 
       {aviso && (
         <p role="status" className="text-sm rounded-xl border border-border bg-muted/40 px-4 py-3">
           {aviso}
         </p>
       )}
-      {resultadoBusca && <PainelResultadoBusca resultado={resultadoBusca} onFechar={() => setResultadoBusca(null)} />}
+      {resultadoBusca && <ConfirmacaoGeracao resultado={resultadoBusca} competencia={competenciaSel} ambienteDemo={ambienteDemo} detalhes={detalhesGeracao} onDetalhes={() => setDetalhesGeracao((v) => !v)} onFechar={() => setResultadoBusca(null)} />}
 
       <section className="grid sm:grid-cols-3 gap-4" aria-label="Resumo da competência">
         <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
@@ -306,11 +389,11 @@ function RelatorioAlteracoes() {
           <span className="text-right">Ação</span>
         </div>
         {filtrados.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? `Nenhuma movimentação registrada para ${formatCompetencia(competenciaSel)}. Use “Buscar movimentações” ou “Incluir alteração”.` : "Nenhum registro com os filtros atuais."}</p>
+          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? `Nenhuma movimentação registrada para ${formatCompetencia(competenciaSel)}. Confira as competências de referência e de pagamento e clique em “Buscar e preencher registros” (ou use “Incluir alteração”).` : "Nenhum registro com os filtros atuais."}</p>
         ) : (
           <ul className="divide-y divide-border border-t border-border">
             {filtrados.map((r) => (
-              <LinhaRegistro key={r.id} r={r} emitidoEm={emitidos.get(r.id) ?? []} onAbrir={() => setAlteracao({ id: r.id })} onReabrir={() => { try { reabrirRegistro(r.id, responsavel); } catch (e) { setAviso(e instanceof Error ? e.message : "Não foi possível reabrir."); } }} />
+              <LinhaRegistro key={r.id} pagamentoRelatorio={pagamentoSel} r={r} emitidoEm={emitidos.get(r.id) ?? []} onAbrir={() => setAlteracao({ id: r.id })} onReabrir={() => { try { reabrirRegistro(r.id, responsavel); } catch (e) { setAviso(e instanceof Error ? e.message : "Não foi possível reabrir."); } }} />
             ))}
           </ul>
         )}
@@ -318,45 +401,44 @@ function RelatorioAlteracoes() {
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/75">
-        <FlaskConical className="h-3.5 w-3.5" /> Exemplos de demonstração (fictícios):
-        <button type="button" onClick={carregarDemonstracao} disabled={demoCarregada} className="underline underline-offset-2 hover:text-foreground disabled:no-underline disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
-          {demoCarregada ? "carregados" : "carregar"}
-        </button>
-        {temDemonstrativo && (
-          <button type="button" onClick={() => setConfirmarRemocao(true)} className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
-            <Trash2 className="h-3 w-3" /> remover
-          </button>
-        )}
-      </div>
-
-      {alteracao && <DialogoAlteracao key={alteracao.id ?? "novo"} registro={alteracao.id ? registros.find((r) => r.id === alteracao.id) ?? null : null} competenciaInicial={competenciaSel} responsavel={responsavel} onFechar={(msg) => { setAlteracao(null); if (msg) setAviso(msg); }} />}
-      {fluxoAberto && <FluxoEmissao competencia={competenciaSel} responsavel={responsavel} onFechar={() => setFluxoAberto(false)} onAbrirHistorico={() => setHistoricoAberto(true)} />}
+      {alteracao && <DialogoAlteracao key={alteracao.id ?? "novo"} registro={alteracao.id ? registros.find((r) => r.id === alteracao.id) ?? null : null} competenciaInicial={competenciaSel} pagamentoRelatorio={pagamentoSel} ambienteDemo={ambienteDemo} responsavel={responsavel} onFechar={(msg) => { setAlteracao(null); if (msg) setAviso(msg); }} />}
+      {fluxoAberto && <FluxoEmissao competencia={competenciaSel} pagamento={pagamentoSel ?? undefined} responsavel={responsavel} onFechar={() => setFluxoAberto(false)} onAbrirHistorico={() => setHistoricoAberto(true)} />}
       {historicoAberto && <HistoricoEmissoes competencia={competenciaSel} onFechar={() => setHistoricoAberto(false)} />}
-      {confirmarRemocao && <DialogConfirmaRemocao onFechar={() => setConfirmarRemocao(false)} onConfirmar={removerDemonstracao} />}
+      {confirmarRemocao && <DialogConfirmaRemocao diagnostico={diagnosticoRestauracao} onFechar={() => setConfirmarRemocao(false)} onConfirmar={restaurarDemonstracao} />}
     </div>
   );
 }
 
 /* ── Resultado da busca de movimentações ─────────────────────────────────────────────────────────────────────── */
 
-function PainelResultadoBusca({ resultado, onFechar }: { resultado: { sync: ResultadoSincronizacao; fontes: ResultadoFonte[]; em: string }; onFechar: () => void }) {
+/** Resumo COMPACTO da geração (mesmo padrão da Suspensões): números em uma linha; o detalhamento por fonte fica recolhido até "Ver detalhes". */
+function ConfirmacaoGeracao({ resultado, competencia, ambienteDemo, detalhes, onDetalhes, onFechar }: { resultado: { sync: ResultadoSincronizacao; fontes: ResultadoFonte[]; em: string }; competencia: string; ambienteDemo: boolean; detalhes: boolean; onDetalhes: () => void; onFechar: () => void }) {
   const { sync, fontes } = resultado;
-  const aConferir = fontes.reduce((n, f) => n + f.sugestoes.filter((s) => s.movimentos.some((m) => m.tipo === "a_conferir")).length, 0);
-  const comNota = fontes.reduce((n, f) => n + f.sugestoes.filter((s) => (s.conferencia?.length ?? 0) > 0).length, 0);
+  const identificadas = sync.novas + sync.jaExistentes;
   return (
-    <div role="region" aria-label="Resultado da busca de movimentações" className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+    <section role="status" aria-label="Resultado da geração das situações" className="space-y-2 rounded-2xl border border-primary/30 bg-primary/5 px-5 py-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold">Busca concluída em {dataHora(resultado.em)}</p>
-          <p className="text-xs text-muted-foreground">
-            <strong>{sync.novas}</strong> sugestão(ões) nova(s) · <strong>{sync.jaExistentes}</strong> já existente(s) (nada foi duplicado nem restaurado) · <strong>{aConferir}</strong> a classificar · <strong>{comNota}</strong> com pendências de identificação
-          </p>
-        </div>
-        <button type="button" onClick={onFechar} aria-label="Fechar resultado da busca" className="rounded-md p-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <p className="text-sm">
+          <strong>Situações geradas:</strong>{" "}
+          {identificadas === 0
+            ? `nenhuma movimentação identificada para ${formatCompetencia(competencia)} nas fontes ${ambienteDemo ? "demonstrativas" : "disponíveis"}.`
+            : `${identificadas} ${identificadas === 1 ? "movimentação identificada" : "movimentações identificadas"} em ${formatCompetencia(competencia)}: ${sync.novas} ${sync.novas === 1 ? "incluída" : "incluídas"} para conferência${sync.jaExistentes > 0 ? ` e ${sync.jaExistentes} já ${sync.jaExistentes === 1 ? "existente" : "existentes"} (nada foi duplicado, e registros confirmados ou descartados não foram alterados)` : ""}.`}{" "}
+          <button type="button" onClick={onDetalhes} aria-expanded={detalhes} className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
+            {detalhes ? "Ocultar detalhes" : "Ver detalhes"}
+          </button>
+        </p>
+        <button type="button" onClick={onFechar} aria-label="Fechar confirmação da geração" className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-lg hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
           <X className="h-4 w-4" />
         </button>
       </div>
+      {sync.outrasCompetencias > 0 && (
+        <p className="text-sm" role="note">
+          As fontes apontam ainda {sync.outrasCompetencias} movimentação(ões) para <strong>outras competências de referência</strong>, que <strong>não</strong> foram incluídas aqui.
+        </p>
+      )}
+      {detalhes && (
+        <div className="space-y-2 pt-1">
+          <p className="text-xs text-muted-foreground">Geração concluída em {dataHora(resultado.em)}. Fontes consultadas (somente leitura):</p>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
@@ -381,7 +463,9 @@ function PainelResultadoBusca({ resultado, onFechar }: { resultado: { sync: Resu
           </tbody>
         </table>
       </div>
-    </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -389,7 +473,7 @@ function PainelResultadoBusca({ resultado, onFechar }: { resultado: { sync: Resu
 
 const COLUNAS = "lg:grid-cols-[5rem_minmax(11rem,1.3fr)_minmax(11rem,1.3fr)_6rem_minmax(12rem,1.7fr)_9.5rem_6.25rem]";
 
-function LinhaRegistro({ r, emitidoEm, onAbrir, onReabrir }: { r: RegistroAlteracao; emitidoEm: number[]; onAbrir: () => void; onReabrir: () => void }) {
+function LinhaRegistro({ r, pagamentoRelatorio, emitidoEm, onAbrir, onReabrir }: { r: RegistroAlteracao; pagamentoRelatorio: string | null; emitidoEm: number[]; onAbrir: () => void; onReabrir: () => void }) {
   const pronto = prontoDoRegistro(r);
   const descartada = r.situacao === "descartada";
   const pend = pendenciasAmigaveis(r);
@@ -407,11 +491,21 @@ function LinhaRegistro({ r, emitidoEm, onAbrir, onReabrir }: { r: RegistroAltera
           Ver origem: {r.origemPagamento ?? "a conferir"}
         </button>
         {!r.vinculo && <span className="block text-xs text-status-pendente-fg">vínculo a conferir</span>}
+        <span className="block text-xs text-foreground/75">
+          Pagamento {formatCompetencia(r.competenciaPagamento)} · {r.competenciaEfeito ? `Efeito ${formatCompetencia(r.competenciaEfeito)}` : null}
+          {pagamentoRelatorio && !descartada && r.competenciaPagamento !== pagamentoRelatorio ? <strong className="text-status-pendente-fg"> · pagamento diferente do relatório</strong> : null}
+        </span>
       </div>
       <p className="min-w-0 text-sm leading-snug break-normal [overflow-wrap:anywhere]">{rotuloMovimentacao(r.movimentos)}</p>
       <p className="text-sm tabular-nums">
         <span className="lg:hidden text-xs text-foreground/70">Valor NURFI: </span>
-        {ev === "preenchido" ? <strong>{formatCurrency(r.valorInformadoNurfi!)}</strong> : ev === "nao_aplicavel" ? <span className="font-semibold text-foreground/75" title={r.valorNaoAplicavel?.justificativa}>Não aplicável</span> : <span className="font-bold text-status-pendente-fg">Pendente</span>}
+        {ev === "preenchido" ? <strong>{formatCurrency(r.valorInformadoNurfi!)}</strong> : ev === "nao_aplicavel" ? <span className="font-semibold text-foreground/75" title={r.valorNaoAplicavel?.justificativa}>Não aplicável</span> : r.valorSugerido ? (
+          <span title={`Valor sugerido pelo sistema (${r.valorSugerido.fonte}, ${formatCompetencia(r.valorSugerido.competencia)}). ${r.valorSugerido.descricao} Ainda não confirmado pela GERDAB.`}>
+            <strong>{formatCurrency(r.valorSugerido.valor)}</strong> <span className="ml-1 inline-flex rounded-full border border-dashed border-current px-2 py-0.5 text-[10px] font-medium text-foreground/75">Sugerido</span>
+          </span>
+        ) : r.valorPendencia ? (
+          <span className="font-bold text-status-pendente-fg" title={r.valorPendencia.descricao}>{ROTULO_PENDENCIA_VALOR[r.valorPendencia.tipo]}</span>
+        ) : <span className="font-bold text-status-pendente-fg">Pendente</span>}
       </p>
       <CelulaObservacao texto={r.observacao} />
       <div className="space-y-1">
@@ -451,19 +545,47 @@ function LinhaRegistro({ r, emitidoEm, onAbrir, onReabrir }: { r: RegistroAltera
   );
 }
 
-function DialogConfirmaRemocao({ onFechar, onConfirmar }: { onFechar: () => void; onConfirmar: () => void }) {
+function DialogConfirmaRemocao({ diagnostico, onFechar, onConfirmar }: { diagnostico: DiagnosticoRestauracaoAlteracoes; onFechar: () => void; onConfirmar: () => void }) {
   const retornarFoco = useRetornoDeFoco("main h1");
+  const d = diagnostico;
   return (
     <Dialog open onOpenChange={(v) => !v && onFechar()}>
       <DialogContent onCloseAutoFocus={retornarFoco}>
-        <DialogTitle>Remover exemplos de demonstração?</DialogTitle>
-        <DialogDescription>Serão removidos apenas os registros marcados como “Demonstrativo”. Registros reais, manuais e qualquer registro que conste em um relatório emitido serão preservados.</DialogDescription>
+        <DialogTitle>Restaurar a demonstração?</DialogTitle>
+        <DialogDescription>
+          A restauração limpa <strong>apenas o ambiente demonstrativo</strong> do Relatório de Alterações, seleciona referência Setembro/2026 e pagamento Outubro/2026 e deixa a tabela vazia. Depois, “Buscar e preencher registros” volta a preenchê-la com os cenários fictícios.
+        </DialogDescription>
+        <div className="space-y-3 text-sm">
+          <div>
+            <p className="font-semibold">Será apagado (dados demonstrativos):</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                <strong>{d.aRemover.length}</strong> registro(s) demonstrativo(s), incluindo os descartes e as conferências que carregam ({d.editados} com intervenção sua, {d.descartados} descartado(s), {d.manuais} inclusão(ões) manual(is) feita(s) no ambiente demonstrativo).
+              </li>
+              <li>
+                <strong>{d.emissoesDemonstrativas.length}</strong> emissão(ões) de demonstração (feitas somente com registros demonstrativos){d.emissoesDemonstrativas.length > 0 ? ` (${d.emissoesDemonstrativas.map((e) => `Relatório ${e.numero} de ${formatCompetencia(e.competenciaReferencia)}`).join("; ")})` : ""}.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold">Não será tocado:</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                <strong>{d.reaisPreservados}</strong> registro(s) real(is) / manual(is) fora do ambiente demonstrativo.
+              </li>
+              <li>
+                <strong>{d.emissoesMantidas}</strong> emissão(ões) com qualquer linha real{d.protegidos.length > 0 ? ` (e os ${d.protegidos.length} registro(s) demonstrativo(s) que elas contêm)` : ""}.
+              </li>
+              <li>Cadastro, comprovantes, planilhas, requerimentos, pagamentos e demais módulos: as fontes da demonstração são fictícias e isoladas.</li>
+            </ul>
+          </div>
+        </div>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onFechar} className={BTN_SECUNDARIO}>
             Cancelar
           </button>
           <button type="button" onClick={onConfirmar} className={BTN_PRIMARIO}>
-            Remover exemplos
+            Restaurar demonstração
           </button>
         </div>
       </DialogContent>
@@ -473,7 +595,9 @@ function DialogConfirmaRemocao({ onFechar, onConfirmar }: { onFechar: () => void
 
 /* ── Diálogo: incluir alteração (manual) / conferir ou revisar um registro ───────────────────────────────────── */
 
-type MovForm = { tipo: TipoMovimentacao | ""; motivo?: string };
+type DepForm = { modo: "cadastrado" | "manual"; nome: string; parentesco: string };
+type MovForm = { tipo: TipoMovimentacao | ""; motivo?: string; dep?: DepForm };
+const TIPOS_DEPENDENTE: TipoMovimentacao[] = ["dependente_incluido", "dependente_excluido", "dependente_reincluido"];
 
 function Secao({ n, titulo, descricao, children, destaque }: { n: number; titulo: string; descricao?: string; children: React.ReactNode; destaque?: boolean }) {
   return (
@@ -489,7 +613,7 @@ function Secao({ n, titulo, descricao, children, destaque }: { n: number; titulo
   );
 }
 
-function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFechar }: { registro: RegistroAlteracao | null; competenciaInicial: string; responsavel: string; onFechar: (mensagem?: string) => void }) {
+function DialogoAlteracao({ registro: r, competenciaInicial, pagamentoRelatorio, ambienteDemo, responsavel, onFechar }: { registro: RegistroAlteracao | null; competenciaInicial: string; pagamentoRelatorio: string | null; ambienteDemo: boolean; responsavel: string; onFechar: (mensagem?: string) => void }) {
   const retornarFoco = useRetornoDeFoco("main h1");
   const registrosTodos = useRegistrosAlteracoes();
   const atual = r ? registrosTodos.find((x) => x.id === r.id) ?? r : null;
@@ -498,16 +622,26 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
   const descartada = atual?.situacao === "descartada";
   const { lista: meses } = useMemo(() => mesesDisponiveis(registrosTodos), [registrosTodos]);
 
-  const [benef, setBenef] = useState("");
+  const [trocando, setTrocando] = useState(false);
+  const [cadastroEscolhido, setCadastroEscolhido] = useState<ServidorCadastral | null>(null);
+  const [ajusteVinculo, setAjusteVinculo] = useState(false);
+  const [ajusteOrigem, setAjusteOrigem] = useState(false);
+  const [justAjuste, setJustAjuste] = useState("");
   const [nome, setNome] = useState(atual?.titular.nome ?? "");
   const [matricula, setMatricula] = useState(atual?.titular.matricula ?? "");
   const [cpf, setCpf] = useState(atual?.titular.cpf ?? "");
   const [vinculo, setVinculo] = useState<string>(atual?.vinculo ?? "");
   const [origemPag, setOrigemPag] = useState<string>(atual?.origemPagamento ?? "");
-  const [refComp, setRefComp] = useState(atual?.competenciaReferencia ?? competenciaInicial);
-  const [pagComp, setPagComp] = useState(atual?.competenciaPagamento ?? competenciaPagamentoPadrao(competenciaInicial));
-  const [movs, setMovs] = useState<MovForm[]>(atual ? atual.movimentos.map((m) => ({ tipo: m.tipo === "a_conferir" ? "" : m.tipo, motivo: m.motivo })) : [{ tipo: "" }]);
-  const [valorTexto, setValorTexto] = useState(paraTextoEditavel(atual?.valorInformadoNurfi));
+  // Referência e pagamento são PARÂMETROS DO RELATÓRIO (tela principal): aqui só são exibidos. Registro novo recebe os do relatório;
+  // registro existente mantém os seus (legados nunca são corrigidos em silêncio — divergência é apenas sinalizada).
+  const refComp = atual?.competenciaReferencia ?? competenciaInicial;
+  const pagComp = atual?.competenciaPagamento ?? pagamentoRelatorio ?? "";
+  const [conferiuComp, setConferiuComp] = useState(false);
+  const [movs, setMovs] = useState<MovForm[]>(atual ? atual.movimentos.map((m) => ({ tipo: m.tipo === "a_conferir" ? "" : m.tipo, motivo: m.motivo, dep: m.dependente ? { modo: m.dependente.referenciaCadastro ? "cadastrado" : "manual", nome: m.dependente.nome, parentesco: m.dependente.parentesco ?? "" } : undefined })) : [{ tipo: "" }]);
+  // O campo já vem preenchido com o valor SUGERIDO (se houver), mas ele só vira valor confirmado quando a GERDAB confirma o registro ou o altera.
+  const [valorTexto, setValorTexto] = useState(paraTextoEditavel(atual?.valorInformadoNurfi ?? atual?.valorSugerido?.valor));
+  const [valorTocado, setValorTocado] = useState(false);
+  const [justValor, setJustValor] = useState("");
   const [naoAplicavel, setNaoAplicavel] = useState(!!atual?.valorNaoAplicavel);
   const [justNA, setJustNA] = useState("");
   const [observacao, setObservacao] = useState(atual?.observacao ?? "");
@@ -516,7 +650,31 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
   const [justDescarte, setJustDescarte] = useState("");
   const [erro, setErro] = useState<string | null>(null);
 
-  const movimentosNormalizados: Movimento[] = movs.map((m) => ({ tipo: m.tipo === "" ? "a_conferir" : m.tipo, motivo: m.motivo?.trim() || undefined }));
+  // Dados cadastrais (somente leitura) do titular, pesquisados pela matrícula/CPF do registro. Nada é gravado no cadastro.
+  const cad = useMemo(() => cadastroEscolhido ?? consultarServidorCadastral({ matricula: matricula || undefined, cpf: cpf || undefined }, { demonstracao: ambienteDemo || !!atual?.demonstrativo, pessoasDemo: pessoasDemonstrativasAlteracoes() }), [cadastroEscolhido, matricula, cpf, ambienteDemo, atual?.demonstrativo]);
+  const movimentosNormalizados: Movimento[] = movs.map((m) => ({
+    tipo: m.tipo === "" ? "a_conferir" : m.tipo,
+    motivo: m.motivo?.trim() || undefined,
+    // O dependente pertence ao MOVIMENTO (só nos tipos de dependente). Fora do cadastro: informado manualmente e pendente de validação.
+    ...(m.tipo !== "" && TIPOS_DEPENDENTE.includes(m.tipo) && m.dep?.nome.trim()
+      ? { dependente: { nome: m.dep.nome.trim(), parentesco: m.dep.parentesco.trim() || undefined, referenciaCadastro: m.dep.modo === "cadastrado" ? `cadastro:${m.dep.nome.trim()}` : undefined, pendenteValidacao: m.dep.modo === "manual" ? true : undefined } }
+      : {}),
+  }));
+  const ROTULO_VINCULO: Record<string, string> = { ativo: "Ativo", inativo: "Inativo" };
+  const desvia = (valor: string, doCadastro: string | undefined, original: string | undefined) => !!doCadastro && !!valor && valor !== doCadastro && valor !== (original ?? "");
+  const desviaVinculo = desvia(vinculo, cad?.vinculo, atual?.vinculo);
+  const desviaOrigem = desvia(origemPag, cad?.origemPagamento, atual?.origemPagamento);
+  const ajusteNecessario = desviaVinculo || desviaOrigem;
+  const ajusteTexto = ajusteNecessario
+    ? `Ajuste excepcional de ${[desviaVinculo ? `vínculo funcional (cadastro: ${ROTULO_VINCULO[cad!.vinculo!]} → registro: ${ROTULO_VINCULO[vinculo]})` : "", desviaOrigem ? `origem de pagamento (cadastro: ${cad!.origemPagamento} → registro: ${origemPag})` : ""].filter(Boolean).join(" e ")}: ${justAjuste.trim()}`
+    : undefined;
+  const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const divergencias: { campo: string; registro: string; cadastro: string; aplicar: () => void }[] = [];
+  if (atual && cad) {
+    if (cad.vinculo && vinculo !== cad.vinculo) divergencias.push({ campo: "Vínculo funcional", registro: vinculo ? ROTULO_VINCULO[vinculo] : "a conferir", cadastro: ROTULO_VINCULO[cad.vinculo], aplicar: () => setVinculo(cad.vinculo!) });
+    if (cad.origemPagamento && origemPag !== cad.origemPagamento) divergencias.push({ campo: "Origem de pagamento", registro: origemPag || "a conferir", cadastro: cad.origemPagamento, aplicar: () => setOrigemPag(cad.origemPagamento!) });
+    if (semAcento(nome) !== semAcento(cad.nome)) divergencias.push({ campo: "Nome do titular", registro: nome, cadastro: cad.nome, aplicar: () => setNome(cad.nome) });
+  }
   const sugestao = sugerirObservacao(movimentosNormalizados);
   const valorLido = (() => {
     try {
@@ -525,6 +683,8 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
       return undefined;
     }
   })();
+  const sugerido = atual && atual.valorInformadoNurfi === undefined ? atual.valorSugerido : undefined;
+  const ajusteValor = !!sugerido && valorTocado && valorLido !== undefined && Math.abs(valorLido - sugerido.valor) > 0.004;
   const valorInvalido = (() => {
     try {
       lerValor(valorTexto);
@@ -547,7 +707,9 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
     origemPagamento: (origemPag || undefined) as OrigemPagamento | undefined,
     competenciaReferencia: refComp,
     competenciaPagamento: pagComp,
-    competenciaEstimada: atual?.competenciaEstimada && refComp === atual.competenciaReferencia && pagComp === atual.competenciaPagamento ? true : undefined,
+    competenciaEstimada: atual?.competenciaEstimada && !conferiuComp ? true : undefined,
+    competenciaEfeito: atual?.competenciaEfeito, // valor histórico preservado (não é mais solicitado na conferência)
+    observacaoDetalhadaExigida: atual ? atual.observacaoDetalhadaExigida : true,
     movimentos: movimentosNormalizados,
     valores: atual?.valores ?? {},
     valorInformadoNurfi: valorLido,
@@ -564,32 +726,36 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
   };
   const faltas = [
     ...pendenciasAmigaveis(rascunho).map((p) => p.rodape),
+    ...(!pagComp ? ["Selecione a competência de pagamento do relatório."] : []),
+    ...(ajusteValor && !justValor.trim() ? ["Informe a justificativa do ajuste do valor sugerido pelo sistema."] : []),
+    ...(ajusteNecessario && !justAjuste.trim() ? ["Informe a justificativa do ajuste excepcional de vínculo/origem."] : []),
     ...(naoAplicavel && !atual?.valorNaoAplicavel && !justNA.trim() ? ["Informe a justificativa para declarar o valor como não aplicável."] : []),
     ...(confirmada && !justRevisao.trim() ? ["Informe a justificativa da revisão."] : []),
   ];
-  const faltasRascunho = [...(!nome.trim() ? ["Selecione o beneficiário."] : []), ...(confirmada && !justRevisao.trim() ? ["Informe a justificativa da revisão."] : []), ...(naoAplicavel && !atual?.valorNaoAplicavel && !justNA.trim() ? ["Informe a justificativa do valor não aplicável."] : [])];
+  const faltasRascunho = [...(!nome.trim() ? ["Selecione o beneficiário."] : []), ...(!pagComp ? ["Selecione a competência de pagamento do relatório."] : []), ...(ajusteValor && !justValor.trim() ? ["Informe a justificativa do ajuste do valor sugerido pelo sistema."] : []), ...(ajusteNecessario && !justAjuste.trim() ? ["Informe a justificativa do ajuste excepcional de vínculo/origem."] : []), ...(confirmada && !justRevisao.trim() ? ["Informe a justificativa da revisão."] : []), ...(naoAplicavel && !atual?.valorNaoAplicavel && !justNA.trim() ? ["Informe a justificativa do valor não aplicável."] : [])];
 
-  function escolherBeneficiario(valor: string) {
-    setBenef(valor);
-    if (valor === "" || valor === "__outro") {
-      if (valor === "") { setNome(""); setMatricula(""); setCpf(""); }
-      return;
-    }
-    const s = servidoresList.find((x) => x.matricula === valor);
-    if (!s) return;
-    setNome(s.nome);
-    setMatricula(s.matricula);
-    setCpf(s.cpf);
-    const c = getClassificacaoAtivoInativoPorCpf(s.cpf);
-    setVinculo(c.grupo && !c.requerConferencia ? c.grupo : "");
-    const assoc = getAssociacaoResponsavelPorCpf(s.cpf)?.toLowerCase();
-    setOrigemPag(assoc === "assefaz" ? "ASSEFAZ" : assoc === "assetran" ? "ASSETRAN" : "Boletos");
+  /** Seleção/troca do servidor: copia os dados do cadastro para ESTE registro (o cadastro original não é tocado). */
+  function escolherServidor(sv: ServidorCadastral) {
+    setCadastroEscolhido(sv);
+    setNome(sv.nome);
+    setMatricula(sv.matricula);
+    setCpf(sv.cpf ?? "");
+    setVinculo(sv.vinculo ?? "");
+    setOrigemPag(sv.origemPagamento ?? "");
+    // O titular mudou: a identificação dos dependentes dos movimentos recomeça (nada do titular anterior permanece).
+    setMovs((l) => l.map((m) => ({ ...m, dep: undefined })));
+    setAjusteVinculo(false);
+    setAjusteOrigem(false);
+    setJustAjuste("");
+    setTrocando(false);
   }
 
   /** Grava as alterações (auditadas). Retorna o id do registro. */
-  function gravar(): string {
+  function gravar(acao: "rascunho" | "confirmar"): string {
     const j = (confirmada ? justRevisao : "").trim() || undefined;
-    const valor = naoAplicavel ? undefined : lerValor(valorTexto);
+    // Valor SUGERIDO e não tocado: só é gravado como valor confirmado quando a GERDAB confirma a análise (nunca ao salvar rascunho).
+    const naoTocadoComSugestao = !!sugerido && !valorTocado;
+    const valor = naoAplicavel ? undefined : naoTocadoComSugestao ? (acao === "confirmar" ? sugerido!.valor : undefined) : lerValor(valorTexto);
     if (!atual) {
       const { registro } = registrarMovimentacao(
         {
@@ -598,11 +764,13 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
           origemPagamento: (origemPag || undefined) as OrigemPagamento | undefined,
           competenciaReferencia: refComp,
           competenciaPagamento: pagComp,
+          justificativa: ajusteTexto,
           movimentos: movimentosNormalizados,
           valorInformadoNurfi: valor,
           observacao: observacao.trim() && observacao.trim() !== sugestao ? observacao : undefined,
           origemInformacao: "manual",
-          referenciaOrigem: { modulo: "manual", rotulo: "Inclusão manual pela GERDAB" },
+          demonstrativo: ambienteDemo || undefined, // no ambiente demonstrativo a inclusão manual também é demonstrativa (limpa pela restauração)
+          referenciaOrigem: { modulo: "manual", rotulo: ambienteDemo ? "Inclusão manual (ambiente demonstrativo)" : "Inclusão manual pela GERDAB" },
         },
         responsavel,
       );
@@ -612,14 +780,15 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
     const dados: Parameters<typeof atualizarDados>[1] = {};
     if (nome.trim() !== atual.titular.nome) dados.titularNome = nome;
     if ((matricula.trim() || "") !== (atual.titular.matricula ?? "")) dados.matricula = matricula;
+    if ((cpf.trim() || "") !== (atual.titular.cpf ?? "")) dados.cpf = cpf;
     if ((vinculo || "") !== (atual.vinculo ?? "")) dados.vinculo = (vinculo || undefined) as VinculoFuncional | undefined;
     if ((origemPag || "") !== (atual.origemPagamento ?? "")) dados.origemPagamento = (origemPag || undefined) as OrigemPagamento | undefined;
-    if (refComp !== atual.competenciaReferencia) dados.competenciaReferencia = refComp;
-    if (pagComp !== atual.competenciaPagamento) dados.competenciaPagamento = pagComp;
-    if (Object.keys(dados).length) atualizarDados(atual.id, dados, responsavel, j);
-    const assinatura = (m: Movimento[]) => JSON.stringify(m.map((x) => [x.tipo, x.motivo ?? ""]));
+    // As competências de referência e de pagamento não são editadas aqui (pertencem ao relatório).
+    if (Object.keys(dados).length) atualizarDados(atual.id, dados, responsavel, [j, ajusteTexto].filter(Boolean).join(" — ") || undefined);
+    if (conferiuComp && atual.competenciaEstimada) confirmarCompetenciasRegistro(atual.id, responsavel, j);
+    const assinatura = (m: Movimento[]) => JSON.stringify(m.map((x) => [x.tipo, x.motivo ?? "", x.dependente?.nome ?? "", x.dependente?.parentesco ?? "", !!x.dependente?.pendenteValidacao]));
     if (assinatura(movimentosNormalizados) !== assinatura(atual.movimentos)) atualizarMovimentos(atual.id, movimentosNormalizados, responsavel, j);
-    if (valor !== atual.valorInformadoNurfi) atualizarValorInformado(atual.id, valor, responsavel, j);
+    if (valor !== atual.valorInformadoNurfi) atualizarValorInformado(atual.id, valor, responsavel, [j, ajusteValor ? justValor.trim() : sugerido && valor !== undefined ? "Valor sugerido pelo sistema confirmado pela GERDAB." : ""].filter(Boolean).join(" — ") || undefined);
     if (naoAplicavel && !atual.valorNaoAplicavel) definirValorNaoAplicavel(atual.id, true, responsavel, justNA || j);
     if (!naoAplicavel && atual.valorNaoAplicavel && valor === undefined) definirValorNaoAplicavel(atual.id, false, responsavel, j);
     const salvo = JSON.parse(localStorage.getItem("prosaude_relatorio_alteracoes") ?? "[]").find((x: RegistroAlteracao) => x.id === atual.id) as RegistroAlteracao | undefined;
@@ -630,7 +799,7 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
   function executar(acao: "rascunho" | "confirmar") {
     setErro(null);
     try {
-      const id = gravar();
+      const id = gravar(acao);
       if (acao === "confirmar") {
         const reg = JSON.parse(localStorage.getItem("prosaude_relatorio_alteracoes") ?? "[]").find((x: RegistroAlteracao) => x.id === id) as RegistroAlteracao;
         if (reg.situacao !== "confirmada") confirmarRegistro(id, responsavel);
@@ -660,43 +829,70 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7">
           <Secao n={1} titulo="Movimentação" descricao="Classifique a alteração que será comunicada.">
-            <div className="grid sm:grid-cols-2 gap-4 text-sm">
-              {novo ? (
-                <>
-                  <label className="font-semibold">
-                    Beneficiário
-                    <select value={benef} onChange={(e) => escolherBeneficiario(e.target.value)} className={`${CAMPO} mt-1 font-normal`}>
-                      <option value="">Selecione um beneficiário</option>
-                      {servidoresList.map((s) => (
-                        <option key={s.matricula} value={s.matricula}>
-                          {s.nome} ({s.matricula})
-                        </option>
-                      ))}
-                      <option value="__outro">Outro (informar manualmente)</option>
-                    </select>
-                  </label>
-                  <label className="font-semibold">
-                    Matrícula
-                    <input value={matricula} onChange={(e) => setMatricula(e.target.value)} readOnly={benef !== "__outro"} placeholder="Preenchida após a seleção" className={`${CAMPO} mt-1 font-normal ${benef !== "__outro" ? "bg-muted" : ""}`} />
-                  </label>
-                  {benef === "__outro" && (
-                    <label className="font-semibold sm:col-span-2">
-                      Nome do beneficiário
+            <div className="space-y-3 text-sm">
+              {(novo && !nome) || trocando ? (
+                <div className="space-y-2">
+                  <SeletorServidorCadastral demonstracao={ambienteDemo || !!atual?.demonstrativo} pessoasDemo={pessoasDemonstrativasAlteracoes()} onSelecionar={escolherServidor} autoFocus rotulo="Pesquisar servidor (nome ou matrícula)" />
+                  {trocando && (
+                    <button type="button" onClick={() => setTrocando(false)} className="text-xs font-semibold text-primary hover:underline">
+                      Cancelar a troca
+                    </button>
+                  )}
+                  <p className="text-xs text-foreground/75">Os dados vêm do cadastro existente e são copiados somente para este registro: o cadastro original não é alterado.</p>
+                </div>
+              ) : cad ? (
+                <div className="space-y-2 rounded-xl border border-border p-4" role="group" aria-label="Servidor selecionado">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold">{nome}</p>
+                      <p className="text-xs text-foreground/75">
+                        Matrícula {matricula || "a conferir"} · CPF {cpf || "a conferir"}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setTrocando(true)} className={BTN_SECUNDARIO}>
+                      Trocar servidor
+                    </button>
+                  </div>
+                  <p className="text-xs text-foreground/75">
+                    Dados consultados em: {ROTULO_FONTE_CADASTRAL[cad.fonte]}.{" "}
+                    {cad.conferir.length > 0 && <strong className="text-status-pendente-fg">Precisa de conferência: {cad.conferir.join("; ")}.</strong>}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-xl border border-border p-4">
+                  <p className="text-xs font-semibold text-status-pendente-fg">Servidor não localizado no cadastro consultado: confira nome e matrícula (ou pesquise o servidor).</p>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <label className="font-semibold">
+                      Beneficiário
                       <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${CAMPO} mt-1 font-normal`} />
                     </label>
-                  )}
-                </>
-              ) : (
-                <>
-                  <label className="font-semibold">
-                    Beneficiário
-                    <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${CAMPO} mt-1 font-normal`} />
-                  </label>
-                  <label className="font-semibold">
-                    Matrícula
-                    <input value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Sem correspondência" className={`${CAMPO} mt-1 font-normal`} />
-                  </label>
-                </>
+                    <label className="font-semibold">
+                      Matrícula
+                      <input value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Sem correspondência" className={`${CAMPO} mt-1 font-normal`} />
+                    </label>
+                  </div>
+                  <button type="button" onClick={() => setTrocando(true)} className="text-xs font-semibold text-primary hover:underline">
+                    Pesquisar no cadastro
+                  </button>
+                </div>
+              )}
+              {divergencias.length > 0 && (
+                <div role="alert" className="space-y-2 rounded-xl border border-status-pendente-fg/40 bg-status-pendente-bg p-3">
+                  <p className="font-bold">Divergência com o cadastro — confira antes de confirmar</p>
+                  <p className="text-xs">O sistema não substitui o que veio da fonte ou o que você já conferiu; decida abaixo.</p>
+                  <ul className="space-y-1">
+                    {divergencias.map((d) => (
+                      <li key={d.campo} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          <strong>{d.campo}:</strong> registro “{d.registro}” × cadastro “{d.cadastro}”
+                        </span>
+                        <button type="button" onClick={d.aplicar} className="text-xs font-semibold text-primary hover:underline">
+                          Usar o valor do cadastro
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
 
@@ -737,70 +933,170 @@ function DialogoAlteracao({ registro: r, competenciaInicial, responsavel, onFech
                       </button>
                     )}
                   </div>
+                  {m.tipo !== "" && TIPOS_DEPENDENTE.includes(m.tipo) && (
+                    <div className="sm:col-span-2 grid sm:grid-cols-2 gap-4 rounded-xl border border-dashed border-border p-3">
+                      {cad && cad.dependentes.length > 0 && (m.dep?.modo ?? "cadastrado") === "cadastrado" ? (
+                        <label className="font-semibold">
+                          Dependente cadastrado
+                          <select
+                            value={m.dep?.nome ?? ""}
+                            onChange={(e) => {
+                              if (e.target.value === "__manual") return setMovs((l) => l.map((x, k) => (k === i ? { ...x, dep: { modo: "manual", nome: "", parentesco: "" } } : x)));
+                              const d = cad.dependentes.find((y) => y.nome === e.target.value);
+                              setMovs((l) => l.map((x, k) => (k === i ? { ...x, dep: e.target.value ? { modo: "cadastrado", nome: e.target.value, parentesco: d?.parentesco ?? "" } : undefined } : x)));
+                            }}
+                            className={`${CAMPO} mt-1 font-normal`}
+                          >
+                            <option value="">Selecione o dependente</option>
+                            {cad.dependentes.map((d) => (
+                              <option key={d.nome} value={d.nome}>
+                                {d.nome}
+                                {d.parentesco ? ` (${d.parentesco})` : ""}
+                              </option>
+                            ))}
+                            <option value="__manual">Não consta no cadastro (informar)</option>
+                          </select>
+                        </label>
+                      ) : (
+                        <label className="font-semibold">
+                          Nome do dependente
+                          <input value={m.dep?.nome ?? ""} onChange={(e) => setMovs((l) => l.map((x, k) => (k === i ? { ...x, dep: { modo: "manual", nome: e.target.value, parentesco: x.dep?.parentesco ?? "" } } : x)))} className={`${CAMPO} mt-1 font-normal`} />
+                        </label>
+                      )}
+                      <label className="font-semibold">
+                        Parentesco
+                        <input
+                          value={m.dep?.parentesco ?? ""}
+                          onChange={(e) => setMovs((l) => l.map((x, k) => (k === i ? { ...x, dep: { modo: x.dep?.modo ?? "manual", nome: x.dep?.nome ?? "", parentesco: e.target.value } } : x)))}
+                          className={`${CAMPO} mt-1 font-normal`}
+                          readOnly={m.dep?.modo === "cadastrado"}
+                        />
+                      </label>
+                      {(m.dep?.modo === "manual" || !cad || cad.dependentes.length === 0) && (
+                        <p className="sm:col-span-2 text-xs font-semibold text-status-pendente-fg">
+                          {cad && (cad.totalDependentes ?? 0) > 0 && cad.dependentes.length === 0 ? `O cadastro informa ${cad.totalDependentes} dependente(s), sem os nomes: ` : "Dependente fora do cadastro consultado: "}
+                          informe nome e parentesco; o dado fica pendente de validação e o cadastro não é alterado.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             <div className="grid sm:grid-cols-2 gap-4 text-sm">
-              <label className="font-semibold">
-                Competência
-                <select value={refComp} onChange={(e) => { setRefComp(e.target.value); setPagComp(competenciaPagamentoPadrao(e.target.value)); }} className={`${CAMPO} mt-1 font-normal`}>
-                  {[...new Set([refComp, ...meses])].sort().reverse().map((m) => (
-                    <option key={m} value={m}>
-                      {formatCompetencia(m)}
-                      {atual?.competenciaEstimada && m === atual.competenciaReferencia && refComp === m ? " (estimada — confira)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="font-semibold">
-                Pagamento
-                <select value={pagComp} onChange={(e) => setPagComp(e.target.value)} className={`${CAMPO} mt-1 font-normal`}>
-                  {[...new Set([pagComp, competenciaPagamentoPadrao(refComp)])].sort().map((m) => (
-                    <option key={m} value={m}>
-                      {formatCompetencia(m)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="font-semibold">
+              <div className="font-semibold" role="group" aria-label="Competências do relatório">
+                Competências do relatório
+                <p className="mt-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-normal">
+                  Referência <strong>{formatCompetencia(refComp)}</strong> · Pagamento <strong>{pagComp ? formatCompetencia(pagComp) : "não selecionado"}</strong>
+                </p>
+                <span className="mt-1 block text-xs font-normal text-foreground/75">Definidas no relatório (tela principal); não são alteradas registro a registro.</span>
+                {atual && pagamentoRelatorio && atual.competenciaPagamento !== pagamentoRelatorio && (
+                  <span role="alert" className="mt-1 block text-xs font-semibold text-status-pendente-fg">
+                    Este registro tem pagamento {formatCompetencia(atual.competenciaPagamento)}, diferente do relatório ({formatCompetencia(pagamentoRelatorio)}): ele não entra nesta emissão e não é corrigido automaticamente.
+                  </span>
+                )}
+                {atual?.competenciaEstimada && (
+                  <label className="mt-2 flex items-start gap-2 text-xs font-normal">
+                    <input type="checkbox" checked={conferiuComp} onChange={(e) => setConferiuComp(e.target.checked)} className="mt-0.5 h-4 w-4" />
+                    <span>Conferi a competência de referência (estimada pela fonte, ex.: mês da decisão do requerimento).</span>
+                  </label>
+                )}
+              </div>
+              {atual?.competenciaEfeito && (
+                <p className="text-xs text-foreground/75 sm:col-span-2">
+                  Competência de efeito registrada anteriormente (somente consulta): <strong>{formatCompetencia(atual.competenciaEfeito)}</strong>.
+                </p>
+              )}
+              <div className="font-semibold">
                 Vínculo funcional
-                <select value={vinculo} onChange={(e) => setVinculo(e.target.value)} className={`${CAMPO} mt-1 font-normal`}>
-                  <option value="">A conferir</option>
-                  <option value="ativo">Ativo</option>
-                  <option value="inativo">Inativo</option>
-                </select>
-              </label>
-              <label className="font-semibold">
+                {cad?.vinculo && !ajusteVinculo ? (
+                  <p className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm font-normal">
+                    <span>{vinculo ? ROTULO_VINCULO[vinculo] : "A conferir"}</span>
+                    <button type="button" onClick={() => setAjusteVinculo(true)} className="text-xs font-semibold text-primary hover:underline">
+                      Ajuste excepcional
+                    </button>
+                  </p>
+                ) : (
+                  <select value={vinculo} onChange={(e) => setVinculo(e.target.value)} aria-label="Vínculo funcional" className={`${CAMPO} mt-1 font-normal`}>
+                    <option value="">A conferir</option>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                )}
+                {!cad?.vinculo && <span className="mt-1 block text-xs font-normal text-status-pendente-fg">Não consta com segurança no cadastro: confira e informe.</span>}
+              </div>
+              <div className="font-semibold">
                 Origem de pagamento
-                <select value={origemPag} onChange={(e) => setOrigemPag(e.target.value)} className={`${CAMPO} mt-1 font-normal`}>
-                  <option value="">A conferir</option>
-                  {ORIGENS_PAGAMENTO.map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              </label>
+                {cad?.origemPagamento && !ajusteOrigem ? (
+                  <p className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm font-normal">
+                    <span>{origemPag || "A conferir"}</span>
+                    <button type="button" onClick={() => setAjusteOrigem(true)} className="text-xs font-semibold text-primary hover:underline">
+                      Ajuste excepcional
+                    </button>
+                  </p>
+                ) : (
+                  <select value={origemPag} onChange={(e) => setOrigemPag(e.target.value)} aria-label="Origem de pagamento" className={`${CAMPO} mt-1 font-normal`}>
+                    <option value="">A conferir</option>
+                    {ORIGENS_PAGAMENTO.map((o) => (
+                      <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                )}
+                {!cad?.origemPagamento && <span className="mt-1 block text-xs font-normal text-status-pendente-fg">Não consta com segurança no cadastro: a origem não é presumida pela operadora; confira e informe.</span>}
+              </div>
+              {(ajusteVinculo || ajusteOrigem) && (
+                <label className="font-semibold sm:col-span-2">
+                  Justificativa do ajuste excepcional{ajusteNecessario ? " *" : ""}
+                  <textarea value={justAjuste} onChange={(e) => setJustAjuste(e.target.value)} rows={2} className={`${CAMPO} mt-1 font-normal`} placeholder="Por que o valor do relatório difere do cadastro?" />
+                  <span className="mt-1 block text-xs font-normal text-foreground/75">O ajuste vale só para este registro, fica no histórico (responsável, data, valor do cadastro × valor ajustado e justificativa) e não altera o cadastro original.</span>
+                </label>
+              )}
             </div>
             <button type="button" onClick={() => setMovs((l) => [...l, { tipo: "" }])} className="text-sm font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
               + Adicionar outra movimentação
             </button>
           </Secao>
 
-          <Secao n={2} titulo="Valor a informar ao NURFI" descricao="Este é o valor financeiro principal do relatório." destaque>
+          <Secao n={2} titulo="Valor a informar ao NURFI" descricao="Valor final do ressarcimento do grupo familiar a ser informado ao NURFI." destaque>
             <label className="block text-sm font-semibold">
-              Valor NURFI
-              <input value={valorTexto} onChange={(e) => { setValorTexto(e.target.value); if (e.target.value.trim()) setNaoAplicavel(false); }} disabled={naoAplicavel} inputMode="decimal" aria-invalid={valorInvalido} aria-describedby="ajuda-valor" placeholder="Informe o valor" className={`${CAMPO} mt-1 text-lg font-normal`} />
+              <span className="text-base">Valor NURFI</span>
+              <span className="block text-xs font-normal text-foreground/75">Valor final do ressarcimento do grupo familiar a ser informado ao NURFI (não é a soma das movimentações nem apenas a diferença).</span>
+              <input value={valorTexto} onChange={(e) => { setValorTexto(e.target.value); setValorTocado(true); if (e.target.value.trim()) setNaoAplicavel(false); }} disabled={naoAplicavel} inputMode="decimal" aria-invalid={valorInvalido} aria-describedby="ajuda-valor" placeholder="Informe o valor" className={`${CAMPO} mt-1 text-lg font-normal`} />
+              {sugerido && (
+                <span className="mt-1 block rounded-md border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs font-normal">
+                  <strong>Valor sugerido pelo sistema:</strong> {formatCurrency(sugerido.valor)} — {sugerido.descricao} Ainda não está confirmado: confirme o registro para aceitá-lo ou altere o valor (o ajuste exige justificativa e fica na auditoria).
+                </span>
+              )}
+              {!sugerido && atual?.valorPendencia && atual.valorInformadoNurfi === undefined && (
+                <span className="mt-1 block rounded-md border border-dashed border-status-pendente-fg/50 bg-status-pendente-bg px-3 py-2 text-xs font-normal">
+                  <strong>{ROTULO_PENDENCIA_VALOR[atual.valorPendencia.tipo]}:</strong> {atual.valorPendencia.descricao} Informe o valor após a conferência (nada foi estimado).
+                </span>
+              )}
               <span id="ajuda-valor" className="block text-xs font-normal text-foreground/75 mt-1">Formato 1234,56. Nunca use 0 para “sem valor”: deixe em branco (pendente) ou declare o valor como não aplicável.</span>
             </label>
+            {ajusteValor && (
+              <label className="block text-sm font-semibold">
+                Justificativa do ajuste do valor sugerido *
+                <textarea value={justValor} onChange={(e) => setJustValor(e.target.value)} rows={2} className={`${CAMPO} mt-1 font-normal`} placeholder="Por que o valor confirmado difere do sugerido?" />
+              </label>
+            )}
             {naoAplicavel && <span className="inline-block rounded-full bg-muted px-4 py-1.5 text-sm font-semibold">Valor não aplicável</span>}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {([["cadastrado", "Valor cadastrado"], ["plano", "Valor do plano"], ["comprovado", "Valor comprovado"], ["calculado", "Valor calculado"]] as const).map(([k, rot]) => (
-                <div key={k} className="rounded-xl border border-border bg-card px-4 py-3">
-                  <p className="text-xs text-foreground/75">{rot}</p>
-                  <p className="font-bold tabular-nums">{atual?.valores[k] !== undefined ? formatCurrency(atual.valores[k]!) : "Informação não disponível"}</p>
-                </div>
-              ))}
-            </div>
+            {atual && Object.values(atual.valores).some((v) => v !== undefined) && (
+              <details className="rounded-xl border border-dashed border-border px-4 py-2 text-xs text-foreground/75">
+                <summary className="cursor-pointer font-semibold">Origem e evidências do valor (consulta)</summary>
+                <p className="mt-2">Valores já registrados na origem. São naturezas diferentes e <strong>não equivalem</strong> ao Valor NURFI: servem apenas de apoio à conferência.</p>
+                <ul className="mt-1 space-y-0.5">
+                  {([["cadastrado", "Valor cadastrado"], ["plano", "Valor do plano"], ["comprovado", "Valor comprovado"], ["calculado", "Valor calculado"]] as const).map(([k, rot]) =>
+                    atual.valores[k] !== undefined ? (
+                      <li key={k}>
+                        {rot}: <strong className="tabular-nums">{formatCurrency(atual.valores[k]!)}</strong>
+                      </li>
+                    ) : null,
+                  )}
+                </ul>
+              </details>
+            )}
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={naoAplicavel} onChange={(e) => { setNaoAplicavel(e.target.checked); if (e.target.checked) setValorTexto(""); }} className="h-4 w-4" />O valor não é aplicável. Registrar justificativa.
             </label>

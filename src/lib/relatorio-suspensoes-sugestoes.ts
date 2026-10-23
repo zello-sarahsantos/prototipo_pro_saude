@@ -1,5 +1,5 @@
 /**
- * Relatório de Suspensões (NURFI) — S5: geração automática das situações da competência ("Gerar situações da competência").
+ * Relatório de Suspensões (NURFI) — S5: geração automática das situações da competência ("Buscar e preencher registros").
  *
  * Lê, em MODO SOMENTE LEITURA, informações que já existem no Pró-Saúde e as transforma em registros "Conferir" (origem automática) para a
  * conferência do analista/Gerência GERDAB. NUNCA altera cadastro, pagamentos, comprovantes, requerimentos, planilhas ou a situação de
@@ -10,7 +10,7 @@
  *    pendência documental vencida). "Excluir" só nasce de requerimento de exclusão APROVADO e persistido (associação).
  *  - Informação inconclusiva vira INVESTIGAÇÃO: registro sem classificação, com o que foi encontrado, por que não permite concluir e o
  *    que verificar. Nunca afirma inadimplência.
- *  - "Gerar situações da competência": a geração respeita a competência SELECIONADA na tela. Fontes com competência própria (comprovantes,
+ *  - "Buscar e preencher registros": a geração respeita a competência SELECIONADA na tela. Fontes com competência própria (comprovantes,
  *    planilhas) só geram registros da competência selecionada; o que for identificado em OUTRAS competências não é inserido em silêncio
  *    — é apenas informado. Fontes sem competência própria (pendências documentais, requerimentos) entram na competência selecionada.
  *  - Competências: a de pagamento não vem das fontes — reaproveita a já conferida nos demais registros da competência, ou é pré-preenchida
@@ -628,7 +628,7 @@ function pagamentoConferido(ref: string, existentes: RegistroSuspensao[]): strin
 }
 
 /**
- * "Gerar situações da competência": lê as fontes e INCLUI diretamente, na competência selecionada, os registros identificados — sempre como
+ * "Buscar e preencher registros": lê as fontes e INCLUI diretamente, na competência selecionada, os registros identificados — sempre como
  * "identificada" (Conferir) e origem automática. Idempotente; nunca altera nem recria registros existentes (editados, confirmados,
  * descartados ou emitidos), salvo reaparecimento de uma sugestão DESCARTADA cuja informação de origem mudou. O que a fonte identifica
  * para OUTRAS competências não é inserido: volta em `outrasCompetencias` para o analista decidir.

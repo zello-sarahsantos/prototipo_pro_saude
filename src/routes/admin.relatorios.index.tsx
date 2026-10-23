@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
-import { useAdminRole } from "@/lib/use-admin-role";
+import { ehPerfilGerdab, useAdminRole } from "@/lib/use-admin-role";
 import { competenciasParaFechamento, formatCompetencia, getResumoFechamento } from "@/lib/fechamento-pagamento";
 
 export const Route = createFileRoute("/admin/relatorios/")({
@@ -80,11 +80,11 @@ function VisaoGeralRelatorios() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // O Relatório de Suspensões é de uso interno da GERDAB (Analista e Gerência): para Servidor e Associação o cartão nem aparece
+  // Os relatórios de Suspensões e de Alterações são de uso interno da GERDAB (Analista e Gerência): para Servidor e Associação o cartão nem aparece
   // (a rota continua protegida por `GuardaPerfilAdmin`). Os demais relatórios não mudam.
   const perfil = useAdminRole();
-  const acessoGerdab = perfil === "analista" || perfil === "gerencia";
-  const disponiveis = RELATORIOS.filter((r) => r.to !== "/admin/relatorios/suspensoes" || acessoGerdab);
+  const acessoGerdab = ehPerfilGerdab(perfil);
+  const disponiveis = RELATORIOS.filter((r) => (r.to !== "/admin/relatorios/suspensoes" && r.to !== "/admin/relatorios/alteracoes") || acessoGerdab);
   const encontrados = disponiveis.filter((r) => !q || normalizar(textoBusca(r)).includes(q));
   const contagem = (c: Categoria) => encontrados.filter((r) => r.categoria === c).length;
   const visiveis = encontrados.filter((r) => filtro === "Todos" || r.categoria === filtro);
@@ -172,6 +172,12 @@ function VisaoGeralRelatorios() {
             {visiveis.length} de {disponiveis.length}
           </p>
         </div>
+
+        {!acessoGerdab && (
+          <p role="note" className="text-xs text-muted-foreground">
+            Os relatórios de Suspensões e de Alterações aparecem apenas para os perfis Analista e Gerência (perfil ativo no navegador: “{perfil}”).
+          </p>
+        )}
 
         <div role="search" className="relative">
           <label htmlFor="pesquisar-relatorio" className="sr-only">

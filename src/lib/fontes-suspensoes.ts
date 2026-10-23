@@ -1,5 +1,5 @@
 /**
- * Relatório de Suspensões — FONTES consultadas por "Gerar situações da competência" e CAMADA DE FONTES DEMONSTRATIVAS (isolada).
+ * Relatório de Suspensões — FONTES consultadas por "Buscar e preencher registros" e CAMADA DE FONTES DEMONSTRATIVAS (isolada).
  *
  * `FontesSuspensao` é a interface que os leitores (S5/S6, `relatorio-suspensoes-sugestoes.ts`) usam para ler comprovantes/Fechamento,
  * pendências documentais, requerimentos de exclusão, planilhas das associações e o histórico de suspensões. Há duas implementações:

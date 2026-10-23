@@ -237,7 +237,7 @@ export function FluxoEmissaoSuspensoes({ competencia, pagamento: pagamentoDoRela
                   </div>
                 </div>
                 {ordenados.length === 0 ? (
-                  <p className="px-5 py-8 text-center text-sm text-foreground/75">Nenhum registro na competência. Use “Incluir suspensão” e conclua a conferência.</p>
+                  <p className="px-5 py-8 text-center text-sm text-foreground/75">Nenhum registro na competência. Use “Buscar e preencher registros” ou “Incluir suspensão” e conclua a conferência.</p>
                 ) : (
                   <ul className="divide-y divide-border">
                     {ordenados.map((i) => (

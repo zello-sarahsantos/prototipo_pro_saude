@@ -2,7 +2,7 @@
  * AMBIENTE DEMONSTRATIVO do Relatório de Suspensões — SOMENTE PROTÓTIPO, 100% fictício.
  *
  * A demonstração NÃO insere registros diretamente na tabela. O fluxo é: **Restaurar demonstração** (limpa o que é demonstrativo e liga o
- * ambiente) → tabela vazia → **Gerar situações da competência** → o mesmo código real de S5/S6 percorre as FONTES FICTÍCIAS isoladas
+ * ambiente) → tabela vazia → **Buscar e preencher registros** → o mesmo código real de S5/S6 percorre as FONTES FICTÍCIAS isoladas
  * (`fontes-suspensoes.ts`: comprovantes/Fechamento, pendências documentais, requerimentos de exclusão, planilhas e um histórico de suspensões
  * já emitidas, tudo em memória) e preenche a tabela → conferir/editar/descartar/incluir → emitir.
  *
@@ -108,7 +108,7 @@ export interface ResultadoRestauracaoSuspensoes {
 /**
  * Restaura o ambiente demonstrativo: remove SÓ os registros demonstrativos (e as emissões compostas apenas por eles), limpando junto os
  * descartes, as conferências e os controles de geração (guardados nos próprios registros), e liga o ambiente. Não toca registros reais, emissões
- * com qualquer linha real nem dados de outros módulos. Deixa a tabela vazia para uma nova execução de "Gerar situações da competência".
+ * com qualquer linha real nem dados de outros módulos. Deixa a tabela vazia para uma nova execução de "Buscar e preencher registros".
  */
 export function restaurarAmbienteDemonstrativo(registros: RegistroSuspensao[]): ResultadoRestauracaoSuspensoes {
   const emissoes = listarEmissoes<LinhaRelatorio>("suspensoes");

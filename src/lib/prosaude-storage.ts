@@ -52,8 +52,10 @@ export const PROSAUDE_STORAGE_KEYS = {
   // Relatório de Suspensões (NURFI): registros (com histórico) e marcador da massa demonstrativa.
   relatorioSuspensoes: "prosaude_relatorio_suspensoes",
   massaDemoSuspensoes: "prosaude_massa_demo_suspensoes",
-  // Ambiente demonstrativo do Relatório de Suspensões: "1" = "Gerar situações da competência" consulta as FONTES FICTÍCIAS isoladas (ver `fontes-suspensoes.ts`).
+  // Ambiente demonstrativo do Relatório de Suspensões: "1" = "Buscar e preencher registros" consulta as FONTES FICTÍCIAS isoladas (ver `fontes-suspensoes.ts`).
   ambienteDemoSuspensoes: "prosaude_ambiente_demo_suspensoes",
+  // Ambiente demonstrativo do Relatório de Alterações: "1" = "Buscar e preencher registros" consulta as FONTES FICTÍCIAS isoladas (ver `fontes-alteracoes.ts`).
+  ambienteDemoAlteracoes: "prosaude_ambiente_demo_alteracoes",
   /** Data simulada do protótipo (limitação de demonstração — ver `dias-uteis.ts`). */
   dataReferenciaPrototipo: "prosaude_data_referencia",
 } as const;

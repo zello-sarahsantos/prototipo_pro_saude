@@ -1,131 +1,125 @@
 /**
- * MASSA DE DEMONSTRAÇÃO do Relatório de Alterações — SOMENTE PROTÓTIPO. Nove registros (um por cenário do modelo da GERDAB),
- * distribuídos entre Ativos/Inativos e Boletos/ASSEFAZ/ASSETRAN para validar os agrupamentos do relatório.
+ * AMBIENTE DEMONSTRATIVO do Relatório de Alterações — SOMENTE PROTÓTIPO, 100% fictício.
  *
- * Tudo fictício: nomes, matrículas ("F" + número, para nunca coincidir com matrícula real) e valores. Todos nascem
- * "identificada" (nenhum é confirmado sozinho) e sem "valor informado ao NURFI" (a GERDAB preenche na conferência). Não lê nem
- * altera nenhum outro módulo; usa só a API de `relatorio-alteracoes.ts`.
+ * A demonstração NÃO insere registros diretamente na tabela. O fluxo é: **Restaurar demonstração** (limpa o que é demonstrativo, liga o
+ * ambiente e seleciona referência setembro/2026 e pagamento outubro/2026) → tabela vazia → **Buscar e preencher registros** → o mesmo código real de
+ * identificação percorre as FONTES FICTÍCIAS isoladas (`fontes-alteracoes.ts`, em memória) e cria os registros, sempre "identificada"
+ * (pendente de conferência) → conferir/editar/descartar/incluir → emitir.
  *
- * Idempotente: cada registro tem id fixo (`demo-alt-NN`) e só é criado se esse id ainda não existir — recarregar não duplica,
- * e um registro editado, confirmado ou descartado nunca é sobrescrito nem ressuscitado. Marcador de versão no `localStorage`
- * evita refazer a verificação a cada acesso (aumentar `VERSAO` acrescenta apenas registros novos).
+ * Isolamento: nada é gravado em comprovantes, planilhas, requerimentos, cadastro, pagamentos nem nas emissões reais. Enquanto o ambiente
+ * está ativo, os registros gerados e os incluídos manualmente nascem marcados "Demonstrativo" (e as emissões feitas com eles, também) — é isso
+ * que permite à restauração limpar SÓ o que é demonstrativo. Registros e emissões reais nunca são tocados.
+ *
+ * Cenários (Setembro/2026): ver `fontes-alteracoes.ts`. A natureza de cada movimentação é a que o mecanismo realmente identifica nas fontes
+ * (nada é classificado à mão): o que a fonte não informa chega "A conferir" para a GERDAB classificar.
  */
+import { useSyncExternalStore } from "react";
 import { PROSAUDE_STORAGE_KEYS } from "./prosaude-storage";
-import { registrarMovimentacao, type NovoRegistroAlteracao } from "./relatorio-alteracoes";
+import { EVENTO_EMISSOES_RELATORIO, listarEmissoes, type EmissaoRelatorio } from "./emissoes-relatorio";
+import { removerRegistrosDemonstrativos, type RegistroAlteracao } from "./relatorio-alteracoes";
+import { COMPETENCIA_DEMONSTRATIVA_ALTERACOES, PAGAMENTO_DEMONSTRATIVO_ALTERACOES } from "./fontes-alteracoes";
+import type { LinhaRelatorio } from "./relatorio-alteracoes-geracao";
 
-const VERSAO = "1";
-const RESPONSAVEL = "Sistema (massa demonstrativa)";
-const REF = "2026-09";
+export { COMPETENCIA_DEMONSTRATIVA_ALTERACOES, PAGAMENTO_DEMONSTRATIVO_ALTERACOES };
 
-type Demo = Omit<NovoRegistroAlteracao, "competenciaReferencia" | "origemInformacao" | "demonstrativo" | "referenciaOrigem"> & { id: string; origemInformacao?: "automatica" | "manual"; referenciaOrigem?: NovoRegistroAlteracao["referenciaOrigem"] };
+export const EVENTO_AMBIENTE_DEMO_ALTERACOES = "prosaude-ambiente-demo-alteracoes";
 
-const DEMO: Demo[] = [
-  // 1 — Reajuste do plano · Ativo · Boletos (referência à decisão de um comprovante, para o reuso da Etapa 3).
-  {
-    id: "demo-alt-01",
-    titular: { nome: "Aurora Valadares Teste", matricula: "F0001" },
-    vinculo: "ativo",
-    origemPagamento: "Boletos",
-    movimentos: [{ tipo: "alterar_valor", motivo: "reajuste_plano" }],
-    valores: { plano: 2900, cadastrado: 2700, comprovado: 2900 },
-    origemInformacao: "automatica",
-    referenciaOrigem: { modulo: "demonstrativo", rotulo: "Comprovante (demonstração)", decisao: { descricao: "Divergência de valor aprovada pela GERDAB (demonstração)", responsavel: "GERDAB (demonstração)" } },
-  },
-  // 2 — Mudança de plano · Ativo · ASSEFAZ (planilha da associação: conferência manual).
-  {
-    id: "demo-alt-02",
-    titular: { nome: "Bento Caldeira Fictício", matricula: "F0002" },
-    vinculo: "ativo",
-    origemPagamento: "ASSEFAZ",
-    movimentos: [{ tipo: "alterar_valor", motivo: "mudou_de_plano" }],
-    valores: { plano: 2150, cadastrado: 2400 },
-    origemInformacao: "manual",
-  },
-  // 3 — Mudança de categoria · Ativo · ASSETRAN.
-  {
-    id: "demo-alt-03",
-    titular: { nome: "Cecília Montenegro Exemplo", matricula: "F0003" },
-    vinculo: "ativo",
-    origemPagamento: "ASSETRAN",
-    movimentos: [{ tipo: "alterar_valor", motivo: "mudanca_categoria" }],
-    valores: { plano: 1800, cadastrado: 1650 },
-    origemInformacao: "manual",
-  },
-  // 4 — Inclusão de dependente com alteração de valor · Inativo · Boletos.
-  {
-    id: "demo-alt-04",
-    titular: { nome: "Davi Albuquerque Modelo", matricula: "F0004" },
-    vinculo: "inativo",
-    origemPagamento: "Boletos",
-    movimentos: [{ tipo: "alterar_valor", motivo: "incluiu_dependente" }],
-    valores: { plano: 3300, cadastrado: 2100, comprovado: 3300 },
-    origemInformacao: "automatica",
-  },
-  // 5 — Exclusão de dependente com alteração de valor · Ativo · ASSEFAZ.
-  {
-    id: "demo-alt-05",
-    titular: { nome: "Elisa Fontenele Demo", matricula: "F0005" },
-    vinculo: "ativo",
-    origemPagamento: "ASSEFAZ",
-    movimentos: [{ tipo: "alterar_valor", motivo: "excluiu_dependente" }],
-    valores: { plano: 1950, cadastrado: 3100 },
-    origemInformacao: "manual",
-  },
-  // 6 — Reinclusão de dependente com alteração de valor · Inativo · ASSETRAN.
-  {
-    id: "demo-alt-06",
-    titular: { nome: "Fábio Guimarães Simulado", matricula: "F0006" },
-    vinculo: "inativo",
-    origemPagamento: "ASSETRAN",
-    movimentos: [{ tipo: "alterar_valor", motivo: "reincluiu_dependente" }],
-    valores: { plano: 2750, cadastrado: 1900 },
-    origemInformacao: "manual",
-  },
-  // 7 — Inclusão por nova proposta · Inativo · ASSEFAZ.
-  {
-    id: "demo-alt-07",
-    titular: { nome: "Giovana Haddad Ilustrativa", matricula: "F0007" },
-    vinculo: "inativo",
-    origemPagamento: "ASSEFAZ",
-    movimentos: [{ tipo: "incluir", motivo: "nova_proposta" }],
-    valores: { plano: 2300 },
-    origemInformacao: "manual",
-  },
-  // 8 — Reinclusão com comprovante de pagamento · Ativo · Boletos.
-  {
-    id: "demo-alt-08",
-    titular: { nome: "Henrique Itapuã Ficticio", matricula: "F0008" },
-    vinculo: "ativo",
-    origemPagamento: "Boletos",
-    movimentos: [{ tipo: "reincluir", motivo: "comprovante_pagamento" }],
-    valores: { plano: 3050, comprovado: 3050 },
-    origemInformacao: "automatica",
-  },
-  // 9 — Reinclusão acompanhada de alteração de valor · Ativo · ASSETRAN.
-  {
-    id: "demo-alt-09",
-    titular: { nome: "Isadora Jaguaribe Amostra", matricula: "F0009" },
-    vinculo: "ativo",
-    origemPagamento: "ASSETRAN",
-    movimentos: [{ tipo: "reincluir", motivo: "comprovante_pagamento" }, { tipo: "alterar_valor", motivo: "reajuste_plano" }],
-    valores: { plano: 3400, cadastrado: 3100, comprovado: 3400 },
-    origemInformacao: "manual",
-  },
-];
-
-/** Cria os registros que faltam. Seguro para chamar a cada acesso. */
-export function garantirMassaDemonstracaoAlteracoes() {
-  if (typeof window === "undefined") return;
+export const ambienteDemoAlteracoesAtivo = () => {
+  if (typeof window === "undefined") return false;
   try {
-    if (localStorage.getItem(PROSAUDE_STORAGE_KEYS.massaDemoAlteracoes) === VERSAO) return;
-    for (const d of DEMO) {
-      registrarMovimentacao(
-        { ...d, competenciaReferencia: REF, origemInformacao: d.origemInformacao ?? "manual", demonstrativo: true, referenciaOrigem: d.referenciaOrigem ?? { modulo: "demonstrativo", registroId: d.id, rotulo: "Massa demonstrativa" } },
-        RESPONSAVEL,
-      );
-    }
-    localStorage.setItem(PROSAUDE_STORAGE_KEYS.massaDemoAlteracoes, VERSAO);
+    return localStorage.getItem(PROSAUDE_STORAGE_KEYS.ambienteDemoAlteracoes) === "1";
   } catch {
-    /* sem armazenamento: a demonstração simplesmente não é semeada */
+    return false;
   }
+};
+export function definirAmbienteDemoAlteracoes(ativo: boolean) {
+  try {
+    if (ativo) localStorage.setItem(PROSAUDE_STORAGE_KEYS.ambienteDemoAlteracoes, "1");
+    else localStorage.removeItem(PROSAUDE_STORAGE_KEYS.ambienteDemoAlteracoes);
+  } catch {
+    /* sem armazenamento */
+  }
+  window.dispatchEvent(new Event(EVENTO_AMBIENTE_DEMO_ALTERACOES));
+}
+const assinar = (aviso: () => void) => {
+  window.addEventListener(EVENTO_AMBIENTE_DEMO_ALTERACOES, aviso);
+  window.addEventListener("storage", aviso);
+  return () => {
+    window.removeEventListener(EVENTO_AMBIENTE_DEMO_ALTERACOES, aviso);
+    window.removeEventListener("storage", aviso);
+  };
+};
+/** Ambiente demonstrativo ativo? (falso no servidor e na hidratação; o valor real entra logo depois). */
+export const useAmbienteDemoAlteracoes = () => useSyncExternalStore(assinar, ambienteDemoAlteracoesAtivo, () => false);
+
+/* ── Restauração ─────────────────────────────────────────────────────────────────────────────────────────────── */
+
+export interface DiagnosticoRestauracaoAlteracoes {
+  aRemover: RegistroAlteracao[];
+  editados: number;
+  descartados: number;
+  manuais: number;
+  /** Emissões feitas SOMENTE com registros demonstrativos: serão removidas do histórico. */
+  emissoesDemonstrativas: EmissaoRelatorio<LinhaRelatorio>[];
+  /** Emissões com qualquer linha real: NUNCA são removidas (e protegem os registros que contêm). */
+  emissoesMantidas: number;
+  protegidos: RegistroAlteracao[];
+  reaisPreservados: number;
+}
+
+const ehEmissaoDemonstrativa = (e: EmissaoRelatorio<LinhaRelatorio>) => e.linhas.length > 0 && e.linhas.every((l) => l.demonstrativo === true);
+
+/** Delimita o alcance da limpeza (função pura: não grava nada). */
+export function diagnosticarRestauracaoAlteracoes(registros: RegistroAlteracao[], emissoes: EmissaoRelatorio<LinhaRelatorio>[]): DiagnosticoRestauracaoAlteracoes {
+  const mantidas = emissoes.filter((e) => !ehEmissaoDemonstrativa(e));
+  const idsMantidos = new Set(mantidas.flatMap((e) => e.registroIds));
+  const demos = registros.filter((r) => r.demonstrativo);
+  const protegidos = demos.filter((r) => idsMantidos.has(r.id));
+  const aRemover = demos.filter((r) => !idsMantidos.has(r.id));
+  // Intervenção do analista = qualquer evento além da inclusão do registro (a busca é atribuída ao analista que a acionou).
+  const editado = (r: RegistroAlteracao) => r.historico.some((e) => e.tipo !== "inclusao_registro");
+  return {
+    aRemover,
+    editados: aRemover.filter(editado).length,
+    descartados: aRemover.filter((r) => r.situacao === "descartada").length,
+    manuais: aRemover.filter((r) => r.origemInformacao === "manual").length,
+    emissoesDemonstrativas: emissoes.filter(ehEmissaoDemonstrativa),
+    emissoesMantidas: mantidas.length,
+    protegidos,
+    reaisPreservados: registros.length - demos.length,
+  };
+}
+
+export interface ResultadoRestauracaoAlteracoes {
+  registrosRemovidos: number;
+  emissoesRemovidas: number;
+  protegidos: number;
+}
+
+/**
+ * Restaura o ambiente demonstrativo: remove SÓ os registros demonstrativos (e as emissões compostas apenas por eles), limpando junto os
+ * descartes e as conferências (guardados nos próprios registros), e liga o ambiente. Não toca registros reais, emissões com qualquer linha
+ * real nem dados de outros módulos. Deixa a tabela vazia para uma nova execução de "Buscar e preencher registros".
+ */
+export function restaurarAmbienteDemonstrativoAlteracoes(registros: RegistroAlteracao[]): ResultadoRestauracaoAlteracoes {
+  const emissoes = listarEmissoes<LinhaRelatorio>("alteracoes");
+  const diag = diagnosticarRestauracaoAlteracoes(registros, emissoes);
+  const rm = removerRegistrosDemonstrativos(new Set(diag.protegidos.map((r) => r.id)));
+  let emissoesRemovidas = 0;
+  if (diag.emissoesDemonstrativas.length > 0) {
+    const ids = new Set(diag.emissoesDemonstrativas.map((e) => e.id));
+    try {
+      const raw = localStorage.getItem(PROSAUDE_STORAGE_KEYS.relatorioEmissoes);
+      const todas = raw ? (JSON.parse(raw) as EmissaoRelatorio[]) : [];
+      const restantes = todas.filter((e) => !(e.tipoRelatorio === "alteracoes" && ids.has(e.id)));
+      emissoesRemovidas = todas.length - restantes.length;
+      if (restantes.length > 0) localStorage.setItem(PROSAUDE_STORAGE_KEYS.relatorioEmissoes, JSON.stringify(restantes));
+      else localStorage.removeItem(PROSAUDE_STORAGE_KEYS.relatorioEmissoes);
+      window.dispatchEvent(new Event(EVENTO_EMISSOES_RELATORIO));
+    } catch {
+      /* sem armazenamento */
+    }
+  }
+  definirAmbienteDemoAlteracoes(true);
+  return { registrosRemovidos: rm.removidos, emissoesRemovidas, protegidos: diag.protegidos.length };
 }

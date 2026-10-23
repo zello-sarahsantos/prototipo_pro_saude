@@ -125,11 +125,18 @@ const centavos = (v: number) => Math.round(v * 100);
 export function prepararRelatorio(competenciaReferencia: string, pagamentoEscolhido?: string, registros: RegistroAlteracao[] = listarRegistros(), selecionados?: ReadonlySet<string>): PreparacaoRelatorio {
   const confirmados = registros.filter((r) => r.situacao === "confirmada" && r.competenciaReferencia === competenciaReferencia && (!selecionados || selecionados.has(r.id))).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
   const pagamentos = [...new Set(confirmados.map((r) => r.competenciaPagamento))].sort();
-  const pagamento = pagamentoEscolhido && pagamentos.includes(pagamentoEscolhido) ? pagamentoEscolhido : pagamentos.length === 1 ? pagamentos[0] : undefined;
+  // O pagamento escolhido pelo analista no relatório vale mesmo sem registro confirmado nele (os demais ficam de fora, sinalizados).
+  const pagamento = pagamentoEscolhido ?? (pagamentos.length === 1 ? pagamentos[0] : undefined);
   const selecaoPendente = pagamentos.length > 1 && !pagamento;
   const usados = pagamento ? confirmados.filter((r) => r.competenciaPagamento === pagamento) : [];
 
   const bloqueios: Bloqueio[] = [];
+  // Defesa: registro SELECIONADO com pagamento diferente do relatório nunca entra em silêncio (nem tem a competência corrigida).
+  if (pagamento && selecionados) {
+    for (const r of confirmados.filter((x) => x.competenciaPagamento !== pagamento)) {
+      bloqueios.push({ titular: r.titular.nome, registroIds: [r.id], motivos: [`Competência de pagamento divergente do relatório: ${r.competenciaPagamento.split("-").reverse().join("/")} (o relatório é de pagamento ${pagamento.split("-").reverse().join("/")})`] });
+    }
+  }
   // 1) pendências impeditivas por registro
   for (const r of usados) {
     const { impeditivas } = avaliarRegistro(r);
@@ -157,6 +164,8 @@ export function prepararRelatorio(competenciaReferencia: string, pagamentoEscolh
       continue;
     }
     const primeiro = grupo[0];
+    // Observação consolidada: ordem estável por natureza (incluir/reincluir, alterar valor, plano, dependentes), preservando todas as frases e sem repeti-las.
+    const grupoOrdenado = [...grupo].sort((a, b) => ordemDaMovimentacao(a.movimentos) - ordemDaMovimentacao(b.movimentos));
     brutas.push({
       chave,
       vinculo: primeiro.vinculo!,
@@ -165,7 +174,7 @@ export function prepararRelatorio(competenciaReferencia: string, pagamentoEscolh
       nome: primeiro.titular.nome,
       valor: valores.length === 1 ? valores[0] / 100 : undefined,
       valorNaoAplicavel: valores.length === 0 && grupo.some((r) => estadoDoValor(r) === "nao_aplicavel") ? true : undefined,
-      observacao: consolidarObservacoes(grupo.map((r) => r.observacao)),
+      observacao: consolidarObservacoes(grupoOrdenado.map((r) => r.observacao)),
       registroIds: grupo.map((r) => r.id),
       movimentos: grupo.flatMap((r) => r.movimentos.map((m) => descreverMovimento(m))),
       demonstrativo: grupo.some((r) => r.demonstrativo),
@@ -197,8 +206,12 @@ export function prepararRelatorio(competenciaReferencia: string, pagamentoEscolh
   };
 }
 
+const ORDEM_NATUREZA: Movimento["tipo"][] = ["incluir", "reincluir", "alterar_valor", "mudanca_plano", "reajuste_plano", "dependente_incluido", "dependente_excluido", "dependente_reincluido", "a_conferir"];
+const ordemDaMovimentacao = (mv: Movimento[]) => Math.min(...mv.map((m) => ORDEM_NATUREZA.indexOf(m.tipo)), ORDEM_NATUREZA.length);
+
 function descreverMovimento(m: Movimento): string {
-  return m.motivo ? `${ROTULO_TIPO[m.tipo]} — ${textoDoMotivo(m.motivo)}` : ROTULO_TIPO[m.tipo];
+  const natureza = m.tipo === "mudanca_plano" || m.tipo === "reajuste_plano" || m.tipo.startsWith("dependente_");
+  return m.motivo && !natureza ? `${ROTULO_TIPO[m.tipo]} — ${textoDoMotivo(m.motivo)}` : ROTULO_TIPO[m.tipo];
 }
 
 /* ── Emissões independentes (motor genérico em `emissoes-relatorio.ts`) ────────────────────────────────────────── */
@@ -238,7 +251,7 @@ export function revisarRelatorio(competenciaReferencia: string, pagamentoEscolhi
   const daCompetencia = registros.filter((r) => r.competenciaReferencia === competenciaReferencia && r.situacao !== "descartada");
   const prontosBrutos = daCompetencia.filter((r) => r.situacao === "confirmada" && avaliarRegistro(r).impeditivas.length === 0);
   const pagamentos = [...new Set(prontosBrutos.map((r) => r.competenciaPagamento))].sort();
-  const pagamento = pagamentoEscolhido && pagamentos.includes(pagamentoEscolhido) ? pagamentoEscolhido : pagamentos.length === 1 ? pagamentos[0] : undefined;
+  const pagamento = pagamentoEscolhido ?? (pagamentos.length === 1 ? pagamentos[0] : undefined);
   const itens = daCompetencia
     .map<ItemRevisao>((r) => {
       const imp = avaliarRegistro(r).impeditivas;

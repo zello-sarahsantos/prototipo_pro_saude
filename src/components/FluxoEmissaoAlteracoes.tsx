@@ -123,12 +123,12 @@ function CabecalhoModal({ etapa, referencia, pagamento }: { etapa: string; refer
 
 type Etapa = "revisao" | "previa" | "confirmacao" | "concluida";
 
-export function FluxoEmissao({ competencia, responsavel, onFechar, onAbrirHistorico }: { competencia: string; responsavel: string; onFechar: () => void; onAbrirHistorico: () => void }) {
+export function FluxoEmissao({ competencia, pagamento: pagamentoDoRelatorio, responsavel, onFechar, onAbrirHistorico }: { competencia: string; pagamento?: string; responsavel: string; onFechar: () => void; onAbrirHistorico: () => void }) {
   const retornarFoco = useRetornoDeFoco("main h1");
   const registros = useRegistrosAlteracoes();
   const emissoes = useEmissoesAlteracoes();
   const [etapa, setEtapa] = useState<Etapa>("revisao");
-  const [pagEscolhida, setPagEscolhida] = useState<string | undefined>(undefined);
+  const [pagEscolhida, setPagEscolhida] = useState<string | undefined>(pagamentoDoRelatorio);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [inicializado, setInicializado] = useState<string | null>(null);
   const [mostrarEmitidos, setMostrarEmitidos] = useState(false);
@@ -146,10 +146,10 @@ export function FluxoEmissao({ competencia, responsavel, onFechar, onAbrirHistor
   // Seleção inicial: todos os prontos AINDA NÃO EMITIDOS. Registros já emitidos nunca vêm marcados.
   useEffect(() => {
     const chave = `${competencia}|${pag ?? ""}`;
-    if (inicializado === chave || !pag) return;
+    if (inicializado === chave || !pag || revisao.itens.length === 0) return; // sem registros carregados (1ª renderização) não há o que marcar
     setSelecionados(new Set(prontosNaoEmitidos.map((i) => i.registro.id)));
     setInicializado(chave);
-  }, [pag, competencia, prontosNaoEmitidos, inicializado]);
+  }, [pag, competencia, prontosNaoEmitidos, inicializado, revisao.itens.length]);
 
   const prep = useMemo(() => (pag ? prepararRelatorio(competencia, pag, registros, selecionados) : null), [competencia, pag, registros, selecionados]);
   const jaEmitidosSelecionados = prontos.filter((i) => selecionados.has(i.registro.id) && i.emitidoEm.length > 0);
@@ -209,7 +209,20 @@ export function FluxoEmissao({ competencia, responsavel, onFechar, onAbrirHistor
                 <strong>Como funciona:</strong> registros marcados entrarão neste relatório. Ao desmarcar uma pessoa, ela permanece pronta para uma próxima emissão. Registros com pendências ficam bloqueados até a conferência ser concluída. Registros já emitidos ficam ocultos por padrão.
               </p>
 
-              {revisao.pagamentosDisponiveis.length > 1 && (
+              {pagamentoDoRelatorio && (
+                <div role={revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).length > 0 ? "alert" : "note"} className="rounded-xl border border-border px-4 py-3 text-sm space-y-1">
+                  <p>
+                    <strong>Este relatório:</strong> referência {formatCompetencia(competencia)} · pagamento {formatCompetencia(pagamentoDoRelatorio)}. Só entram registros com exatamente estas duas competências.
+                  </p>
+                  {revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).length > 0 && (
+                    <p className="text-status-pendente-fg">
+                      Inconsistência: {revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).length} registro(s) conferido(s) têm outra competência de pagamento ({[...new Set(revisao.itens.filter((i) => i.registro.situacao === "confirmada" && i.registro.competenciaPagamento !== pagamentoDoRelatorio).map((i) => formatCompetencia(i.registro.competenciaPagamento)))].join(", ")}) e ficam fora desta emissão, sem alteração. Emita-os em um relatório separado, escolhendo aquela competência de pagamento.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!pagamentoDoRelatorio && revisao.pagamentosDisponiveis.length > 1 && (
                 <label className="block text-sm max-w-sm">
                   Competência de pagamento deste relatório
                   <select value={pagEscolhida ?? ""} onChange={(e) => { setPagEscolhida(e.target.value || undefined); setInicializado(null); setSelecionados(new Set()); }} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -241,7 +254,7 @@ export function FluxoEmissao({ competencia, responsavel, onFechar, onAbrirHistor
                   </div>
                 </div>
                 {ordenados.length === 0 ? (
-                  <p className="px-5 py-8 text-center text-sm text-foreground/75">Nenhum registro na competência. Use “Buscar movimentações” ou “Incluir alteração” e conclua a conferência.</p>
+                  <p className="px-5 py-8 text-center text-sm text-foreground/75">Nenhum registro na competência. Use “Buscar e preencher registros” ou “Incluir alteração” e conclua a conferência.</p>
                 ) : (
                   <ul className="divide-y divide-border">
                     {ordenados.map((i) => (

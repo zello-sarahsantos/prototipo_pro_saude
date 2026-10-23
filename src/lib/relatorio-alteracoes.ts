@@ -40,6 +40,9 @@ export type TipoMovimentacao =
   | "incluir"
   | "reincluir"
   | "alterar_valor"
+  /** Natureza efetiva SEM alteração do ressarcimento final (ex.: troca de plano com o mesmo valor final). Nunca implica "Alterar valor". */
+  | "mudanca_plano"
+  | "reajuste_plano"
   | "dependente_incluido"
   | "dependente_excluido"
   | "dependente_reincluido"
@@ -50,6 +53,8 @@ export const ROTULO_TIPO: Record<TipoMovimentacao, string> = {
   incluir: "Incluir",
   reincluir: "Reincluir",
   alterar_valor: "Alterar valor",
+  mudanca_plano: "Mudança de plano",
+  reajuste_plano: "Reajuste de plano",
   dependente_incluido: "Inclusão de dependente",
   dependente_excluido: "Exclusão de dependente",
   dependente_reincluido: "Reinclusão de dependente",
@@ -70,11 +75,42 @@ export const MOTIVOS_REFERENCIA = {
 } as const;
 export type ChaveMotivoReferencia = keyof typeof MOTIVOS_REFERENCIA;
 
+/** Dependente envolvido numa movimentação (inclusão/exclusão/reinclusão). Pertence ao MOVIMENTO, não ao registro do titular. */
+export interface DependenteMovimento {
+  nome: string;
+  parentesco?: string;
+  /** Referência ao cadastro quando o dependente consta nominalmente nele (ex.: "cadastro:Ana da Silva"); ausente = informado manualmente. */
+  referenciaCadastro?: string;
+  /** true = informado manualmente, fora do cadastro: precisa de validação pela GERDAB. Nunca altera o cadastro. */
+  pendenteValidacao?: boolean;
+}
+
 /** Uma movimentação dentro do registro. `motivo`: chave de `MOTIVOS_REFERENCIA` ou texto livre (ou ausente). */
 export interface Movimento {
   tipo: TipoMovimentacao;
   motivo?: string;
+  /** Opcional (movimentos antigos não têm): dependente envolvido, para os tipos de dependente. */
+  dependente?: DependenteMovimento;
 }
+
+/**
+ * Valor SUGERIDO pelo sistema para o Valor NURFI: resultado final de ressarcimento do grupo familiar já apurado e validado em outro módulo
+ * (Fechamento), para o titular e a competência de referência do registro. NÃO é o valor confirmado: o registro continua em conferência
+ * e só `valorInformadoNurfi` (confirmado ou ajustado pela GERDAB) vale para o relatório.
+ */
+export interface ValorSugerido {
+  valor: number;
+  /** Módulo de origem (ex.: "Fechamento de Pagamento"). */
+  fonte: string;
+  competencia: string;
+  descricao: string;
+}
+/** Por que NÃO há valor sugerido (o campo permanece pendente; nada é estimado). */
+export interface PendenciaValorSugerido {
+  tipo: "indisponivel" | "nao_validado" | "divergente";
+  descricao: string;
+}
+export const ROTULO_PENDENCIA_VALOR: Record<PendenciaValorSugerido["tipo"], string> = { indisponivel: "Valor não disponível", nao_validado: "Valor ainda não validado", divergente: "Valores divergentes" };
 
 export interface IdentificacaoTitular {
   nome: string;
@@ -92,7 +128,7 @@ export interface ValoresReferencia {
   calculado?: number;
 }
 
-export type ModuloOrigem = "comprovantes" | "requerimentos" | "planilhas_associacao" | "ressarcimentos" | "cadastro" | "fechamento" | "manual" | "demonstrativo";
+export type ModuloOrigem = "movimentacoes" | "comprovantes" | "requerimentos" | "planilhas_associacao" | "ressarcimentos" | "cadastro" | "fechamento" | "manual" | "demonstrativo";
 
 /** Referência ao registro original (somente leitura — nunca é alterado por este módulo). */
 export interface ReferenciaOrigem {
@@ -144,9 +180,26 @@ export interface RegistroAlteracao {
   competenciaEstimada?: boolean;
   /** "AAAA-MM" — mês do pagamento em folha (padrão: mês seguinte à referência, Instrução nº 492/2023, art. 18). */
   competenciaPagamento: string;
+  /**
+   * "AAAA-MM" — competência em que a alteração PASSOU A PRODUZIR EFEITOS. Independente da referência e do pagamento; nunca
+   * presumida (nem da data de aprovação do requerimento, nem da referência). Ausente = pendente de conferência pela GERDAB
+   * (também em registros anteriores a este campo). Alterações ficam no histórico do registro.
+   */
+  competenciaEfeito?: string;
+  /** @deprecated A competência de efeito deixou de ser exigida (A5-prep): o campo existe só para preservar registros gravados na A3. */
+  efeitoObrigatorio?: boolean;
+  /**
+   * true nos registros criados a partir desta revisão: a observação NURFI precisa descrever a movimentação (natureza + motivo quando
+   * comprovado); texto apenas genérico ("Alterar valor.", "Incluir.", "Reincluir.") deixa o registro pendente de complementação.
+   * Ausente nos registros anteriores: nada é exigido retroativamente.
+   */
+  observacaoDetalhadaExigida?: boolean;
   movimentos: Movimento[];
   valores: ValoresReferencia;
   valorInformadoNurfi?: number;
+  /** Sugestão do sistema (nunca confirma sozinha). */
+  valorSugerido?: ValorSugerido;
+  valorPendencia?: PendenciaValorSugerido;
   /**
    * A GERDAB declarou, com justificativa, que a movimentação NÃO possui valor financeiro aplicável. É distinto de "valor
    * pendente" (campo vazio sem declaração) e de "valor preenchido"; nunca é representado por zero.
@@ -219,11 +272,13 @@ export function competenciaPagamentoPadrao(competenciaReferencia: string): strin
 
 /* ── Observação NURFI (sugestão reutilizável; o texto final é sempre livre) ─────────────────────────────────────────── */
 
-const ORDEM_TIPOS: TipoMovimentacao[] = ["incluir", "reincluir", "alterar_valor", "dependente_incluido", "dependente_excluido", "dependente_reincluido", "a_conferir"];
+const ORDEM_TIPOS: TipoMovimentacao[] = ["incluir", "reincluir", "alterar_valor", "mudanca_plano", "reajuste_plano", "dependente_incluido", "dependente_excluido", "dependente_reincluido", "a_conferir"];
 const FRASE_TIPO: Record<TipoMovimentacao, string> = {
   incluir: "Incluir",
   reincluir: "Reincluir",
   alterar_valor: "Alterar valor",
+  mudanca_plano: "Mudou de plano",
+  reajuste_plano: "Reajuste do plano",
   dependente_incluido: "Incluiu dependente(s)",
   dependente_excluido: "Excluiu dependente(s)",
   dependente_reincluido: "Reincluiu dependente(s)",
@@ -249,13 +304,23 @@ export function sugerirObservacao(movimentos: Movimento[]): string {
   return ordenados
     .map(({ m }) => {
       const motivo = textoDoMotivo(m.motivo);
-      const dependente = m.tipo.startsWith("dependente_");
+      // Tipos cuja própria frase já é a natureza (dependente, mudança e reajuste de plano): o motivo, se houver, substitui a frase (sem repetir).
+      const dependente = m.tipo.startsWith("dependente_") || m.tipo === "mudanca_plano" || m.tipo === "reajuste_plano";
       // "a conferir" não tem verbo próprio: só o motivo (se a origem o sustentar); a GERDAB completa a frase.
       if (m.tipo === "a_conferir") return motivo ? comPonto(motivo) : "";
       return dependente && motivo ? comPonto(motivo) : [comPonto(FRASE_TIPO[m.tipo]), motivo ? comPonto(motivo) : ""].filter(Boolean).join(" ");
     })
     .filter(Boolean)
     .join(" ");
+}
+
+/** Frases de TIPO sozinhas não explicam a movimentação. A observação é genérica quando, tirando-as, não sobra texto. Só vale para os tipos
+ *  que exigem motivo (incluir, reincluir e alterar valor); movimentos de dependente já dizem a natureza ("Incluiu dependente(s)."). */
+export function observacaoGenerica(observacao: string, movimentos: Movimento[]): boolean {
+  if (!movimentos.some((m) => m.tipo === "incluir" || m.tipo === "reincluir" || m.tipo === "alterar_valor")) return false;
+  let t = ` ${norm(observacao).replace(/[.;,:]/g, " ")} `;
+  for (const f of ["reincluir", "incluir", "alterar valor"]) t = t.split(` ${f} `).join("  ");
+  return t.replace(/\s+/g, "") === "";
 }
 
 /* ── Duplicidade ────────────────────────────────────────────────────────────────────────────────────────────────── */
@@ -323,9 +388,13 @@ export interface NovoRegistroAlteracao {
   competenciaPagamento?: string;
   /** A competência de referência é uma estimativa a conferir. */
   competenciaEstimada?: boolean;
+  /** Competência em que a alteração passou a produzir efeitos (opcional; nunca presumida). */
+  competenciaEfeito?: string;
   movimentos: Movimento[];
   valores?: ValoresReferencia;
   valorInformadoNurfi?: number;
+  valorSugerido?: ValorSugerido;
+  valorPendencia?: PendenciaValorSugerido;
   /** Padrão: sugestão a partir das movimentações. */
   observacao?: string;
   origemInformacao: OrigemInformacao;
@@ -365,9 +434,13 @@ export function registrarMovimentacao(entrada: NovoRegistroAlteracao, responsave
     competenciaReferencia: entrada.competenciaReferencia,
     competenciaPagamento: entrada.competenciaPagamento ?? competenciaPagamentoPadrao(entrada.competenciaReferencia),
     competenciaEstimada: entrada.competenciaEstimada || undefined,
+    observacaoDetalhadaExigida: true,
+    competenciaEfeito: entrada.competenciaEfeito && /^\d{4}-(0[1-9]|1[0-2])$/.test(entrada.competenciaEfeito) ? entrada.competenciaEfeito : undefined,
     movimentos: entrada.movimentos.map((m) => ({ ...m })),
     valores: { ...(entrada.valores ?? {}) },
     valorInformadoNurfi: entrada.valorInformadoNurfi,
+    valorSugerido: entrada.valorSugerido,
+    valorPendencia: entrada.valorSugerido ? undefined : entrada.valorPendencia,
     observacao: observacao || sugerirObservacao(entrada.movimentos),
     observacaoEditada: !!observacao,
     origemInformacao: entrada.origemInformacao,
@@ -406,13 +479,20 @@ function exigirJustificativaSeConfirmado(r: RegistroAlteracao, justificativa?: s
   if (r.situacao === "confirmada" && !justificativa?.trim()) throw new Error("Registro confirmado: informe a justificativa da alteração.");
 }
 
+/** Descrição auditável das movimentações (inclui o dependente identificado, quando houver). */
+export function descreverMovimentos(mv: Movimento[]): string {
+  return mv
+    .map((m) => `${ROTULO_TIPO[m.tipo]}${m.motivo ? ` — ${textoDoMotivo(m.motivo)}` : ""}${m.dependente ? ` [dependente: ${m.dependente.nome}${m.dependente.parentesco ? ` (${m.dependente.parentesco})` : ""}${m.dependente.pendenteValidacao ? " — pendente de validação" : ""}]` : ""}`)
+    .join(" + ");
+}
+
 /** Altera as movimentações. Se a observação nunca foi editada à mão, a sugestão é atualizada junto (e o fato fica no histórico). */
 export function atualizarMovimentos(id: string, movimentos: Movimento[], responsavel: string, justificativa?: string): RegistroAlteracao {
   validarMovimentos(movimentos);
   return alterar(id, (r) => {
     exigirJustificativaSeConfirmado(r, justificativa);
     const sugestao = sugerirObservacao(movimentos);
-    const alteracoes: CampoAlterado[] = [{ campo: "movimentos", anterior: sugerirObservacao(r.movimentos) || "—", novo: sugestao }];
+    const alteracoes: CampoAlterado[] = [{ campo: "movimentos", anterior: descreverMovimentos(r.movimentos) || "—", novo: descreverMovimentos(movimentos) }];
     const resto: Partial<RegistroAlteracao> = { movimentos: movimentos.map((m) => ({ ...m })) };
     if (!r.observacaoEditada && r.observacao !== sugestao) {
       alteracoes.push({ campo: "observacao", anterior: r.observacao, novo: sugestao });
@@ -429,6 +509,13 @@ export function atualizarValorInformado(id: string, valor: number | undefined, r
     if (r.valorInformadoNurfi === valor) throw new Error("Nenhum valor foi alterado.");
     exigirJustificativaSeConfirmado(r, justificativa);
     const alteracoes: CampoAlterado[] = [{ campo: "valorInformadoNurfi", anterior: r.valorInformadoNurfi ?? null, novo: valor ?? null }];
+    // Primeira definição do valor com SUGESTÃO do sistema: confirmar o valor sugerido é a decisão da GERDAB; divergir dele (ajuste manual) exige
+    // justificativa. A sugestão e o resultado ficam no histórico (a sugestão original permanece no registro).
+    if (r.valorInformadoNurfi === undefined && r.valorSugerido && valor !== undefined) {
+      const confirmou = Math.abs(valor - r.valorSugerido.valor) < 0.005;
+      if (!confirmou && !justificativa?.trim()) throw new Error("Ajuste do valor sugerido pelo sistema: informe a justificativa.");
+      alteracoes.push({ campo: `valor sugerido (${r.valorSugerido.fonte}, ${r.valorSugerido.competencia})`, anterior: r.valorSugerido.valor, novo: confirmou ? "confirmado pela GERDAB" : "ajustado pela GERDAB" });
+    }
     // Informar um valor encerra a declaração de "não aplicável" (os dois estados são excludentes); isso fica no histórico.
     if (valor !== undefined && r.valorNaoAplicavel) alteracoes.push({ campo: "valorNaoAplicavel", anterior: r.valorNaoAplicavel.justificativa, novo: null });
     return comEvento(r, evento("alteracao_valor", responsavel, justificativa, alteracoes), { valorInformadoNurfi: valor, valorNaoAplicavel: valor !== undefined ? undefined : r.valorNaoAplicavel });
@@ -470,6 +557,7 @@ export function atualizarObservacao(id: string, texto: string, responsavel: stri
 export interface DadosEditaveis {
   titularNome?: string;
   matricula?: string;
+  cpf?: string;
   vinculo?: VinculoFuncional;
   origemPagamento?: OrigemPagamento;
   competenciaReferencia?: string;
@@ -479,6 +567,7 @@ export interface DadosEditaveis {
 const ROTULO_CAMPO: Record<keyof DadosEditaveis, string> = {
   titularNome: "Nome do titular",
   matricula: "Matrícula",
+  cpf: "CPF do titular",
   vinculo: "Vínculo funcional",
   origemPagamento: "Origem de pagamento",
   competenciaReferencia: "Competência de referência",
@@ -489,7 +578,7 @@ const ROTULO_CAMPO: Record<keyof DadosEditaveis, string> = {
  *  referência encerra o "estimada"; a de pagamento volta a ser sugerida como mês seguinte se a referência mudar e ela não for informada. */
 export function atualizarDados(id: string, patch: DadosEditaveis, responsavel: string, justificativa?: string): RegistroAlteracao {
   return alterar(id, (r) => {
-    const anterior: Record<string, string | undefined> = { titularNome: r.titular.nome, matricula: r.titular.matricula, vinculo: r.vinculo, origemPagamento: r.origemPagamento, competenciaReferencia: r.competenciaReferencia, competenciaPagamento: r.competenciaPagamento };
+    const anterior: Record<string, string | undefined> = { titularNome: r.titular.nome, matricula: r.titular.matricula, cpf: r.titular.cpf, vinculo: r.vinculo, origemPagamento: r.origemPagamento, competenciaReferencia: r.competenciaReferencia, competenciaPagamento: r.competenciaPagamento };
     const novoPatch: DadosEditaveis = { ...patch };
     if (patch.competenciaReferencia && patch.competenciaReferencia !== r.competenciaReferencia && patch.competenciaPagamento === undefined) novoPatch.competenciaPagamento = competenciaPagamentoPadrao(patch.competenciaReferencia);
     const alteracoes: CampoAlterado[] = [];
@@ -501,7 +590,7 @@ export function atualizarDados(id: string, patch: DadosEditaveis, responsavel: s
     if (novoPatch.titularNome !== undefined && !novoPatch.titularNome.trim()) throw new Error("Informe o nome do titular.");
     exigirJustificativaSeConfirmado(r, justificativa);
     const resto: Partial<RegistroAlteracao> = {
-      titular: { ...r.titular, nome: novoPatch.titularNome?.trim() || r.titular.nome, matricula: "matricula" in novoPatch ? novoPatch.matricula?.trim() || undefined : r.titular.matricula },
+      titular: { ...r.titular, nome: novoPatch.titularNome?.trim() || r.titular.nome, matricula: "matricula" in novoPatch ? novoPatch.matricula?.trim() || undefined : r.titular.matricula, cpf: "cpf" in novoPatch ? novoPatch.cpf?.trim() || undefined : r.titular.cpf },
       vinculo: "vinculo" in novoPatch ? novoPatch.vinculo : r.vinculo,
       origemPagamento: "origemPagamento" in novoPatch ? novoPatch.origemPagamento : r.origemPagamento,
       competenciaReferencia: novoPatch.competenciaReferencia ?? r.competenciaReferencia,
@@ -509,6 +598,30 @@ export function atualizarDados(id: string, patch: DadosEditaveis, responsavel: s
     };
     if (novoPatch.competenciaReferencia !== undefined || novoPatch.competenciaPagamento !== undefined) resto.competenciaEstimada = undefined;
     return comEvento(r, evento("alteracao_dados", responsavel, justificativa, alteracoes), resto);
+  });
+}
+
+/**
+ * Define (ou limpa, voltando a "pendente") a competência de efeito da alteração. Independente da referência e do pagamento; auditada
+ * (valor anterior/novo, responsável, data/hora); depois de confirmado o registro, exige justificativa. Não altera emissões já feitas
+ * (elas guardam o próprio snapshot) nem nenhum outro módulo.
+ */
+export function atualizarCompetenciaEfeito(id: string, competencia: string | undefined, responsavel: string, justificativa?: string): RegistroAlteracao {
+  return alterar(id, (r) => {
+    const novo = competencia?.trim() || undefined;
+    if (novo !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(novo)) throw new Error("Competência de efeito inválida (use mês e ano).");
+    if (novo === r.competenciaEfeito) throw new Error("Nenhuma alteração na competência de efeito.");
+    exigirJustificativaSeConfirmado(r, justificativa);
+    return comEvento(r, evento("alteracao_dados", responsavel, justificativa, [{ campo: "Competência de efeito", anterior: r.competenciaEfeito ?? null, novo: novo ?? null }]), { competenciaEfeito: novo });
+  });
+}
+
+/** A GERDAB conferiu a competência de referência estimada (ex.: mês da decisão de um requerimento): encerra o "estimada" sem alterar nenhuma competência. */
+export function confirmarCompetenciasRegistro(id: string, responsavel: string, justificativa?: string): RegistroAlteracao {
+  return alterar(id, (r) => {
+    if (!r.competenciaEstimada) throw new Error("As competências deste registro já estão conferidas.");
+    exigirJustificativaSeConfirmado(r, justificativa);
+    return comEvento(r, evento("alteracao_dados", responsavel, justificativa, [{ campo: "Competências conferidas", anterior: `${r.competenciaReferencia} / pagamento ${r.competenciaPagamento} (referência estimada)`, novo: `${r.competenciaReferencia} / pagamento ${r.competenciaPagamento}` }]), { competenciaEstimada: undefined });
   });
 }
 
@@ -542,7 +655,7 @@ export function reabrirRegistro(id: string, responsavel: string, justificativa?:
  * Regra PROVISÓRIA (a validar com a GERDAB): exigem valor informado ao NURFI as movimentações que alteram o pagamento do
  * titular (incluir, reincluir, alterar valor). Movimentações só de dependente não presumem alteração financeira.
  */
-export const TIPOS_QUE_EXIGEM_VALOR: TipoMovimentacao[] = ["incluir", "reincluir", "alterar_valor"];
+export const TIPOS_QUE_EXIGEM_VALOR: TipoMovimentacao[] = ["incluir", "reincluir", "alterar_valor", "mudanca_plano", "reajuste_plano"];
 export const exigeValor = (movimentos: Movimento[]) => movimentos.some((m) => TIPOS_QUE_EXIGEM_VALOR.includes(m.tipo));
 
 export type EstadoValor = "preenchido" | "pendente" | "nao_aplicavel";
@@ -578,6 +691,13 @@ export function avaliarRegistro(r: RegistroAlteracao): AvaliacaoRegistro {
   if (!r.observacao.trim()) imp.push("Observação NURFI vazia");
   const ev = estadoDoValor(r);
   if (ev === "pendente") (exigeValor(r.movimentos) ? imp : info).push(exigeValor(r.movimentos) ? "Valor informado ao NURFI pendente" : "Sem valor informado (não exigido para esta movimentação)");
+  if (r.observacaoDetalhadaExigida && r.observacao.trim() && observacaoGenerica(r.observacao, r.movimentos)) imp.push("Observação NURFI genérica: descreva o motivo da movimentação");
+  for (const m of r.movimentos) {
+    if (!["dependente_incluido", "dependente_excluido", "dependente_reincluido"].includes(m.tipo)) continue;
+    // A identificação nominal do dependente é INFORMAÇÃO COMPLEMENTAR: sua ausência nunca gera pendência nem bloqueio (o relatório é
+    // por grupo familiar, com uma linha por titular). Só se informa que um nome digitado à mão ainda não foi validado.
+    if (m.dependente?.pendenteValidacao) info.push(`Dependente ${m.dependente.nome} informado manualmente — pendente de validação`);
+  }
   if (ev === "nao_aplicavel") info.push(`Valor declarado como não aplicável: ${r.valorNaoAplicavel!.justificativa}`);
   return { impeditivas: imp, informativas: info };
 }
@@ -599,10 +719,17 @@ export function pendenciasAmigaveis(r: RegistroAlteracao): PendenciaAmigavel[] {
   if (!r.titular.nome.trim()) p.push({ chave: "nome", tabela: "Informe o beneficiário", rodape: "Selecione o beneficiário." });
   if (r.movimentos.some((m) => m.tipo === "a_conferir")) p.push({ chave: "classificar", tabela: "Selecione o tipo de alteração", rodape: "Selecione o tipo de movimentação." });
   const imp = avaliarRegistro(r).impeditivas;
-  if (imp.some((x) => x.startsWith("Competência"))) p.push({ chave: "competencia", tabela: "Confirme o mês da alteração", rodape: "Confirme a competência da alteração." });
+  if (imp.some((x) => x.startsWith("Competência") && !x.startsWith("Competência de efeito"))) p.push({ chave: "competencia", tabela: "Confirme o mês da alteração", rodape: "Confirme a competência da alteração." });
+  if (imp.includes("Observação NURFI genérica: descreva o motivo da movimentação")) p.push({ chave: "observacao", tabela: "Complemente a observação NURFI", rodape: "Complemente a observação NURFI com o motivo da movimentação (texto genérico como “Alterar valor.” não basta)." });
   if (imp.some((x) => x.startsWith("Valor informado"))) {
     const temReferencia = Object.values(r.valores).some((v) => v !== undefined);
-    p.push({ chave: "valor", tabela: temReferencia ? "Confirme o valor destinado ao NURFI" : "Falta informar o valor", rodape: "Informe o valor destinado ao NURFI (ou declare que não se aplica, com justificativa)." });
+    p.push(
+      r.valorSugerido
+        ? { chave: "valor", tabela: "Confirme o valor sugerido", rodape: "Confirme (ou ajuste, com justificativa) o Valor NURFI sugerido pelo sistema." }
+        : r.valorPendencia
+          ? { chave: "valor", tabela: `${ROTULO_PENDENCIA_VALOR[r.valorPendencia.tipo]}: informe o valor`, rodape: `${ROTULO_PENDENCIA_VALOR[r.valorPendencia.tipo]} — informe o Valor NURFI (ou declare que não se aplica, com justificativa).` }
+          : { chave: "valor", tabela: temReferencia ? "Confirme o valor destinado ao NURFI" : "Falta informar o valor", rodape: "Informe o valor destinado ao NURFI (ou declare que não se aplica, com justificativa)." },
+    );
   }
   if (!r.vinculo) p.push({ chave: "vinculo", tabela: "Defina o vínculo funcional", rodape: "Defina o vínculo funcional (Ativo ou Inativo)." });
   if (!r.origemPagamento) p.push({ chave: "origem", tabela: "Defina a origem de pagamento", rodape: "Defina a origem de pagamento (Boletos, ASSEFAZ ou ASSETRAN)." });
@@ -616,7 +743,7 @@ export const motivosDeConferencia = (r: RegistroAlteracao) => pendenciasAmigavei
 /** Todas as pendências (impeditivas primeiro) — usado nos contadores e avisos da conferência. */
 export function pendenciasDoRegistro(r: RegistroAlteracao): string[] {
   const a = avaliarRegistro(r);
-  return [...a.impeditivas, ...a.informativas.filter((i) => !i.startsWith("Sem valor informado") && !i.startsWith("Valor declarado como não aplicável"))];
+  return [...a.impeditivas, ...a.informativas.filter((i) => !i.startsWith("Sem valor informado") && !i.startsWith("Valor declarado como não aplicável") && !i.startsWith("Competência de efeito") && !i.startsWith("Dependente "))];
 }
 
 /** @deprecated use `pendenciasDoRegistro` (mantido por compatibilidade com a Etapa 2). */

@@ -11,7 +11,7 @@
 import { dependentes as dependentesCadastro, servidorAtual, servidoresList } from "./mock-data";
 import { getAssociacaoResponsavelPorCpf, getClassificacaoAtivoInativoPorCpf, normalizarCpf } from "./base-institucional";
 import { getBeneficiariosPagamentoAtual } from "./prosaude-storage";
-import { pessoasDemonstrativas } from "./fontes-suspensoes";
+import { pessoasDemonstrativas, type PessoaDemonstrativa } from "./fontes-suspensoes";
 import type { OrigemPagamento, VinculoFuncional } from "./relatorio-alteracoes";
 
 export interface DependenteCadastral {
@@ -75,8 +75,8 @@ function doPagamento(): ServidorCadastral[] {
     });
 }
 
-function daDemonstracao(): ServidorCadastral[] {
-  return pessoasDemonstrativas().map((p) => ({
+function daDemonstracao(pessoas: PessoaDemonstrativa[]): ServidorCadastral[] {
+  return pessoas.map((p) => ({
     nome: p.nome,
     matricula: p.matricula,
     cpf: p.cpf,
@@ -90,14 +90,16 @@ function daDemonstracao(): ServidorCadastral[] {
 }
 
 /** Todos os servidores consultáveis (sem duplicar matrícula: prevalece o Cadastro de servidores). */
-export function listarServidoresCadastrais(opcoes: { demonstracao?: boolean } = {}): ServidorCadastral[] {
+/** `pessoasDemo`: as pessoas FICTÍCIAS a oferecer no ambiente demonstrativo (padrão: as do Relatório de Suspensões). Só valem com `demonstracao`. */
+export type OpcoesBuscaCadastral = { demonstracao?: boolean; pessoasDemo?: PessoaDemonstrativa[] };
+export function listarServidoresCadastrais(opcoes: OpcoesBuscaCadastral = {}): ServidorCadastral[] {
   const porMatricula = new Map<string, ServidorCadastral>();
-  for (const s of [...doCadastro(), ...doPagamento(), ...(opcoes.demonstracao ? daDemonstracao() : [])]) if (!porMatricula.has(s.matricula)) porMatricula.set(s.matricula, s);
+  for (const s of [...doCadastro(), ...doPagamento(), ...(opcoes.demonstracao ? daDemonstracao(opcoes.pessoasDemo ?? pessoasDemonstrativas()) : [])]) if (!porMatricula.has(s.matricula)) porMatricula.set(s.matricula, s);
   return [...porMatricula.values()];
 }
 
 /** Pesquisa por nome (sem acento, qualquer trecho) ou matrícula. Sem limite de cadastro: `limite` só controla quantos aparecem. */
-export function buscarServidoresCadastrais(termo: string, opcoes: { demonstracao?: boolean; limite?: number } = {}): { itens: ServidorCadastral[]; total: number } {
+export function buscarServidoresCadastrais(termo: string, opcoes: OpcoesBuscaCadastral & { limite?: number } = {}): { itens: ServidorCadastral[]; total: number } {
   const t = norm(termo);
   if (!t) return { itens: [], total: 0 };
   const achados = listarServidoresCadastrais(opcoes)
@@ -107,7 +109,7 @@ export function buscarServidoresCadastrais(termo: string, opcoes: { demonstracao
 }
 
 /** Consulta de um titular já gravado no registro (por matrícula; sem matrícula, por CPF). `undefined` = fora do cadastro. */
-export function consultarServidorCadastral(ref: { matricula?: string; cpf?: string }, opcoes: { demonstracao?: boolean } = {}): ServidorCadastral | undefined {
+export function consultarServidorCadastral(ref: { matricula?: string; cpf?: string }, opcoes: OpcoesBuscaCadastral = {}): ServidorCadastral | undefined {
   const todos = listarServidoresCadastrais(opcoes);
   if (ref.matricula) {
     const m = todos.find((s) => s.matricula === ref.matricula);

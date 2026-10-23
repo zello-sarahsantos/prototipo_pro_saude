@@ -1,14 +1,14 @@
 import { useId, useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { buscarServidoresCadastrais, ROTULO_FONTE_CADASTRAL, type ServidorCadastral } from "@/lib/cadastro-servidores-busca";
+import { buscarServidoresCadastrais, ROTULO_FONTE_CADASTRAL, type OpcoesBuscaCadastral, type ServidorCadastral } from "@/lib/cadastro-servidores-busca";
 
 /** Campo de pesquisa com sugestões (nome ou matrícula) sobre o cadastro existente. Somente leitura: não cria nem altera cadastro. */
-export function SeletorServidorCadastral({ onSelecionar, demonstracao, rotulo = "Pesquisar servidor (nome ou matrícula)", autoFocus }: { onSelecionar: (s: ServidorCadastral) => void; demonstracao?: boolean; rotulo?: string; autoFocus?: boolean }) {
+export function SeletorServidorCadastral({ onSelecionar, demonstracao, pessoasDemo, rotulo = "Pesquisar servidor (nome ou matrícula)", autoFocus }: { onSelecionar: (s: ServidorCadastral) => void; demonstracao?: boolean; pessoasDemo?: OpcoesBuscaCadastral["pessoasDemo"]; rotulo?: string; autoFocus?: boolean }) {
   const id = useId();
   const [termo, setTermo] = useState("");
   const [ativo, setAtivo] = useState(0);
   const [aberto, setAberto] = useState(false);
-  const { itens, total } = useMemo(() => buscarServidoresCadastrais(termo, { demonstracao, limite: 8 }), [termo, demonstracao]);
+  const { itens, total } = useMemo(() => buscarServidoresCadastrais(termo, { demonstracao, pessoasDemo, limite: 8 }), [termo, demonstracao, pessoasDemo]);
   const mostrar = aberto && termo.trim().length > 0;
 
   function escolher(s: ServidorCadastral) {
