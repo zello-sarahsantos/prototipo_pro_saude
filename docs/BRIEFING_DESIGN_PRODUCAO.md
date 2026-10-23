@@ -1123,6 +1123,14 @@ mesmo estilo de texto pequeno e cinza com links.
 - **Padding de conteúdo:** telas internas usam `p-4` simples (não `p-4 sm:p-8` — não há salto de
   padding em telas maiores, já que a largura já é fixa em 448px).
 
+- **Blocos expansíveis (padrão único — commit `80ba105`).** Três cartões usam o **mesmo controle** `ControleExpansao` (`src/components/ControleExpansao.tsx`: `ControleExpansaoVisual` + `BotaoExpansao`): **Prazos e alertas documentais** (página inicial), **Histórico de Comprovações** (Pagamentos) e **Ressarcimento de meses anteriores** (Pagamentos).
+  - **Controle:** texto **Expandir/Recolher** + chevron discreto de **20 px** (`ChevronDown`; recolhido aponta para baixo, expandido gira 180° para cima), em azul institucional (`text-primary`, sem sublinhado), no **canto superior direito** do cabeçalho; texto e ícone são **um único botão** (`aria-expanded`, `aria-controls`, foco visível `focus-visible:ring-ring`, área de toque ≥ 44 px). A transição é discreta e some com `prefers-reduced-motion`.
+  - **Cabeçalho clicável:** clicar em qualquer ponto do cabeçalho (título, indicadores, descrição) alterna o bloco; o botão não tem `onClick` próprio (o clique sobe ao cabeçalho), então o teclado (Enter/Espaço) funciona sem botões aninhados. Ações do corpo (ex.: "Incluir documento", itens do histórico) **não** recolhem.
+  - **Topo azul ao expandir:** igual ao Dashboard, o cabeçalho expandido ganha fundo azul claro (`bg-info/10`), linha de destaque no topo (`border-t-2 border-t-info/60`) e divisória inferior (`border-info/30`); o corpo continua em fundo `card`. Recolhido, o cartão é neutro.
+  - **Estados iniciais:** os três começam **recolhidos**.
+  - **Prazos e alertas documentais:** recolhido mostra o título, os indicadores (**vencidos**, a vencer, sem prazo e **aguardando análise** — calculados das pendências e status existentes, sem valores fixos) e a orientação resumida das consequências (ex.: "Sem envio no prazo, o benefício é bloqueado temporariamente."); os cartões não aparecem. Expandido, o cabeçalho traz "N prazos vencidos • Envio necessário" e "N documento(s) aguardando análise", e o corpo duas seções: **Pendências documentais** (responsável, "Prazo vencido/No prazo/Sem prazo", documento, descrição, prazo, "Como isso afeta o benefício?" e **Incluir documento**, com o mesmo envio de antes) e **Documentos enviados** (responsável · documento, "Aguardando análise"/"Aprovado", data e hora). Sem pendências nem documentos enviados, o bloco não aparece. As regras de prazo, bloqueio, envio e análise **não mudaram**.
+  - **Pagamentos:** ordem **Comprovante de Rendimentos** (sempre visível; descrição "Consulte os valores de auxílio-saúde recebidos por ano.") antes do **Histórico de Comprovações** (recolhido, com descrição resumida; expandido lista todas as competências com status, valores, documentos e abertura do detalhe de cada uma).
+
 ### 23.2 Área da Associação
 
 - **Duas naturezas de tela distintas dentro do mesmo perfil:**
@@ -1600,6 +1608,9 @@ Prazos e alertas documentais (`PainelExpansao.tsx`, `PaineisIndicadores.tsx`; cl
 - **Restaurar dados de demonstração**: link discreto (texto `muted`, ícone de desfazer) no fim da página, **sem competir** com
   "Emitir relatório"; confirmação deixa claro que afeta apenas registros demonstrativos e o que é preservado.
 - Documentos PDF/Excel do relatório: identificação como "Emitido em: 20/10/2026, às 11h51" e "Responsável pela emissão" (não como filtros).
+
+- **Tela Negociações (commit `80ba105`).** O botão **"+ Nova negociação"** foi ampliado discretamente (altura de 40 para **46 px**, preenchimento lateral **22 px**, fonte **15 px**, ícone **18 px**), mantendo a cor azul institucional, o texto, o ícone e o canto superior direito; em telas estreitas quebra de linha sem rolagem horizontal. A criação de negociações não mudou.
+- **Fila "Confirmações de pagamento pendentes".** O **cabeçalho inteiro** alterna a fila — indicador numérico, título, texto explicativo, áreas livres e o botão existente ("Ocultar fila"/"Exibir fila" com o chevron que gira 180°). **Estado inicial: expandida** (preservado). Recolhida, some só a tabela: cabeçalho, indicador e texto permanecem. O botão tem `aria-expanded`/`aria-controls` e **não** possui `onClick` próprio (o clique sobe ao cabeçalho: sem botões aninhados; Enter/Espaço funcionam); o botão **Confirmar** da tabela (e o link do servidor) **não** alternam a fila. A contagem e os critérios de classificação das parcelas **não mudaram**. O visual segue o padrão administrativo (estilos do módulo), sem o componente compartilhado do Portal do Servidor.
 
 ### 29.3 Tema escuro e responsividade
 - Selos e cartões usam variáveis `--gd-*`; na Área da Associação, preferir classes com sobrescrita escura já existente

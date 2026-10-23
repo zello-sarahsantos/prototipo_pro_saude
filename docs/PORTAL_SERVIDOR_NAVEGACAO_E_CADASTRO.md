@@ -1,6 +1,6 @@
 # Documentação Técnica — Navegação do Portal do Servidor e Módulo de Cadastro
 
-> **Última atualização:** 2026-10-21 (seção 7 — edição cadastral pela GERDAB; demais seções: 2026-08-10)
+> **Última atualização:** 2026-10-23 (seção 8 — blocos expansíveis e página Pagamentos; seção 7 — edição cadastral pela GERDAB: 2026-10-21; demais seções: 2026-08-10)
 > **Branch de trabalho:** `main` (a seção 7 é posterior ao ciclo `feature-modulo-pagamentos`)
 > **Escopo:** este documento cobre mudanças no Portal do Servidor e no Módulo de Cadastro que **não pertencem ao Módulo de Pagamento** (documentado separadamente em `docs/MODULO_PAGAMENTO.md`). Foi criado para manter os dois escopos separados — cada documento acompanha os commits do seu próprio assunto.
 
@@ -84,6 +84,13 @@
 - **Rótulo do Portal:** o botão da tela Meus Dados passou de "Solicitar alteração de cadastro" para
   **"Solicitar alteração do benefício"**, para não sugerir edição de dados pessoais (que o servidor não faz por conta própria).
 - **Limitações:** o protótipo usa **um servidor de referência** (a edição vale para ele); sem backend, o dado fica no navegador.
+
+## 8. Portal do Servidor — blocos expansíveis e página Pagamentos (somente interface)
+- **Commit:** `80ba105`. Mudança **visual e de organização**; nenhuma regra de pendência documental, prazo, bloqueio, envio/análise de documentos, comprovação, retroativo ou valor foi alterada. Detalhes de design (classes, cores, acessibilidade): `docs/BRIEFING_DESIGN_PRODUCAO.md` §23.1.
+- **Controle único Expandir/Recolher:** `src/components/ControleExpansao.tsx` (texto + chevron de 20 px, num só botão, `aria-expanded`/`aria-controls`; o **cabeçalho inteiro** é clicável; ações do corpo não recolhem). Usado nos três blocos abaixo, que **começam recolhidos**; expandidos, ganham o topo em azul claro (padrão do Dashboard).
+- **Prazos e alertas documentais** (`servidor.inicio.tsx`, componente `PrazosAlertasDocumentais` em `SolicitacaoDocumentoBanner.tsx`): recolhido mostra os indicadores (vencidos, a vencer, sem prazo, aguardando análise — calculados dos dados existentes) e a orientação resumida; expandido mostra **Pendências documentais** (com **Incluir documento**, mesmo envio de antes) e **Documentos enviados**. Sem pendências nem documentos enviados, o bloco não aparece. `SolicitacaoDocumentoBanner` e `StatusDocumentoEnviadoCard` ganharam o layout "cartão"; o layout original segue em Dependentes e na Área da Associação.
+- **Página Pagamentos** (`servidor.pagamentos.index.tsx`): o card **Comprovante de Rendimentos** (mesma rota; descrição "Consulte os valores de auxílio-saúde recebidos por ano.") fica **imediatamente antes** do **Histórico de Comprovações**, sempre visível. O Histórico começa **recolhido**; expandido, lista todas as competências com status, valores, documentos e abertura do detalhe de cada uma.
+- **Ressarcimento de meses anteriores** (`RessarcimentoRetroativoBloco.tsx`): passa a usar o mesmo controle (antes, uma seta que girava 90°) e o mesmo topo azul ao expandir; continua **recolhido** por padrão e o conteúdo/regras do pedido não mudaram.
 
 ---
 

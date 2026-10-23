@@ -85,6 +85,7 @@ finalidade, vêm de upload padronizado (IndexedDB) e abrem em nova aba.
   anterior ("Em atraso"); o vencimento é só um indicador — **a situação continua "Pendente" até a GERDAB confirmar**.
 - Indicadores (em andamento, concluídas, parcelas pendentes/quitadas, valores) derivados dos registros.
 - Modal e fila são os mesmos na Rotina mensal e no detalhe.
+- **Melhorias de interface (commit `80ba105`, somente visual):** (a) o botão **"+ Nova negociação"** do cabeçalho de `/admin/negociacoes` foi ampliado discretamente (altura 46 px, fonte 15 px, ícone 18 px), mantendo cor, texto e posição; a criação não mudou. (b) O quadro **"Confirmações de pagamento pendentes"** passou a alternar pelo **cabeçalho inteiro** (indicador numérico, título, texto, áreas livres e o botão "Ocultar fila"/"Exibir fila"), com `aria-expanded`/`aria-controls` e sem botões aninhados; recolhida, oculta só a tabela. **Estado inicial: expandida** (preservado). O botão **Confirmar** da tabela não alterna a fila. Contagem das pendências e critérios "Vence neste mês"/"Em atraso" **inalterados**. Padrão visual: ver `BRIEFING_DESIGN_PRODUCAO.md` §29.2.
 
 ---
 

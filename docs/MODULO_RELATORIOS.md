@@ -1197,6 +1197,11 @@ funcionando sem nenhuma mudança, inclusive `/admin/relatorios/extrato/$matricul
 a mesma `getExtratoServidor`. `npx tsc --noEmit` e `npm run build` limpos (só os 2 erros
 pré-existentes).
 
+**Atualização de interface (commit `80ba105`) — Portal do Servidor, página Pagamentos.** Mudança **somente visual e de organização**; nenhuma regra de comprovação, retroativo, valor financeiro ou status foi alterada.
+- **Ordem da página:** resumo e envio de comprovantes → **Comprovante de Rendimentos** (card sempre visível, **imediatamente antes** do Histórico, com a descrição "Consulte os valores de auxílio-saúde recebidos por ano."; mesma rota e mesmo componente, apenas movido) → **Histórico de Comprovações**.
+- **Histórico de Comprovações** passou a ser um cartão **inicialmente recolhido** (título, descrição resumida e o controle **Expandir**). Expandido, lista **todas as competências** com os mesmos status, valores (só quando houve pagamento), documentos e a abertura individual do detalhe de cada competência; o controle vira **Recolher** e oculta apenas a listagem. Clicar em qualquer ponto do cabeçalho alterna; clicar num item da lista abre o detalhe e **não** recolhe.
+- **Ressarcimento de meses anteriores** (seção de solicitação) usa o mesmo controle e, expandido, o mesmo topo em azul claro (ver `BRIEFING_DESIGN_PRODUCAO.md` §23.1).
+
 ### 3.9 Beneficiários / Contratos — reaproveitamento de `/admin/servidores`, sem tela nova
 
 **Contexto:** o plano (item 2.1.5 / matriz 2.10) previa uma visão "Beneficiários / Contratos"
