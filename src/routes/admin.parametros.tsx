@@ -17,8 +17,8 @@ type Param = {
 };
 
 const initialParams: Param[] = [
-  { id: "teto", nome: "Teto máximo de reembolso por família", valor: "R$ 4.000,00", definido: true, descricao: "Valor máximo considerado como base de cálculo antes de aplicar o percentual." },
-  { id: "perc", nome: "Percentual de reembolso", valor: "90%", definido: true, descricao: "Percentual aplicado sobre a base (min(plano, teto))." },
+  { id: "teto", nome: "Teto máximo de reembolso por família", valor: "R$ 4.000,00", definido: true, descricao: "Valor máximo do ressarcimento por grupo familiar. O teto limita o valor ressarcido, e não o valor do plano." },
+  { id: "perc", nome: "Percentual de reembolso", valor: "90%", definido: true, descricao: "Percentual aplicado sobre o valor elegível: mín(percentual × valor elegível; teto)." },
   { id: "idadeFilho", nome: "Limite de idade — filhos", valor: "21 / 24 anos", definido: true, descricao: "Idade máxima para filho(a) permanecer como dependente (24 anos se cursando graduação)." },
   { id: "idadeEnteado", nome: "Limite de idade — enteados", valor: "21 / 24 anos", definido: true, descricao: "Idade máxima para enteado(a) permanecer como dependente (24 anos se cursando graduação; exige IRPF)." },
 ];

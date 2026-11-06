@@ -10,10 +10,13 @@
  *  - Ressarcimentos de meses anteriores (individual): evento "solicitada" → aguardando envio (Servidor); "recebida" sem
  *    nova decisão → recebido para análise (GERDAB).
  *
- * NÃO incluídos, por falta de dado persistido confiável (limitações registradas, ver docs):
- *  - Requerimentos do Servidor: "Solicitar documento comprobatório" só exibe um aviso; nada é gravado.
+ *  - Requerimentos do Servidor: solicitação gravada ao confirmar "Solicitar documento comprobatório" → aguardando envio (Servidor).
+ *  - Ressarcimentos de meses anteriores das associações: mesmos eventos da origem individual → aguardando envio (Associação).
+ *  - Planilhas das associações: decisão "correcao_solicitada" → aguardando envio (Associação); nova versão sem decisão após esse
+ *    pedido → recebido para análise (GERDAB).
+ *
+ * NÃO incluído, por falta de dado persistido confiável:
  *  - Recebimento de "documento complementar" de Comprovante: o pedido é apagado ao chegar o documento e não deixa marca.
- *  - Planilhas das Associações (correção) e Ressarcimentos de Associação: fora do escopo desta ampliação.
  * Nenhuma obrigação automática (alerta de vencimento) vira solicitação aqui: esses alertas seguem na lista original.
  */
 import { beneficiariosPagamento, formatCompetencia } from "./mock-data";
@@ -21,14 +24,16 @@ import { getComprovantesUnificados } from "./prosaude-storage";
 import { getSolicitacoesRetroativas } from "./ressarcimento-retroativo";
 import { getStatusRetroativo } from "./retroativo-fluxo";
 import { listarRequerimentosAssociacao, statusAtualRequerimento, tipoRequerimentoAssociacaoLabels } from "./requerimentos-associacao";
+import { listarPlanilhasAssociacao, statusAtualPlanilha } from "./planilhas-associacao";
 
 export type EstadoComplementar = "aguardando_envio" | "recebido_analise";
-export type OrigemComplementar = "Requerimentos" | "Comprovantes" | "Ressarcimentos de meses anteriores";
+export type OrigemComplementar = "Requerimentos" | "Requerimentos do servidor" | "Comprovantes" | "Ressarcimentos de meses anteriores" | "Planilhas das associações";
 
 export type DestinoComplementar =
   | { to: "/admin/requerimentos" }
   | { to: "/admin/comprovantes"; competencia: string; situacao: "aguardando" | "devolvidos" }
-  | { to: "/admin/retroativos"; origem: "individual" };
+  | { to: "/admin/retroativos"; origem: "individual" | "associacao" }
+  | { to: "/admin/planilhas/$id"; id: string };
 
 export interface SolicitacaoComplementar {
   id: string;
@@ -88,9 +93,68 @@ function deComprovantes(): SolicitacaoComplementar[] {
   return out;
 }
 
+/** Solicitações de documento registradas nos requerimentos do servidor (somente demonstração local). */
+const CHAVE_SOLICITACOES_REQ_SERVIDOR = "prosaude_solicitacoes_requerimento_servidor";
+interface SolicitacaoRequerimentoServidor {
+  requerimentoId: string;
+  numero: string;
+  tipo: string;
+  servidor: string;
+  documento: string;
+  data: string;
+  solicitadoPor?: string;
+}
+function lerSolicitacoesReqServidor(): SolicitacaoRequerimentoServidor[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_SOLICITACOES_REQ_SERVIDOR) ?? "[]") as SolicitacaoRequerimentoServidor[];
+  } catch {
+    return [];
+  }
+}
+/** Grava o pedido de documento do requerimento do servidor; um pedido novo do mesmo requerimento substitui o anterior. */
+export function registrarSolicitacaoRequerimentoServidor(s: Omit<SolicitacaoRequerimentoServidor, "data">) {
+  const lista = lerSolicitacoesReqServidor().filter((x) => x.requerimentoId !== s.requerimentoId);
+  localStorage.setItem(CHAVE_SOLICITACOES_REQ_SERVIDOR, JSON.stringify([...lista, { ...s, data: new Date().toISOString() }]));
+}
+function deRequerimentosServidor(): SolicitacaoComplementar[] {
+  return lerSolicitacoesReqServidor().map((s) => ({
+    id: `req-serv-${s.requerimentoId}`,
+    origem: "Requerimentos do servidor",
+    estado: "aguardando_envio",
+    servidor: s.servidor,
+    referencia: `${s.tipo} · ${s.numero}`,
+    documento: s.documento,
+    titulo: `${s.tipo} — ${s.servidor}`,
+    detalhe: `Documento solicitado: ${s.documento}`,
+    data: s.data,
+    proximaAcao: "Servidor",
+    solicitadoPor: s.solicitadoPor,
+    destino: { to: "/admin/requerimentos" },
+  }));
+}
+
+function dePlanilhas(): SolicitacaoComplementar[] {
+  const out: SolicitacaoComplementar[] = [];
+  for (const p of listarPlanilhasAssociacao()) {
+    const status = statusAtualPlanilha(p);
+    const vigente = p.versoes[p.versoes.length - 1];
+    const anterior = p.versoes.length > 1 ? p.versoes[p.versoes.length - 2] : undefined;
+    const referencia = formatCompetencia(p.competencia);
+    const titulo = `Planilha de ${referencia} — ${p.associacao}`;
+    const base = { id: `plan-${p.id}`, origem: "Planilhas das associações" as const, servidor: p.associacao, referencia, titulo, destino: { to: "/admin/planilhas/$id" as const, id: p.id } };
+    if (status === "correcao_solicitada" && vigente.decisao) {
+      out.push({ ...base, estado: "aguardando_envio", documento: vigente.decisao.justificativa ?? "Correção da planilha", detalhe: `Correção solicitada: ${vigente.decisao.justificativa ?? "—"}`, data: vigente.decisao.decididoEm, proximaAcao: "Associação", solicitadoPor: vigente.decisao.decididoPor });
+    } else if (status === "em_analise" && anterior?.decisao?.status === "correcao_solicitada") {
+      out.push({ ...base, estado: "recebido_analise", documento: anterior.decisao.justificativa ?? "Correção da planilha", detalhe: "Planilha corrigida recebida para análise.", data: vigente.enviadoEm, proximaAcao: "GERDAB", solicitadoPor: anterior.decisao.decididoPor });
+    }
+  }
+  return out;
+}
+
 function deRessarcimentos(): SolicitacaoComplementar[] {
   const out: SolicitacaoComplementar[] = [];
-  for (const s of getSolicitacoesRetroativas().filter((x) => x.origem === "individual")) {
+  for (const s of getSolicitacoesRetroativas()) {
     for (const c of s.competencias) {
       const st = getStatusRetroativo(s.origem, c);
       const e = ultimo(c.complementacoes);
@@ -109,5 +173,5 @@ function deRessarcimentos(): SolicitacaoComplementar[] {
 
 /** Solicitações complementares em aberto (aguardando envio ou recebidas para análise), mais recentes primeiro. */
 export function getSolicitacoesComplementares(): SolicitacaoComplementar[] {
-  return [...deRequerimentosAssociacao(), ...deComprovantes(), ...deRessarcimentos()].sort((a, b) => b.data.localeCompare(a.data));
+  return [...deRequerimentosAssociacao(), ...deRequerimentosServidor(), ...deComprovantes(), ...deRessarcimentos(), ...dePlanilhas()].sort((a, b) => b.data.localeCompare(a.data));
 }

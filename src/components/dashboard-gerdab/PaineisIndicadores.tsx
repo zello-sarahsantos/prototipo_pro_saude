@@ -82,7 +82,11 @@ export function PainelComprovantes({ dados, situacao, onSituacao, competencia, c
                   {badgeSituacao(situacao, l.responsavel)}
                   {l.responsavel && <span style={{ fontSize: 12, color: V.muted }}>Responsável: {l.responsavel}</span>}
                 </span>
-                <Link to="/admin/comprovantes" search={{ competencia, situacao }} className="gd-btn-abrir" aria-label={`Abrir comprovantes de ${nome} na fila`}>Abrir <IconeCta /></Link>
+                {matricula ? (
+                  <Link to="/admin/servidores/$id" params={{ id: matricula }} className="gd-btn-abrir" aria-label={`Abrir a ficha de ${nome}`}>Abrir ficha <IconeCta /></Link>
+                ) : (
+                  <Link to="/admin/comprovantes" search={{ competencia, situacao }} className="gd-btn-abrir" aria-label={`Abrir comprovantes de ${nome} na fila`}>Abrir <IconeCta /></Link>
+                )}
               </span>
             </div>
           );
@@ -131,7 +135,7 @@ export function PainelRessarcimentos({ origem, dados, competenciaRotulo, onFecha
             <>
               <SeloResumo texto={`${num(r.emAnalise)} em análise`} tom="ambar" />
               <SeloResumo texto={`${num(r.complementacaoRecebida)} ${r.complementacaoRecebida === 1 ? "complementação recebida" : "complementações recebidas"}`} tom="azul" />
-              <SeloResumo texto={`${num(r.aguardandoComplementacao)} aguardando complemento`} />
+              <SeloResumo texto={`${num(r.aguardandoComplementacao)} aguardando o servidor (fora da fila)`} />
             </>
           ) : (
             r.porAssociacao.map((p) => <SeloResumo key={p.associacao} texto={`${p.associacao} ${num(p.aguardando)}`} />)

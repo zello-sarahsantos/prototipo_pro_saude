@@ -1,3 +1,4 @@
+import { competenciaEstaFechada } from "@/lib/dias-uteis";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { FileDown, FileSpreadsheet, Info, Search, X } from "lucide-react";
@@ -22,7 +23,9 @@ const rotuloTile = { display: "flex", alignItems: "center", gap: 8, fontSize: 13
 const valorTile = { fontSize: 22, fontWeight: 600, fontVariantNumeric: "tabular-nums" as const };
 const acaoTile = { fontSize: 13, fontWeight: 600, color: V.primary };
 
-export function FechamentoCompetencia({ dados, competencia, competenciaRotulo, situacao, competencias }: Props) {
+export function FechamentoCompetencia({ dados, competencia, competenciaRotulo, situacao, competencias: todasCompetencias }: Props) {
+  // Consulta de recorrência: somente competências com Fechamento concluído (RN008, Q43).
+  const competencias = todasCompetencias.filter((c) => competenciaEstaFechada(c.chave));
   const { adimplentes, inadimplentes, requerAnalise } = dados.fechamento;
   const [aberta, setAberta] = useState(false);
   const [aba, setAba] = useState<"competencia" | "recorrente">("competencia");

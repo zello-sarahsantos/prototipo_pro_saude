@@ -78,6 +78,7 @@ function BotaoAcesso({ s }: { s: SolicitacaoComplementar }) {
   const conteudo = <>{rotulo} <ChevronRight size={15} aria-hidden /></>;
   if (d.to === "/admin/requerimentos") return <Link to="/admin/requerimentos" aria-label={aria} style={estilo}>{conteudo}</Link>;
   if (d.to === "/admin/comprovantes") return <Link to="/admin/comprovantes" search={{ competencia: d.competencia, situacao: d.situacao }} aria-label={aria} style={estilo}>{conteudo}</Link>;
+  if (d.to === "/admin/planilhas/$id") return <Link to="/admin/planilhas/$id" params={{ id: d.id }} aria-label={aria} style={estilo}>{conteudo}</Link>;
   return <Link to="/admin/retroativos" search={{ origem: d.origem }} aria-label={aria} style={estilo}>{conteudo}</Link>;
 }
 

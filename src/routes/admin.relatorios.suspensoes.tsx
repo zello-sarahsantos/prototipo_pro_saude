@@ -83,7 +83,6 @@ const ROTULO_FONTE_MODULO: Record<string, string> = {
   demonstrativo: "Massa demonstrativa",
 };
 const CAMPO = "w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60 disabled:bg-muted";
-const PAGAMENTO_DEMONSTRATIVO = "2026-10";
 const BTN_PRIMARIO = "inline-flex shrink-0 whitespace-nowrap items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
 const BTN_SECUNDARIO = "inline-flex shrink-0 whitespace-nowrap items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:pointer-events-none";
 const BTN_CONTORNO = "inline-flex shrink-0 whitespace-nowrap items-center justify-center gap-2 rounded-xl border border-primary/50 bg-card px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:pointer-events-none";
@@ -168,8 +167,7 @@ function RelatorioSuspensoes() {
   const registros = useRegistrosSuspensoes();
   const emissoes = useEmissoesSuspensoes();
   const responsavel = responsavelCadastro(getAdminRole());
-  const { lista: meses, atual } = useMemo(() => mesesDisponiveis(registros), [registros]);
-  const [competencia, setCompetencia] = useState<string | null>(null);
+  const { atual } = useMemo(() => mesesDisponiveis(registros), [registros]);
   const [aba, setAba] = useState<Aba>("ativo");
   const [origem, setOrigem] = useState<FiltroOrigem>("todas");
   const [busca, setBusca] = useState("");
@@ -184,32 +182,16 @@ function RelatorioSuspensoes() {
   const tabelaRef = useRef<HTMLElement>(null);
   const [tipoFiltro, setTipoFiltro] = useState<FiltroTipo>("todos");
 
-  // Competência inicial: a mais recente que já tem registros; senão, o mês anterior à data de referência.
-  useEffect(() => {
-    if (competencia !== null || meses.length === 0) return;
-    const comRegistro = registros.length ? [...registros].map((r) => r.competenciaReferencia).sort().reverse()[0] : undefined;
-    const [a, m] = atual.split("-").map(Number);
-    setCompetencia(comRegistro ?? (m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`));
-  }, [competencia, meses, registros, atual]);
-
-  const competenciaSel = competencia ?? atual;
+  // Competências determinadas automaticamente (PV-11): o mês vigente, destinado ao pagamento do mês seguinte.
+  const ambienteDemo = useAmbienteDemo();
+  const competenciaSel = ambienteDemo ? COMPETENCIA_DEMONSTRATIVA : atual;
+  const pagamentoSel = competenciaMais(competenciaSel, 1);
   const daCompetencia = useMemo(() => registros.filter((r) => r.competenciaReferencia === competenciaSel), [registros, competenciaSel]);
   const ativos = daCompetencia.filter((r) => r.situacao !== "descartada");
   const prontas = ativos.filter(prontoDoRegistro).length;
-  const pagamentosDaCompetencia = useMemo(() => [...new Set(ativos.map((r) => r.competenciaPagamento))].sort(), [ativos]);
-  // Competência de pagamento do RELATÓRIO: escolhida pelo analista junto com a de referência, antes de gerar, incluir ou emitir.
-  const [pagamentoSel, setPagamentoSel] = useState<string | null>(null);
-  const pagamentoDemoRef = useRef<string | null>(null);
-  useEffect(() => {
-    setPagamentoSel(pagamentoDemoRef.current ?? (pagamentosDaCompetencia.length === 1 ? pagamentosDaCompetencia[0] : null));
-    pagamentoDemoRef.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competenciaSel]);
-  const opcoesPagamento = useMemo(() => [...new Set([...intervaloCompetencias(competenciaMais(competenciaSel, 1), competenciaMais(competenciaSel, 6)), ...pagamentosDaCompetencia])].sort(), [competenciaSel, pagamentosDaCompetencia]);
-  const divergentes = useMemo(() => (pagamentoSel ? ativos.filter((r) => r.competenciaPagamento !== pagamentoSel) : []), [ativos, pagamentoSel]);
+  const divergentes = useMemo(() => ativos.filter((r) => r.competenciaPagamento !== pagamentoSel), [ativos, pagamentoSel]);
   const emitidos = useMemo(() => numerosEmitidosPorRegistro("suspensoes", competenciaSel), [competenciaSel, emissoes]);
   const contagemAba = { ativo: daCompetencia.filter((r) => r.vinculo === "ativo").length, inativo: daCompetencia.filter((r) => r.vinculo === "inativo").length, sem_vinculo: daCompetencia.filter((r) => !r.vinculo).length };
-  const ambienteDemo = useAmbienteDemo();
   const diagnosticoRestauracao = useMemo(() => diagnosticarRestauracaoSuspensoes(registros, listarEmissoes("suspensoes")), [registros, emissoes]);
 
   const filtrados = useMemo(() => {
@@ -224,10 +206,6 @@ function RelatorioSuspensoes() {
 
   /** "Buscar e preencher registros": inclui direto na tabela os registros identificados para a competência SELECIONADA (sem 2ª ação). */
   function gerarSituacoes() {
-    if (!pagamentoSel) {
-      setAviso("Selecione a competência de pagamento do relatório antes de buscar e preencher os registros.");
-      return;
-    }
     try {
       const r = gerarSituacoesDaCompetencia(competenciaSel, undefined, { demonstracao: ambienteDemo, competenciaPagamento: pagamentoSel });
       setGeracao(r);
@@ -258,10 +236,6 @@ function RelatorioSuspensoes() {
   function restaurarDemonstracao() {
     const r = restaurarAmbienteDemonstrativo(registros);
     setConfirmarRemocao(false);
-    // Só no ambiente demonstrativo os parâmetros são preenchidos (referência setembro/2026, pagamento outubro/2026); no operacional o pagamento nunca é presumido.
-    pagamentoDemoRef.current = PAGAMENTO_DEMONSTRATIVO;
-    setCompetencia(COMPETENCIA_DEMONSTRATIVA);
-    setPagamentoSel(PAGAMENTO_DEMONSTRATIVO);
     setGeracao(null);
     setDestacar(new Set());
     setAba("ativo");
@@ -289,7 +263,7 @@ function RelatorioSuspensoes() {
             <p className="text-sm text-foreground/75 mt-1">Confira as suspensões, permanências de suspensão e exclusões da competência e prepare o relatório para envio ao NURFI. As situações são escolhidas e confirmadas pela GERDAB; o relatório não altera o cadastro nem a situação real dos beneficiários.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => (pagamentoSel ? setAlteracao({ id: null }) : setAviso("Selecione a competência de pagamento do relatório antes de incluir uma suspensão."))} className={BTN_PRIMARIO}>
+            <button type="button" onClick={() => setAlteracao({ id: null })} className={BTN_PRIMARIO}>
               <Plus className="h-4 w-4" /> Incluir suspensão
             </button>
             <button type="button" onClick={gerarSituacoes} className={BTN_PRIMARIO} title="Consulta os dados da competência selecionada e preenche a tabela com os registros identificados para conferência pela GERDAB.">
@@ -301,48 +275,27 @@ function RelatorioSuspensoes() {
             <button type="button" onClick={() => setHistoricoAberto(true)} className={`${BTN_SECUNDARIO} text-primary`}>
               Histórico
             </button>
-            <button type="button" onClick={() => (pagamentoSel ? setFluxoAberto(true) : setAviso("Selecione a competência de pagamento do relatório antes de emitir."))} className={BTN_PRIMARIO}>
+            <button type="button" onClick={() => setFluxoAberto(true)} className={BTN_PRIMARIO}>
               Exportar relatório
             </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-b border-border pb-4">
-          <label className="flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
-            Competência
-            <select value={competenciaSel} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência de referência" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              {meses.map((m) => (
-                <option key={m} value={m}>
-                  {formatCompetencia(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
-            Pagamento
-            <select value={pagamentoSel ?? ""} onChange={(e) => setPagamentoSel(e.target.value || null)} aria-label="Competência de pagamento" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              <option value="">Selecione…</option>
-              {opcoesPagamento.map((m) => (
-                <option key={m} value={m}>
-                  {formatCompetencia(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="text-xs text-foreground/75 max-w-md">
-            {pagamentoSel ? (
-              <>
-                Relatório: <strong className="text-foreground">referência {formatCompetencia(competenciaSel)}</strong> · <strong className="text-foreground">pagamento {formatCompetencia(pagamentoSel)}</strong>. Gerar, incluir e emitir usam estas duas competências.
-              </>
-            ) : (
-              "Selecione a competência de pagamento para buscar e preencher registros, incluir suspensões e emitir o relatório."
-            )}
+          <p className="text-xs font-bold tracking-wider uppercase text-foreground/70">
+            Competência <span className="ml-1 text-foreground">{formatCompetencia(competenciaSel)}</span>
+          </p>
+          <p className="text-xs font-bold tracking-wider uppercase text-foreground/70">
+            Pagamento <span className="ml-1 text-foreground">{formatCompetencia(pagamentoSel)}</span>
+          </p>
+          <p className="text-xs text-foreground/75 max-w-2xl">
+            Competências determinadas automaticamente: movimentações de {formatCompetencia(competenciaSel)} integram o relatório de {formatCompetencia(competenciaSel)}, destinado ao pagamento de {formatCompetencia(pagamentoSel)}. Competências anteriores não são incluídas; valores retroativos seguem pelo módulo próprio.
           </p>
         </div>
       </header>
 
       {divergentes.length > 0 && (
         <p role="alert" className="rounded-xl border border-status-pendente-fg/40 bg-status-pendente-bg px-4 py-3 text-sm">
-          <strong>Competências divergentes:</strong> {divergentes.length} registro(s) desta referência têm pagamento diferente de {formatCompetencia(pagamentoSel!)} ({[...new Set(divergentes.map((r) => formatCompetencia(r.competenciaPagamento)))].join(", ")}). Eles <strong>não entram</strong> na emissão de {formatCompetencia(pagamentoSel!)} e não foram corrigidos automaticamente: selecione aquela competência de pagamento para emiti-los em um relatório separado.
+          <strong>Competências divergentes:</strong> {divergentes.length} registro(s) desta referência têm pagamento diferente de {formatCompetencia(pagamentoSel)} ({[...new Set(divergentes.map((r) => formatCompetencia(r.competenciaPagamento)))].join(", ")}). Eles <strong>não entram</strong> na emissão de {formatCompetencia(pagamentoSel)} e não foram corrigidos automaticamente: selecione aquela competência de pagamento para emiti-los em um relatório separado.
         </p>
       )}
 
@@ -371,8 +324,7 @@ function RelatorioSuspensoes() {
           resultado={geracao}
           detalhes={detalhesGeracao}
           onDetalhes={() => setDetalhesGeracao((v) => !v)}
-          onIrPara={(c) => {
-            setCompetencia(c);
+          onIrPara={() => {
             setGeracao(null);
             setDestacar(new Set());
           }}
@@ -446,7 +398,7 @@ function RelatorioSuspensoes() {
           <span className="text-right">Ação</span>
         </div>
         {filtrados.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? "Nenhuma situação registrada nesta competência. Confira as competências de referência e de pagamento e clique em “Buscar e preencher registros” para identificar os registros que precisam de conferência." : "Nenhum registro encontrado com os filtros atuais."}</p>
+          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? "Nenhuma situação registrada nesta competência. Clique em “Buscar e preencher registros” para identificar os registros que precisam de conferência." : "Nenhum registro encontrado com os filtros atuais."}</p>
         ) : (
           <ul className="divide-y divide-border border-t border-border">
             {filtrados.map((r) => (
@@ -459,7 +411,7 @@ function RelatorioSuspensoes() {
       </section>
 
       {alteracao && <DialogoSuspensao key={alteracao.id ?? "novo"} registro={alteracao.id ? registros.find((r) => r.id === alteracao.id) ?? null : null} competenciaInicial={competenciaSel} pagamentoRelatorio={pagamentoSel} responsavel={responsavel} ambienteDemo={ambienteDemo} onFechar={(msg) => { setAlteracao(null); if (msg) setAviso(msg); }} />}
-      {fluxoAberto && <FluxoEmissaoSuspensoes competencia={competenciaSel} pagamento={pagamentoSel ?? undefined} responsavel={responsavel} onFechar={() => setFluxoAberto(false)} onAbrirHistorico={() => setHistoricoAberto(true)} />}
+      {fluxoAberto && <FluxoEmissaoSuspensoes competencia={competenciaSel} pagamento={pagamentoSel} responsavel={responsavel} onFechar={() => setFluxoAberto(false)} onAbrirHistorico={() => setHistoricoAberto(true)} />}
       {historicoAberto && <HistoricoEmissoesSuspensoes competencia={competenciaSel} onFechar={() => setHistoricoAberto(false)} />}
       {confirmarRemocao && <DialogConfirmaRemocao diagnostico={diagnosticoRestauracao} onFechar={() => setConfirmarRemocao(false)} onConfirmar={restaurarDemonstracao} />}
     </div>
@@ -1118,7 +1070,7 @@ function DialogoSuspensao({ registro: r, competenciaInicial, pagamentoRelatorio,
               </label>
               <div className="font-semibold">
                 <label>
-                  Motivo{exigeMotivo(classificacao || undefined) ? " *" : ""}
+                  Motivo (visível somente para a GERDAB){exigeMotivo(classificacao || undefined) ? " *" : ""}
                   <select value={motivoLivre ? "__livre" : motivo ?? ""} onChange={(e) => setMotivo(e.target.value === "__livre" ? " " : e.target.value || undefined)} className={`${CAMPO} mt-1 font-normal`}>
                     <option value="">Selecione o motivo</option>
                     {Object.entries(MOTIVOS_SUSPENSAO_REFERENCIA).map(([k, v]) => (
@@ -1289,6 +1241,9 @@ function DialogoSuspensao({ registro: r, competenciaInicial, pagamentoRelatorio,
                   </div>
                 )}
               </fieldset>
+            )}
+            {classificacao === "suspender" && quem === "titular" && (
+              <p role="note" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-foreground/75">Pendência do titular: todo o grupo familiar deixa de receber.</p>
             )}
             {classificacao === "excluir" && (
               <fieldset className="mt-4 space-y-3 rounded-xl border border-border p-4">

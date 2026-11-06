@@ -9,10 +9,12 @@
  *    (negociacaoId + numeroParcela); não existe índice persistido separado.
  *  - Antes de gravar, a elegibilidade é conferida de novo contra o armazenamento. Limitação do protótipo: localStorage não
  *    tem transações; duas abas emitindo no mesmo instante não são totalmente protegidas.
- *  - Sem cancelamento/retificação, sem Ativo/Inativo, sem envio automático ao NURFI, sem notificação.
+ *  - Parcela já emitida e alterada depois volta como disponível (`reemissaoPendente`) para inclusão atualizada em nova emissão; os
+ *    snapshots anteriores nunca são alterados (PV-03).
+ *  - Sem Ativo/Inativo e sem envio automático ao NURFI.
  */
 import { PROSAUDE_STORAGE_KEYS } from "./prosaude-storage";
-import { EVENTO_NEGOCIACOES, loadNegociacoes, type Negociacao, type ParcelaNegociada } from "./negociacoes";
+import { EVENTO_NEGOCIACOES, loadNegociacoes, registrarNovaEmissaoParcelas, type Negociacao, type ParcelaNegociada } from "./negociacoes";
 import type { RelatorioExportSpec } from "./relatorio-export";
 
 export interface LinhaEmissaoRessarcimento {
@@ -28,6 +30,9 @@ export interface LinhaEmissaoRessarcimento {
   dataQuitacao: string;
   valorCents: number;
   ajusteManual: boolean;
+  /** Inclusão atualizada: números dos relatórios anteriores em que a parcela constou e motivo da alteração. */
+  atualizaRelatorios?: number[];
+  motivoAtualizacao?: string;
 }
 
 export interface EmissaoRessarcimento {
@@ -39,6 +44,10 @@ export interface EmissaoRessarcimento {
   totalCents: number;
   demo?: boolean;
 }
+
+/** Emissão complementar: contém ao menos uma parcela atualizada após relatório anterior. */
+export const emissaoComplementar = (e: EmissaoRessarcimento) => e.linhas.some((l) => l.atualizaRelatorios?.length);
+export const relatoriosAtualizados = (e: EmissaoRessarcimento) => Array.from(new Set(e.linhas.flatMap((l) => l.atualizaRelatorios ?? []))).sort((a, b) => a - b);
 
 export const chaveParcela = (negociacaoId: string, numeroParcela: number) => `${negociacaoId}:${numeroParcela}`;
 
@@ -65,14 +74,14 @@ export interface ParcelaDisponivel {
   parcela: ParcelaNegociada;
 }
 
-/** Parcelas com quitação manual confirmada e ainda não incluídas em relatório emitido — independente da competência. */
+/** Parcelas com quitação manual confirmada, ainda não incluídas em relatório emitido ou alteradas depois dele — independente da competência. */
 export function getParcelasDisponiveis(negs: Negociacao[] = loadNegociacoes(), emissoes: EmissaoRessarcimento[] = loadEmissoes()): ParcelaDisponivel[] {
   const emitidas = chavesJaEmitidas(emissoes);
   const itens: ParcelaDisponivel[] = [];
   for (const negociacao of negs) {
     for (const parcela of negociacao.parcelas) {
       const chave = chaveParcela(negociacao.id, parcela.numero);
-      if (parcela.quitacao && !emitidas.has(chave)) itens.push({ chave, negociacao, parcela });
+      if (parcela.quitacao && (!emitidas.has(chave) || parcela.reemissaoPendente)) itens.push({ chave, negociacao, parcela });
     }
   }
   return itens.sort((a, b) => a.parcela.quitacao!.data.localeCompare(b.parcela.quitacao!.data) || a.negociacao.nomeServidor.localeCompare(b.negociacao.nomeServidor) || a.negociacao.numero - b.negociacao.numero || a.parcela.numero - b.parcela.numero);
@@ -81,8 +90,9 @@ export function getParcelasDisponiveis(negs: Negociacao[] = loadNegociacoes(), e
 export const associacaoOuOperadora = (n: Negociacao) => (n.associacao && n.associacao !== "—" ? n.associacao : n.operadora || "—");
 
 /** Linha do relatório — usa o valor final já gravado na parcela, sem recalcular. */
-export function montarLinha(d: ParcelaDisponivel): LinhaEmissaoRessarcimento {
+export function montarLinha(d: ParcelaDisponivel, emissoes: EmissaoRessarcimento[] = loadEmissoes()): LinhaEmissaoRessarcimento {
   const { negociacao: n, parcela: p } = d;
+  const anteriores = p.reemissaoPendente ? emissoes.filter((e) => e.linhas.some((l) => l.negociacaoId === n.id && l.numeroParcela === p.numero)).map((e) => e.sequencia).sort((a, b) => a - b) : [];
   return {
     negociacaoId: n.id,
     numeroParcela: p.numero,
@@ -90,15 +100,16 @@ export function montarLinha(d: ParcelaDisponivel): LinhaEmissaoRessarcimento {
     matricula: n.matricula,
     nome: n.nomeServidor,
     associacaoOperadora: associacaoOuOperadora(n),
-    totalParcelas: n.parcelas.length,
+    totalParcelas: n.qtdParcelas,
     dataQuitacao: p.quitacao!.data,
     valorCents: p.ressarcimento.finalCents,
     ajusteManual: p.ressarcimento.origem === "manual",
+    ...(anteriores.length ? { atualizaRelatorios: anteriores, motivoAtualizacao: p.reemissaoPendente!.motivo } : {}),
   };
 }
 
 /** Pré-visualização: monta as linhas das parcelas informadas SEM gravar nada. */
-export const previaLinhas = (selecionadas: ParcelaDisponivel[]) => selecionadas.map(montarLinha);
+export const previaLinhas = (selecionadas: ParcelaDisponivel[]) => selecionadas.map((d) => montarLinha(d));
 export const somarCents = (linhas: { valorCents: number }[]) => linhas.reduce((t, l) => t + l.valorCents, 0);
 
 /**
@@ -113,9 +124,9 @@ export function emitirRelatorio(chaves: string[], responsavel: string): EmissaoR
   const disponiveis = new Map(getParcelasDisponiveis(loadNegociacoes(), emissoes).map((d) => [d.chave, d]));
   const indisponiveis = unicas.filter((c) => !disponiveis.has(c));
   if (indisponiveis.length > 0) {
-    throw new Error(`${indisponiveis.length} parcela(s) selecionada(s) não está(ão) mais disponível(is) (já incluída(s) em outro relatório ou sem quitação). Atualize a lista e tente novamente; nada foi emitido.`);
+    throw new Error(`${indisponiveis.length} parcela(s) selecionada(s) não está(ão) mais disponível(is) (já incluída(s) em outro relatório, excluída(s) ou sem quitação). Atualize a lista e tente novamente; nada foi emitido.`);
   }
-  const linhas = unicas.map((c) => montarLinha(disponiveis.get(c)!)).sort((a, b) => a.nome.localeCompare(b.nome) || a.negociacaoNumero - b.negociacaoNumero || a.numeroParcela - b.numeroParcela);
+  const linhas = unicas.map((c) => montarLinha(disponiveis.get(c)!, emissoes)).sort((a, b) => a.nome.localeCompare(b.nome) || a.negociacaoNumero - b.negociacaoNumero || a.numeroParcela - b.numeroParcela);
   const emissao: EmissaoRessarcimento = {
     id: `emi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     sequencia: emissoes.reduce((m, e) => Math.max(m, e.sequencia), 0) + 1,
@@ -125,6 +136,7 @@ export function emitirRelatorio(chaves: string[], responsavel: string): EmissaoR
     totalCents: somarCents(linhas),
   };
   localStorage.setItem(PROSAUDE_STORAGE_KEYS.negociacoesEmissoes, JSON.stringify([...emissoes, emissao]));
+  registrarNovaEmissaoParcelas(linhas.filter((l) => l.atualizaRelatorios?.length), emissao.sequencia, responsavel);
   window.dispatchEvent(new Event(EVENTO_NEGOCIACOES));
   return emissao;
 }
@@ -164,7 +176,7 @@ export function specEmissao(e: EmissaoRessarcimento): RelatorioExportSpec<LinhaE
       { header: "Parcela", valor: (l) => `${l.numeroParcela}/${l.totalParcelas}`, tipo: "texto", width: 9 },
       { header: "Data da quitação", valor: (l) => dataBR(l.dataQuitacao), tipo: "texto", width: 14 },
       { header: "Valor a ressarcir", valor: (l) => l.valorCents / 100, tipo: "moeda", width: 16 },
-      { header: "Observação", valor: (l) => (l.ajusteManual ? "Preenchido manualmente" : ""), tipo: "texto", width: 22 },
+      { header: "Observação", valor: (l) => [l.ajusteManual ? "Preenchido manualmente" : "", l.atualizaRelatorios?.length ? `Atualiza o relatório nº ${l.atualizaRelatorios.join(", ")} (${l.motivoAtualizacao})` : ""].filter(Boolean).join(" · "), tipo: "texto", width: 30 },
     ],
     linhas: e.linhas,
     linhaTotal: { label: "Total geral", valores: [null, null, null, null, null, e.totalCents / 100, null] },

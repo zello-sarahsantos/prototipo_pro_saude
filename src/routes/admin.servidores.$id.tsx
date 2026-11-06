@@ -895,8 +895,8 @@ function TabCalculo() {
         ))}
         <hr className="my-2 border-border" />
         <Line k="Total do plano" v={total} bold />
-        <Line k="Base limitada ao teto" v={Math.min(total, teto)} />
         <Line k="Percentual aplicado" v={0.9} percent />
+        <Line k="Total × percentual" v={total * 0.9} />
         <Line k="Teto configurado" v={teto} />
         <hr className="my-2 border-border" />
         <div className="flex justify-between text-base font-bold text-success">
@@ -904,7 +904,7 @@ function TabCalculo() {
           <span>{formatCurrency(final)}</span>
         </div>
         <p className="text-xs text-muted-foreground font-sans">
-          {total <= teto ? "✓ Abaixo do teto familiar." : "⚠ Acima do teto: base limitada antes do cálculo."}
+          {final < teto ? "✓ Abaixo do teto familiar." : "⚠ Ressarcimento limitado ao teto familiar."}
         </p>
       </div>
     </div>

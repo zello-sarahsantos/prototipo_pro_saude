@@ -109,7 +109,6 @@ export async function abrirDocumentoNegociacao(d: DocumentoNegociacao, baixar = 
   }
 }
 
-export const AVISO_CRITERIO_TRUNCAMENTO = "Critério do protótipo, sujeito à validação da GERDAB — não é norma administrativa homologada.";
 export const AVISO_PARAMETROS_AUXILIO = "Calculado com o percentual e o teto atualmente vigentes no sistema; para meses antigos é uma referência, não necessariamente a regra da época. Confira e ajuste, com justificativa, quando necessário.";
 
 /** Marcador discreto na tabela principal: aparece só quando o valor não é o calculado automaticamente. */
@@ -127,13 +126,13 @@ const celula = (dir: "left" | "right" = "left"): CSSProperties => ({ padding: "6
 export interface LinhaMemoriaAuxilio {
   competencia: string;
   valorParcelaCents: number;
-  /** Base considerada (valor da parcela limitado ao teto) — `undefined` em negociações anteriores ao cálculo. */
-  baseCents?: number;
+  /** Valor da parcela × percentual, antes do limite do teto — `undefined` em negociações anteriores ao cálculo. */
+  percentualAplicadoCents?: number;
   calculadoCents?: number;
   finalCents: number;
 }
 
-/** A) Cálculo do auxílio elegível — um mês por linha: valor da parcela, base, percentual, teto, calculado e final. */
+/** A) Cálculo do auxílio elegível — um mês por linha: valor da parcela, percentual aplicado, calculado e final. */
 export function MemoriaAuxilioView({ meses, percentual, tetoCents, formatarMes }: { meses: LinhaMemoriaAuxilio[]; percentual?: number; tetoCents?: number; formatarMes: (c: string) => string }) {
   const anterior = meses.some((m) => m.calculadoCents === undefined);
   return (
@@ -142,7 +141,7 @@ export function MemoriaAuxilioView({ meses, percentual, tetoCents, formatarMes }
         <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
           <thead>
             <tr style={{ color: V.muted, fontSize: 12 }}>
-              {["Mês negociado", "Valor da parcela", "Base considerada", "Auxílio calculado", "Auxílio elegível"].map((h, i) => <th key={h} style={{ ...celula(i === 0 ? "left" : "right"), fontWeight: 600, fontSize: 12 }}>{h}</th>)}
+              {["Mês negociado", "Valor da parcela", "Valor × percentual", "Auxílio calculado", "Auxílio elegível"].map((h, i) => <th key={h} style={{ ...celula(i === 0 ? "left" : "right"), fontWeight: 600, fontSize: 12 }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -152,7 +151,7 @@ export function MemoriaAuxilioView({ meses, percentual, tetoCents, formatarMes }
                 <tr key={m.competencia}>
                   <td style={celula()}>{formatarMes(m.competencia)}</td>
                   <td style={celula("right")}>{formatarCentavos(m.valorParcelaCents)}</td>
-                  <td style={{ ...celula("right"), color: V.muted }}>{m.baseCents !== undefined ? formatarCentavos(m.baseCents) : "—"}</td>
+                  <td style={{ ...celula("right"), color: V.muted }}>{m.percentualAplicadoCents !== undefined ? formatarCentavos(m.percentualAplicadoCents) : "—"}</td>
                   <td style={{ ...celula("right"), color: V.muted }}>{m.calculadoCents !== undefined ? formatarCentavos(m.calculadoCents) : "—"}</td>
                   <td style={{ ...celula("right"), fontWeight: 700 }}>{formatarCentavos(m.finalCents)}<MarcadorAjuste manual={ajustado} titulo="Auxílio ajustado manualmente (ver histórico)" /></td>
                 </tr>
@@ -162,7 +161,7 @@ export function MemoriaAuxilioView({ meses, percentual, tetoCents, formatarMes }
         </table>
       </div>
       <p style={{ fontSize: 11, color: V.muted, margin: "6px 0 0", lineHeight: 1.4 }}>
-        {percentual !== undefined && tetoCents !== undefined ? `Percentual aplicado: ${Math.round(percentual * 100)}% · Teto considerado: ${formatarCentavos(tetoCents)} (base = valor da parcela limitado ao teto). ` : ""}
+        {percentual !== undefined && tetoCents !== undefined ? `Percentual aplicado: ${Math.round(percentual * 100)}% · Teto do ressarcimento: ${formatarCentavos(tetoCents)} (limita o valor ressarcido, e não o valor do plano). ` : ""}
         {anterior ? "Meses sem cálculo registrado foram informados pelo analista (cadastro anterior). " : ""}
         {meses.some((m) => m.calculadoCents !== undefined) ? AVISO_PARAMETROS_AUXILIO : ""}
       </p>
@@ -214,7 +213,7 @@ export function MemoriaRessarcimentoView({
       {somaFinaisCents !== null && linha("Diferença em relação ao total elegível", formatarCentavos(totalCents - somaFinaisCents))}
       {ajustes.length > 0 && linha("Ajustes manuais", ajustes.map((a) => `Parcela ${a.parcela}: ${a.calculadoCents !== null ? `${formatarCentavos(a.calculadoCents)} → ` : ""}${formatarCentavos(a.valorInformadoCents)}`).join(" · "))}
       <p style={{ fontSize: 11, color: V.muted, margin: "6px 0 0", lineHeight: 1.4 }}>
-        {memoria ? `Corte seco em duas casas, sem arredondamento. A diferença residual não é distribuída nem somada a nenhuma parcela. ${AVISO_CRITERIO_TRUNCAMENTO}` : "A diferença entre a soma dos valores e o total elegível é apenas exibida para conferência."}{criterio === "diferenciado" ? " Valores finais distintos: o sistema não distribui automaticamente a entrada diferenciada (regra ainda não validada pela GERDAB); vale o que o analista ajustou." : ""}
+        {memoria ? `Corte seco em duas casas, sem arredondamento. A diferença residual não é distribuída nem somada a nenhuma parcela.` : "A diferença entre a soma dos valores e o total elegível é apenas exibida para conferência."}{criterio === "diferenciado" ? " Valores finais distintos: valem os valores registrados nas parcelas." : ""}
       </p>
     </div>
   );

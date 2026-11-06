@@ -255,31 +255,18 @@ export function useRegistrosSuspensoes(): RegistroSuspensao[] {
 const comPonto = (t: string) => (/[.!?]$/.test(t) ? t : `${t}.`);
 
 /**
- * "Suspender. Não apresentou comprovante de pagamento." · "Permanece suspenso." · "Excluir. Faleceu."
- * Dependente: "Suspender. Dependente Maria (cônjuge): Não apresentou comprovante de nascimento." — descreve o dependente na observação,
- * porque a linha do documento é do titular.
+ * Padrão acordado com o NURFI (Q33): "Suspender." · "Permanece suspenso." · "Excluir. <alcance>". O motivo fica só na conferência, visível para a GERDAB.
+ * Dependente: "Suspender. Dependente Maria (cônjuge)." — mencionado na observação, porque a linha do documento é do titular (PV-05).
  */
 export function sugerirObservacaoSuspensao(c: ClassificacaoSuspensao | undefined, afetado: PessoaAfetada, motivo?: string, pendencia?: { ref?: PendenciaRef; competencias?: string[]; requerimento?: RequerimentoExclusaoRef }): string {
   if (!c) return "";
-  const base = textoDoMotivoSuspensao(motivo);
-  const extra = descricaoPendencia(pendencia?.ref, pendencia?.competencias);
-  const m = base && extra ? `${base} ${extra}` : base || extra;
   const dep = afetado.tipo === "dependente" ? `Dependente ${afetado.nomeDependente?.trim() || "(a identificar)"}${afetado.parentesco ? ` (${afetado.parentesco.toLowerCase()})` : ""}` : "";
-  const principal = dep ? `${comPonto(VERBO[c])} ${comPonto(m ? `${dep}: ${m}` : dep)}` : m ? `${comPonto(VERBO[c])} ${comPonto(m)}` : comPonto(VERBO[c]);
+  const principal = dep ? `${comPonto(VERBO[c])} ${comPonto(dep)}` : comPonto(VERBO[c]);
   if (c !== "excluir") return principal;
   // Exclusão: informa o alcance (grupo familiar × somente o dependente) e o requerimento aprovado, quando referenciado.
-  const req = pendencia?.requerimento?.referencia.trim();
-  return `${principal} ${comPonto(`${afetado.tipo === "titular" ? ESCOPO_EXCLUSAO_TITULAR : `Exclusão exclusiva do dependente ${afetado.nomeDependente?.trim() || "(a identificar)"}; o titular permanece no programa`}${req ? `, conforme requerimento de exclusão aprovado ${req}` : ""}`)}`;
+  return `${principal} ${comPonto(afetado.tipo === "titular" ? ESCOPO_EXCLUSAO_TITULAR : `Exclusão exclusiva do dependente ${afetado.nomeDependente?.trim() || "(a identificar)"}; o titular permanece no programa`)}`;
 }
 
-/** Complemento da observação com a pendência específica: "referente a junho/2026" · "(Comprovante de matrícula), competências afetadas: março/2026 a outubro/2026". */
-function descricaoPendencia(ref?: PendenciaRef, competencias?: string[]): string {
-  if (!ref) return "";
-  if (ref.tipo === "comprovante_pagamento") return ref.competencia && COMPETENCIA.test(ref.competencia) ? `referente a ${competenciaPorExtenso(ref.competencia)}` : "";
-  const doc = ref.documento?.trim();
-  const cs = textoCompetencias(competencias ?? []);
-  return [doc ? `(${doc})` : "", cs ? `${doc ? ", " : ""}competências afetadas: ${cs}` : ""].join("").trim();
-}
 /** Sugestão de observação do registro com a sua pendência (usada quando a observação ainda não foi editada). */
 const sugestaoDoRegistro = (r: Pick<RegistroSuspensao, "classificacao" | "afetado" | "motivo" | "pendenciaRef" | "competenciasAfetadas" | "requerimentoExclusao">) => sugerirObservacaoSuspensao(r.classificacao, r.afetado, r.motivo, { ref: r.pendenciaRef, competencias: r.competenciasAfetadas, requerimento: r.requerimentoExclusao });
 
@@ -609,8 +596,6 @@ function problemaObservacao(r: RegistroSuspensao): { tabela: string; rodape: str
   const obs = norm(r.observacao);
   if (!obs) return { tabela: "Preencha a observação NURFI", rodape: "Preencha a observação que será apresentada no relatório." };
   if (r.classificacao && !obs.includes(norm(ROTULO_CLASSIFICACAO[r.classificacao]))) return { tabela: "Observação sem a situação", rodape: `A observação deve informar a situação (${ROTULO_CLASSIFICACAO[r.classificacao]}).` };
-  const motivo = norm(textoDoMotivoSuspensao(r.motivo));
-  if (motivo && !obs.includes(motivo)) return { tabela: "Observação sem o motivo", rodape: "A observação deve informar o motivo da situação." };
   if (r.classificacao === "excluir" && r.afetado.tipo === "titular" && !obs.includes("grupo familiar")) return { tabela: "Observação sem o alcance da exclusão", rodape: "A observação deve informar que a exclusão do titular abrange todo o grupo familiar." };
   if (r.classificacao === "excluir" && r.afetado.tipo === "dependente" && !obs.includes("exclusiv")) return { tabela: "Observação sem o alcance da exclusão", rodape: "A observação deve informar que a exclusão é exclusiva do dependente." };
   if (r.afetado.tipo === "dependente" && r.afetado.nomeDependente?.trim() && !obs.includes(norm(r.afetado.nomeDependente))) return { tabela: "Observação sem o dependente", rodape: "A observação deve identificar o dependente afetado." };

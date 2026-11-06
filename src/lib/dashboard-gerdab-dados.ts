@@ -90,7 +90,7 @@ function resumoDemoFila(linhas: { aguardando: boolean; statusRotulo: string; ori
     total: linhas.length,
     aguardando: fila.length,
     emAnalise: fila.filter((l) => l.statusRotulo === "Em análise").length,
-    aguardandoComplementacao: fila.filter((l) => l.statusRotulo === "Aguardando complementação").length,
+    aguardandoComplementacao: linhas.filter((l) => l.statusRotulo === "Aguardando complementação").length,
     complementacaoRecebida: fila.filter((l) => l.statusRotulo === "Complementação recebida").length,
     porAssociacao: origem === "associacao" ? ["Assefaz", "Assetran"].map((associacao) => ({ associacao, aguardando: fila.filter((l) => l.origemRotulo === associacao).length })) : [],
   };

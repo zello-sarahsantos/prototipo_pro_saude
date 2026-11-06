@@ -8,7 +8,7 @@ import { GuardaPerfilAdmin, NegociacoesNav, SeloSituacao, botaoPrimario, formata
 import { ListaPaginada, V, cardBase, num } from "@/components/dashboard-gerdab/gd-ui";
 import { garantirMassaDemonstracaoNegociacoes, restaurarMassaDemonstracaoNegociacoes } from "@/lib/massa-demonstracao-negociacoes";
 import { formatCompetencia } from "@/lib/mock-data";
-import { EVENTO_NEGOCIACOES, ROTULO_CLASSIFICACAO, ROTULO_SITUACAO, formatarCentavos, getCompetenciaReferencia, getFilaConfirmacoes, getIndicadores, getSituacaoNegociacao, listarNegociacoes, parcelasQuitadas, type Negociacao, type SituacaoNegociacao } from "@/lib/negociacoes";
+import { EVENTO_NEGOCIACOES, contarSituacoesParcelas, ROTULO_CLASSIFICACAO, ROTULO_SITUACAO, formatarCentavos, getCompetenciaReferencia, getFilaConfirmacoes, getIndicadores, getSituacaoNegociacao, listarNegociacoes, parcelasQuitadas, type Negociacao, type SituacaoNegociacao } from "@/lib/negociacoes";
 
 interface BuscaNegociacoes {
   q?: string;
@@ -34,6 +34,12 @@ export const Route = createFileRoute("/admin/negociacoes/")({
 });
 
 const rotuloAssociacao = (n: Negociacao) => (n.associacao !== "—" ? `${n.associacao} · ${n.operadora}` : n.operadora);
+
+function ResumoParcelas({ negociacao }: { negociacao: Negociacao }) {
+  const c = contarSituacoesParcelas(negociacao);
+  const partes = [c.em_atraso ? `${c.em_atraso} em atraso` : "", c.vence_no_mes ? `${c.vence_no_mes} vence no mês` : "", c.confirmada ? `${c.confirmada} confirmada(s)` : ""].filter(Boolean);
+  return partes.length ? <span style={{ display: "block", fontSize: 11, color: V.muted, marginTop: 3 }}>{partes.join(" · ")}</span> : null;
+}
 
 function Indicador({ titulo, valor, sub, ativo, onClick }: { titulo: string; valor: string; sub?: string; ativo?: boolean; onClick?: () => void }) {
   const props = onClick ? { role: "button", tabIndex: 0, onClick, onKeyDown: (e: React.KeyboardEvent) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick()) } : {};
@@ -173,7 +179,7 @@ function ConsultaNegociacoes() {
                         <Link to="/admin/negociacoes/$id" params={{ id: f.negociacao.id }} style={{ fontWeight: 600, color: V.text }}>{f.negociacao.nomeServidor}</Link>
                         <span style={{ display: "block", fontSize: 12, color: V.muted }}>Matrícula {f.negociacao.matricula} · {vinculo}</span>
                       </span>
-                      <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Parcela</span>{f.parcela.numero}/{f.negociacao.parcelas.length}</span>
+                      <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Parcela</span>{f.parcela.numero}/{f.negociacao.qtdParcelas}</span>
                       <span style={{ fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Vencimento</span>{formatarData(f.parcela.vencimento)}</span>
                       <span style={{ textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Valor</span>{formatarCentavos(f.parcela.ressarcimento.finalCents)}</span>
                       <span><span className="neg-lbl">Situação</span><span style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 999, whiteSpace: "nowrap", color: atraso ? V.red : V.amber, background: atraso ? V.redSoft : V.amberSoft }}>{ROTULO_CLASSIFICACAO[f.classificacao]}</span></span>
@@ -277,9 +283,9 @@ function ConsultaNegociacoes() {
                   </span>
                   <span><span className="neg-lbl">Matrícula</span>{n.matricula}</span>
                   <span><span className="neg-lbl">Associação / operadora</span>{rotuloAssociacao(n)}</span>
-                  <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Parcelas quitadas</span>{parcelasQuitadas(n)}/{n.parcelas.length}</span>
+                  <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Parcelas confirmadas</span>{parcelasQuitadas(n)}/{n.parcelas.length}</span>
                   <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}><span className="neg-lbl">Total elegível</span>{formatarCentavos(n.totalElegivelCents)}</span>
-                  <span><span className="neg-lbl">Situação</span><SeloSituacao situacao={getSituacaoNegociacao(n)} /></span>
+                  <span><span className="neg-lbl">Situação</span><SeloSituacao situacao={getSituacaoNegociacao(n)} /><ResumoParcelas negociacao={n} /></span>
                   <span style={{ color: V.primary, fontWeight: 600, textAlign: "right" }}>Abrir →</span>
                 </Link>
               )}
@@ -311,7 +317,7 @@ function ConsultaNegociacoes() {
           onFechar={() => setConfirmando(null)}
           onConfirmada={() => {
             setConfirmando(null);
-            setAvisoFila(`Quitação de ${alvoModal.nomeServidor} (parcela ${parcelaModal.numero}/${alvoModal.parcelas.length}) confirmada. A parcela saiu da fila e o registro está no histórico da negociação.`);
+            setAvisoFila(`Quitação de ${alvoModal.nomeServidor} (parcela ${parcelaModal.numero}/${alvoModal.qtdParcelas}) confirmada. A parcela saiu da fila e o registro está no histórico da negociação.`);
           }}
         />
       )}

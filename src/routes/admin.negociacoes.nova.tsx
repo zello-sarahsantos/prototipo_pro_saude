@@ -25,6 +25,7 @@ import {
   type CriterioParcelamento,
   type FinalidadeDocumento,
   type TipoDocumentoNegociacao,
+  valoresCalculadosParcelas,
 } from "@/lib/negociacoes";
 
 export const Route = createFileRoute("/admin/negociacoes/nova")({
@@ -168,10 +169,16 @@ function NovaNegociacao() {
     return servidoresList.filter((s) => s.nome.toLowerCase().includes(t) || s.matricula.includes(t)).slice(0, 8);
   }, [busca]);
 
+  // Ao alterar a entrada (parcela 1), as parcelas sem ajuste recebem o valor remanescente (Q10).
+  const manuaisParc = Object.fromEntries(Object.entries(ajustesParc).flatMap(([n, a]) => {
+    const v = parseMoedaCentavos(a.valor);
+    return "centavos" in v ? [[Number(n), v.centavos] as const] : [];
+  }));
+  const calculadosParc = qtdValida ? valoresCalculadosParcelas(totalElegivel, qtdNum, manuaisParc) : [];
   // Valor do ressarcimento de cada parcela: calculado quando há regra; ajuste manual nunca é sobrescrito.
   const finais = parcelas.map((_, i) => {
     const n = i + 1;
-    const calculado = calculo.disponivel ? (calculo.valoresCents[i] ?? null) : null;
+    const calculado = calculadosParc[i] ?? null;
     const aj = ajustesParc[n];
     const ajParsed = aj ? parseMoedaCentavos(aj.valor) : null;
     if (aj && ajParsed && "centavos" in ajParsed) return { n, calculado, final: ajParsed.centavos, origem: "manual" as const, justificativa: aj.justificativa, desatualizado: aj.calculadoRef !== calculado };
@@ -506,7 +513,7 @@ function NovaNegociacao() {
                             </button>
                           )}
                         </div>
-                        {c.calc?.acimaDoTeto && <span style={{ fontWeight: 400 }}>Valor acima do teto: base limitada a {formatarCentavos(c.calc.tetoCents)}.</span>}
+                        {c.calc?.limitadoAoTeto && <span style={{ fontWeight: 400 }}>Auxílio limitado ao teto de {formatarCentavos(c.calc.tetoCents)}.</span>}
                         {c.ajustado && c.calc && <span style={{ fontWeight: 400 }}>Calculado: {formatarCentavos(c.calc.auxilioCents)}</span>}
                       </div>
                       {meses.length > 1 && (
@@ -561,7 +568,7 @@ function NovaNegociacao() {
                 <div style={{ gridColumn: "span 2", border: `1px solid ${V.border}`, borderRadius: 10, padding: "8px 12px", fontSize: 13 }} aria-live="polite">
                   <span style={{ fontSize: 12, fontWeight: 600, color: V.muted }}>Tipo de parcelamento (identificado automaticamente)</span>
                   <div style={{ fontWeight: 600, marginTop: 2 }}>{criterio === "uniforme" ? "Parcelas de mesmo valor" : "Entrada diferenciada ou parcelas distintas"}</div>
-                  <div style={{ fontSize: 12, color: V.muted }}>{criterio === "uniforme" ? "Ressarcimento calculado por truncamento (corte em duas casas; a diferença residual é só exibida). Critério sujeito à validação da GERDAB." : "Há valores finais diferentes entre as parcelas. Os valores calculados e ajustes foram mantidos; o sistema não distribui automaticamente a entrada diferenciada (regra ainda não validada)."}</div>
+                  <div style={{ fontSize: 12, color: V.muted }}>{criterio === "uniforme" ? "Ressarcimento calculado por truncamento (corte em duas casas; a diferença residual é só exibida)." : "Há valores finais diferentes entre as parcelas. Ao alterar a entrada, as parcelas sem ajuste recebem o valor remanescente e seguem ajustáveis."}</div>
                 </div>
               </div>
               {!qtdValida ? (
@@ -573,6 +580,7 @@ function NovaNegociacao() {
                     <span style={{ fontSize: 12, color: V.muted, flex: "1 1 260px" }}>O vencimento da parcela 1 gera automaticamente os demais, mês a mês. Cada data pode ser editada, e as datas alteradas manualmente são preservadas.</span>
                   </div>
                   {tabelaRessarcimento(true)}
+                  {ajustesParc[1] && qtdNum > 1 && <p role="status" style={{ fontSize: 12, color: V.muted, margin: 0 }}>Entrada alterada: as parcelas sem ajuste foram redistribuídas com o valor remanescente e podem ser ajustadas manualmente.</p>}
                   <details style={{ border: `1px solid ${V.border}`, borderRadius: 10, padding: "8px 12px" }}>
                     <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Informações complementares do acordo (opcional)</summary>
                     <p style={{ fontSize: 12, color: V.muted, margin: "8px 0" }}>Valor cobrado em cada prestação pela operadora ou associação (pode incluir juros e encargos). É apenas informativo: <strong>não entra</strong> no cálculo do auxílio nem do ressarcimento.</p>
@@ -649,7 +657,7 @@ function NovaNegociacao() {
             <>
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>5. Conferência</h2>
-                <p style={{ fontSize: 13, color: V.muted, margin: "4px 0 0" }}>Confira os valores calculados antes de confirmar. Depois da confirmação os valores ficam congelados e qualquer mudança passa a ser retificação (pendência P02/P04).</p>
+                <p style={{ fontSize: 13, color: V.muted, margin: "4px 0 0" }}>Confira os valores calculados antes de confirmar. Depois da confirmação, qualquer mudança passa a ser retificação, registrada no histórico.</p>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                 {[["Servidor", servidor ? `${servidor.nome} · ${servidor.matricula}` : "—"], ["Total elegível", formatarCentavos(totalElegivel)], ["Parcelas", qtdValida ? String(qtdNum) : "—"], ["Critério", criterio === "uniforme" ? "Parcelas de mesmo valor" : "Entrada diferenciada / distintas"]].map(([r, v]) => (
@@ -669,7 +677,7 @@ function NovaNegociacao() {
                     formatarMes={formatCompetencia}
                     percentual={regra.percentual}
                     tetoCents={regra.tetoCents}
-                    meses={meses.map((m, i) => ({ competencia: m.competencia, valorParcelaCents: mesesCalc[i].valorParcela ?? 0, baseCents: mesesCalc[i].calc?.baseCents, calculadoCents: mesesCalc[i].calc?.auxilioCents, finalCents: mesesCalc[i].final ?? 0 }))}
+                    meses={meses.map((m, i) => ({ competencia: m.competencia, valorParcelaCents: mesesCalc[i].valorParcela ?? 0, percentualAplicadoCents: mesesCalc[i].calc?.percentualAplicadoCents, calculadoCents: mesesCalc[i].calc?.auxilioCents, finalCents: mesesCalc[i].final ?? 0 }))}
                   />
                 </div>
                 <div>

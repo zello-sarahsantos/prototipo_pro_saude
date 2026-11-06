@@ -293,8 +293,13 @@ export function lerSugestoesPendencias(competencia: string): ResultadoFonteSuspe
       ign.somar("Limite de idade não é entrega de documento (não gera suspensão por documentação)");
       continue;
     }
-    const afetado = p.dependenteId ? { tipo: "dependente" as const, nomeDependente: p.dependenteNome ?? "(dependente)", parentesco } : { tipo: "titular" as const };
-    const quem = p.dependenteId ? `do dependente ${p.dependenteNome}` : "do titular";
+    if (p.dependenteId) {
+      // Pendência de dependente não suspende o grupo: gera sugestão de alteração de valor no Relatório de Alterações (DR-08, PV-06).
+      ign.somar("Pendência de dependente: tratada como alteração de valor no Relatório de Alterações");
+      continue;
+    }
+    const afetado = { tipo: "titular" as const };
+    const quem = "do titular";
     const base = {
       titular: { nome: servidor.nome, matricula: servidor.matricula, cpf: servidor.cpf },
       vinculo: v.vinculo,
@@ -305,7 +310,7 @@ export function lerSugestoesPendencias(competencia: string): ResultadoFonteSuspe
       pendenciaRef: { tipo: "documentacao_obrigatoria" as const, documento: p.documento },
       referenciaOrigem: { modulo: "cadastro" as const, registroId: p.id, rotulo: `Pendência documental — ${p.documento}` },
     };
-    const chave = `pendencias_documentais|${servidor.matricula}|${p.dependenteId ?? "titular"}|${p.tipo}|${p.documento}`;
+    const chave = `pendencias_documentais|${servidor.matricula}|titular|${p.tipo}|${p.documento}`;
     const avisos = [v.aviso, origem.aviso, `Incluída na competência selecionada (${formatCompetencia(competencia)}). As competências afetadas ficam em branco: informe-as e confirme a competência inicial — o vencimento do prazo não a define.`];
     if (p.prazo === null) {
       sugestoes.push(

@@ -427,7 +427,9 @@ export function FluxoEmissao({ competencia, pagamento: pagamentoDoRelatorio, res
 export function HistoricoEmissoes({ competencia, onFechar }: { competencia: string; onFechar: () => void }) {
   const retornarFoco = useRetornoDeFoco("main h1");
   const todas = useEmissoesAlteracoes();
-  const lista = useMemo(() => todas.filter((e) => e.competenciaReferencia === competencia).sort((a, b) => b.numero - a.numero), [todas, competencia]);
+  const [consulta, setConsulta] = useState(competencia);
+  const opcoes = useMemo(() => [...new Set([competencia, ...todas.map((e) => e.competenciaReferencia)])].sort().reverse(), [todas, competencia]);
+  const lista = useMemo(() => todas.filter((e) => e.competenciaReferencia === consulta).sort((a, b) => b.numero - a.numero), [todas, consulta]);
   const [ver, setVer] = useState<EmissaoAlteracoes | null>(null);
 
   if (ver)
@@ -458,7 +460,13 @@ export function HistoricoEmissoes({ competencia, onFechar }: { competencia: stri
       <DialogContent onCloseAutoFocus={retornarFoco} className="max-w-xl p-0 gap-0">
         <div className="px-6 pt-6 pb-4 border-b border-border">
           <DialogTitle className="text-xl font-bold">Histórico de relatórios</DialogTitle>
-          <DialogDescription className="text-sm text-foreground/75 mt-1">Emissões independentes preservadas por competência — {formatCompetencia(competencia)}.</DialogDescription>
+          <DialogDescription className="text-sm text-foreground/75 mt-1">Emissões independentes preservadas por competência — {formatCompetencia(consulta)}.</DialogDescription>
+          <label className="mt-3 flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
+            Competência
+            <select value={consulta} onChange={(e) => setConsulta(e.target.value)} aria-label="Competência consultada no histórico" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-1.5 text-sm font-semibold normal-case text-foreground">
+              {opcoes.map((m) => <option key={m} value={m}>{formatCompetencia(m)}</option>)}
+            </select>
+          </label>
         </div>
         {lista.length === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-foreground/75">Nenhum relatório emitido para esta competência.</p>

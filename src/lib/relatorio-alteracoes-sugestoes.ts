@@ -25,7 +25,7 @@ import { tipoRequerimentoAssociacaoLabels } from "./requerimentos-associacao";
 import { fontesDemonstracaoAlteracoes, fontesReais, type ComprovanteLite, type FontesAlteracao, type RessarcimentoLite } from "./fontes-alteracoes";
 import { registrarMovimentacao, ROTULO_PENDENCIA_VALOR, type Movimento, type NovoRegistroAlteracao, type OrigemPagamento, type PendenciaValorSugerido, type ValorSugerido, type VinculoFuncional } from "./relatorio-alteracoes";
 
-export type FonteSugestao = "movimentacoes" | "comprovantes" | "requerimentos" | "planilhas_associacao" | "ressarcimentos" | "fechamento";
+export type FonteSugestao = "movimentacoes" | "comprovantes" | "requerimentos" | "planilhas_associacao" | "ressarcimentos" | "fechamento" | "pendencias_dependentes";
 
 export const ROTULO_FONTE: Record<FonteSugestao, string> = {
   movimentacoes: "Movimentações registradas (natureza e motivo informados)",
@@ -34,6 +34,7 @@ export const ROTULO_FONTE: Record<FonteSugestao, string> = {
   planilhas_associacao: "Planilhas das associações",
   ressarcimentos: "Ressarcimentos de meses anteriores",
   fechamento: "Histórico de Fechamento",
+  pendencias_dependentes: "Pendências documentais de dependentes",
 };
 
 export type SugestaoAlteracao = Omit<NovoRegistroAlteracao, "origemInformacao" | "demonstrativo"> & { fonte: FonteSugestao };
@@ -245,7 +246,6 @@ export function lerSugestoesRequerimentos(f: FontesAlteracao = fontesReais()): R
     const conferencia = [
       ...(pOrigem ? [pOrigem] : []),
       ...(v.pendencia ? [v.pendencia] : []),
-      `Competência de referência estimada pelo mês da decisão (${formatCompetencia(mesDe(decidido.decididoEm))}): confira o mês de início do benefício.`,
       ...(titularConhecido ? [] : [`O requerimento identifica o beneficiário ${r.beneficiarioNome}, não necessariamente o titular: informe o titular na conferência.`]),
       ...(r.tipo === "inclusao_no_plano" && !r.motivo ? ["Motivo da inclusão (ex.: nova proposta) não é registrado no requerimento: informe na conferência."] : []),
       ...(r.tipo === "mudanca_plano" ? ["O requerimento não registra se houve alteração de valor."] : []),
@@ -256,8 +256,8 @@ export function lerSugestoesRequerimentos(f: FontesAlteracao = fontesReais()): R
       titular: { nome: r.beneficiarioNome, matricula: servidor?.matricula, cpf: servidor?.cpf },
       vinculo: v.vinculo,
       origemPagamento: origem,
+      // Q20: a competência da movimentação é o mês e ano da aprovação pela GERDAB.
       competenciaReferencia: mesDe(decidido.decididoEm),
-      competenciaEstimada: true,
       movimentos,
       valores: {},
       referenciaOrigem: {
@@ -504,6 +504,30 @@ export function avaliarValorSugerido(f: FontesAlteracao, titular: { matricula?: 
 }
 
 /**
+ * Pendências documentais vencidas de dependentes geram sugestão de alteração de valor na linha do titular (PV-06), editável na conferência.
+ * Não suspendem o grupo familiar. O valor sugerido é o do Fechamento; a GERDAB confirma ou ajusta o valor a informar.
+ */
+export function lerSugestoesPendenciasDependentes(f: FontesAlteracao = fontesReais()): ResultadoFonte {
+  const itens = f.pendenciasDependentes();
+  const sugestoes: SugestaoAlteracao[] = itens.map((p) => {
+    const v = resolverVinculo(f, p.titular.cpf, p.titular.matricula);
+    const origem = p.associacao && p.associacao !== "—" ? origemPorAssociacao(p.associacao) : { origem: "Boletos" as OrigemPagamento, pendencia: undefined };
+    return {
+      fonte: "pendencias_dependentes",
+      titular: p.titular,
+      vinculo: v.vinculo,
+      origemPagamento: origem.origem,
+      competenciaReferencia: f.competenciaVigente(),
+      movimentos: [{ tipo: "alterar_valor", motivo: `Pendência documental do dependente ${p.dependenteNome}: ${p.documento}`, dependente: { nome: p.dependenteNome, parentesco: p.parentesco } }],
+      valores: {},
+      referenciaOrigem: { modulo: "cadastro", registroId: p.id, marcador: p.documento, rotulo: `Pendência documental — ${p.documento}` },
+      conferencia: [...(v.pendencia ? [v.pendencia] : []), ...(origem.pendencia ? [origem.pendencia] : []), `O documento "${p.documento}" do dependente ${p.dependenteNome} está pendente e o prazo já venceu: sugestão de alteração de valor. Confira e edite o valor e a observação.`],
+    };
+  });
+  return { fonte: "pendencias_dependentes", lidos: itens.length, sugestoes, ignorados: [] };
+}
+
+/**
  * Acrescenta à sugestão o valor sugerido (ou o motivo de estar pendente) e reflete o IMPACTO no ressarcimento final, comparando o resultado da
  * competência com o histórico da anterior: alteração de valor sem mudança do ressarcimento (ex.: teto) NÃO é classificada como "Alterar valor"
  * (a movimentação é mantida); movimentação de dependente ou mudança de plano que mudou o ressarcimento passa a "Alterar valor" com o motivo.
@@ -520,7 +544,7 @@ export function enriquecerComFinanceiro(s: SugestaoAlteracao, f: FontesAlteracao
     movimentos = s.movimentos.map((m): Movimento => {
       // "Alterar valor" só existe quando o ressarcimento final mudou. Sem mudança, vale a NATUREZA efetiva comprovada (reajuste, mudança de plano);
       // sem natureza comprovada, a movimentação é mantida para a GERDAB classificar (nunca descartada).
-      if (m.tipo === "alterar_valor" && !mudou) {
+      if (m.tipo === "alterar_valor" && !mudou && s.fonte !== "pendencias_dependentes") {
         notas.push("O ressarcimento final não se alterou: a movimentação foi mantida, mas não é classificada como “Alterar valor”.");
         return { ...m, tipo: m.motivo === "reajuste_plano" ? "reajuste_plano" : m.motivo === "mudou_de_plano" ? "mudanca_plano" : "a_conferir" };
       }
@@ -537,7 +561,7 @@ export function enriquecerComFinanceiro(s: SugestaoAlteracao, f: FontesAlteracao
 
 /** Lê todas as fontes (sem gravar nada). */
 export function lerTodasAsFontes(f: FontesAlteracao = fontesReais()): ResultadoFonte[] {
-  return [lerSugestoesInformadas(f), lerSugestoesComprovantes(f), lerSugestoesRequerimentos(f), lerSugestoesPlanilhas(f), lerSugestoesRessarcimentos(f), lerSugestoesFechamento(f)].map((r) => ({ ...r, sugestoes: r.sugestoes.map((s) => enriquecerComFinanceiro(s, f)) }));
+  return [lerSugestoesInformadas(f), lerSugestoesComprovantes(f), lerSugestoesRequerimentos(f), lerSugestoesPlanilhas(f), lerSugestoesRessarcimentos(f), lerSugestoesFechamento(f), lerSugestoesPendenciasDependentes(f)].map((r) => ({ ...r, sugestoes: r.sugestoes.map((s) => enriquecerComFinanceiro(s, f)) }));
 }
 
 /** Fontes a consultar: as FICTÍCIAS isoladas no ambiente demonstrativo; as REAIS (somente leitura) fora dele. */

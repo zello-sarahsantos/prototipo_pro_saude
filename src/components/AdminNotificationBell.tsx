@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Bell, X } from "lucide-react";
 import { garantirMassaDemonstracaoEnvios } from "@/lib/massa-demonstracao-envios";
 import { garantirMassaDemonstracaoNegociacoes } from "@/lib/massa-demonstracao-negociacoes";
-import { marcarComoLidas, ROTULO_MODULO_NOTIFICACAO, useNotificacoesAdmin, type NotificacaoAdmin } from "@/lib/notificacoes-admin";
+import { getNotificacoesResolvidas, marcarComoLidas, ROTULO_MODULO_NOTIFICACAO, useNotificacoesAdmin, type NotificacaoAdmin } from "@/lib/notificacoes-admin";
 
 /** Sino de notificações do ambiente administrativo (comportamento do protótipo aprovado): contador de
  *  não lidas, lista com marcação de lida, fecha com Esc/clique fora. Reaproveita o padrão visual de
@@ -36,6 +36,7 @@ export function AdminNotificationBell() {
   }, [aberto]);
 
   const naoLidas = totalSino;
+  const resolvidas = aberto ? getNotificacoesResolvidas() : [];
   const abrir = (n: NotificacaoAdmin) => {
     marcarComoLidas([n.chaveLeitura ?? n.id]);
     if (n.href) {
@@ -112,6 +113,20 @@ export function AdminNotificationBell() {
                 </span>
               </button>
             ))}
+            {resolvidas.length > 0 && (
+              <details className="px-4 py-3 border-b border-border text-xs">
+                <summary className="cursor-pointer font-semibold">Histórico: {resolvidas.length === 1 ? "1 resolvida" : `${resolvidas.length} resolvidas`}</summary>
+                <ul className="mt-2 space-y-2">
+                  {resolvidas.map((n) => (
+                    <li key={`${n.id}-${n.resolvidaEm}`}>
+                      <span className="block font-medium">{n.titulo}</span>
+                      <span className="block text-muted-foreground">{n.descricao}</span>
+                      <span className="block text-[11px] text-muted-foreground">Resolvida em {new Date(n.resolvidaEm).toLocaleString("pt-BR")}{n.modulo ? ` · ${ROTULO_MODULO_NOTIFICACAO[n.modulo]}` : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
           <p className="px-4 py-2.5 text-[11px] text-muted-foreground">Notificações marcadas como “Demonstrativa” são exemplos e não entram nos contadores do menu e do Dashboard; as demais vêm de eventos reais do protótipo.</p>
         </div>

@@ -384,7 +384,7 @@ export function ConsolidadoCompetencia({
         <p className="text-lg font-bold text-primary">{formatCurrency(dados.totalGrupo)}</p>
       </div>
       <p className="text-xs text-muted-foreground px-1">
-        Sujeito ao teto de {formatCurrency(4000)} por competência — a validação do teto ocorre na etapa de cálculo
+        Ressarcimento sujeito ao teto de {formatCurrency(4000)} por grupo familiar na competência — a validação do teto ocorre na etapa de cálculo
         do ressarcimento.
       </p>
 

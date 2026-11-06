@@ -10,6 +10,7 @@
  * `dashboard-gerdab.ts`; basta trocar a implementação por uma consulta real (respeitando as regras
  * de negócio) sem alterar nenhum componente.
  */
+import { calcularReembolso } from "./mock-data";
 import { getDataReferencia } from "./dias-uteis";
 
 /* ── Seleção da fonte de dados (preferência do avaliador, só protótipo) ──────────────────────── */
@@ -244,7 +245,7 @@ export interface LinhaRessarcimentoDemo {
 const STATUS_SERVIDOR: [string, boolean, number][] = [
   ["Em análise", true, 3],
   ["Complementação recebida", true, 2],
-  ["Aguardando complementação", true, 1],
+  ["Aguardando complementação", false, 1],
   ["Autorizada", false, 20],
   ["Não autorizada", false, 9],
 ];
@@ -305,7 +306,7 @@ export function getFechamentoDemo(competencia: string) {
     else {
       adimplentes += 1;
       vidasApt += vidas;
-      const ressarcir = Math.round(Math.min(s.valorPlano, 4000) * 0.9 * 100) / 100;
+      const ressarcir = Math.round(calcularReembolso(s.valorPlano) * 100) / 100;
       valor += ressarcir;
       aptos.push({ id: `apto-${i}`, nome: s.nome, matricula: s.matricula, plano: s.plano, vidas, valor: ressarcir });
     }

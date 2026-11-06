@@ -759,11 +759,8 @@ function StepRevisao({
   allDeclarationsChecked: boolean;
 }) {
   const { servidor, dependentesAtivos: ativos } = useRequerimentoBeneficiario();
-  const TETO_VIGENTE = 4000;
-  const PERCENTUAL = 0.9;
   const numValor = servidor.valorPlano;
-  const baseCalculo = Math.min(numValor, TETO_VIGENTE);
-  const reembolsoEstimado = baseCalculo * PERCENTUAL;
+  const reembolsoEstimado = calcularReembolso(numValor);
   const participacaoServidor = numValor - reembolsoEstimado;
   const isPensionista = servidor.cargo.startsWith("Pensionista");
 

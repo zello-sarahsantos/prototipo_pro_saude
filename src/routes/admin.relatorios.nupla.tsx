@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronLeft, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { ChevronLeft, FileCheck2, FileSpreadsheet, FileText, History, Loader2, X } from "lucide-react";
+import { getAdminRole } from "@/components/AdminLayout";
+import { useEmissoes } from "@/lib/emissoes-relatorio";
 import { getDataReferencia } from "@/lib/dias-uteis";
 import {
   GRUPOS_MOVIMENTACAO,
@@ -16,7 +18,8 @@ import {
   type Periodicidade,
   type PeriodoMovimentacao,
 } from "@/lib/movimentacoes-pro-saude";
-import { specNuplaBimestre, specNuplaPrincipal, NOTA_MOVIMENTACOES } from "@/lib/relatorio-nupla";
+import { ROTULO_PERIODICIDADE, TIPO_EMISSAO_NUPLA, emitirRelatorioNupla, specNuplaBimestre, specNuplaEmissao, specNuplaPrincipal, NOTA_MOVIMENTACOES, type EmissaoNupla } from "@/lib/relatorio-nupla";
+import { responsavelCadastro } from "@/lib/servidor-cadastro";
 import { V, num } from "@/components/dashboard-gerdab/gd-ui";
 
 interface NuplaSearch {
@@ -60,6 +63,69 @@ function BotaoExportar({ tipo, rotulo, onClick, ocupado, desabilitado }: { tipo:
   );
 }
 
+const fundoModal: React.CSSProperties = { position: "fixed", inset: 0, zIndex: 60, background: "rgba(10,22,40,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" };
+const caixaModal: React.CSSProperties = { background: V.card, color: V.text, border: `1px solid ${V.border}`, borderRadius: 12, padding: 20, maxHeight: "100%", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 };
+const botaoAcao: React.CSSProperties = { height: 36, padding: "0 12px", border: `1px solid ${V.border}`, borderRadius: 8, background: V.card, color: V.text, fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+
+/** Histórico das emissões do relatório NUPLA: consulta e reexportação a partir do conteúdo registrado (Q40). */
+function HistoricoEmissoesNupla({ emissoes, onFechar }: { emissoes: EmissaoNupla[]; onFechar: () => void }) {
+  const [ver, setVer] = useState<EmissaoNupla | null>(null);
+  const lista = [...emissoes].sort((a, b) => b.geradoEm.localeCompare(a.geradoEm));
+  async function baixar(e: EmissaoNupla, formato: "pdf" | "xlsx") {
+    if (formato === "pdf") {
+      const { exportarRelatorioPDF } = await import("@/lib/relatorio-export-pdf");
+      exportarRelatorioPDF(specNuplaEmissao(e));
+    } else {
+      const { exportarRelatorioXLSX } = await import("@/lib/relatorio-export-xlsx");
+      await exportarRelatorioXLSX(specNuplaEmissao(e));
+    }
+  }
+  return (
+    <div style={fundoModal} onMouseDown={(ev) => ev.target === ev.currentTarget && onFechar()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nupla-hist" style={{ ...caixaModal, width: "min(720px, 100%)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <h2 id="nupla-hist" style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Histórico de emissões</h2>
+            <p style={{ fontSize: 13, color: V.muted, margin: "4px 0 0" }}>Cada emissão preserva o conteúdo registrado, sem recálculo.</p>
+          </div>
+          <button type="button" onClick={onFechar} aria-label="Fechar" style={{ background: "none", border: "none", color: V.muted, cursor: "pointer", height: 32, width: 32 }}><X size={18} /></button>
+        </div>
+        {lista.length === 0 ? (
+          <p style={{ fontSize: 13, color: V.muted, margin: 0 }}>Nenhum relatório emitido.</p>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            {lista.map((e) => (
+              <li key={e.id} style={{ border: `1px solid ${V.border}`, borderRadius: 8, padding: "10px 12px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: 13, minWidth: 0 }}>
+                  <strong>Relatório nº {e.numero} — {e.parametros?.titulo}</strong>
+                  <span style={{ display: "block", fontSize: 12, color: V.muted }}>{ROTULO_PERIODICIDADE[(e.parametros?.periodicidade ?? "mensal") as keyof typeof ROTULO_PERIODICIDADE]} · {new Date(e.geradoEm).toLocaleString("pt-BR")} · {e.responsavel}</span>
+                </span>
+                <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <button type="button" style={botaoAcao} onClick={() => setVer(ver?.id === e.id ? null : e)}>Visualizar</button>
+                  <button type="button" style={botaoAcao} onClick={() => baixar(e, "pdf")}>PDF</button>
+                  <button type="button" style={botaoAcao} onClick={() => baixar(e, "xlsx")}>Excel</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {ver && (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
+              <thead><tr><th style={{ ...th, textAlign: "left" }}>Movimentação</th>{GRUPOS_MOVIMENTACAO.map((g) => <th key={g.chave} style={{ ...th, textAlign: "right" }}>{g.modalidade} {g.vinculo}</th>)}<th style={{ ...th, textAlign: "right" }}>Total</th></tr></thead>
+              <tbody>
+                {ver.linhas.map((l) => (
+                  <tr key={l.categoria}><td style={{ ...celula, textAlign: "left" }}>{l.categoria}</td>{GRUPOS_MOVIMENTACAO.map((g) => <td key={g.chave} style={celula}>{num(l[g.chave])}</td>)}<td style={{ ...celula, fontWeight: 700 }}>{num(l.total)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RelatorioNupla() {
   const busca = Route.useSearch();
   const navigate = useNavigate({ from: "/admin/relatorios/nupla" });
@@ -88,6 +154,15 @@ function RelatorioNupla() {
 
   const [gerando, setGerando] = useState<string | null>(null);
   const [aviso, setAviso] = useState("");
+  const emissoes = useEmissoes<EmissaoNupla["linhas"][number]>(TIPO_EMISSAO_NUPLA);
+  const [confirmandoEmissao, setConfirmandoEmissao] = useState(false);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
+
+  function emitir() {
+    const e = emitirRelatorioNupla(periodo, responsavelCadastro(getAdminRole()));
+    setConfirmandoEmissao(false);
+    setAviso(`Relatório nº ${e.numero} de ${titulo} emitido e registrado no histórico.`);
+  }
 
   async function exportar(chave: string, formato: "pdf" | "xlsx", bimestre: boolean) {
     setGerando(chave);
@@ -126,6 +201,8 @@ function RelatorioNupla() {
           <span style={{ fontSize: 12, fontWeight: 600, color: V.muted }}>Relatório principal:</span>
           <BotaoExportar tipo="pdf" rotulo="Exportar PDF" ocupado={gerando === "p-pdf"} onClick={() => exportar("p-pdf", "pdf", false)} />
           <BotaoExportar tipo="xlsx" rotulo="Exportar Excel" ocupado={gerando === "p-xlsx"} onClick={() => exportar("p-xlsx", "xlsx", false)} />
+          <button type="button" className="gd-opt" onClick={() => setConfirmandoEmissao(true)} style={{ ...botaoAcao, height: 40, display: "inline-flex", alignItems: "center", gap: 6 }}><FileCheck2 size={14} /> Emitir relatório</button>
+          <button type="button" className="gd-opt" onClick={() => setHistoricoAberto(true)} style={{ ...botaoAcao, height: 40, display: "inline-flex", alignItems: "center", gap: 6 }}><History size={14} /> Histórico de emissões ({num(emissoes.length)})</button>
         </div>
       </header>
 
@@ -272,6 +349,19 @@ function RelatorioNupla() {
       <p style={{ fontSize: 12, margin: 0, lineHeight: 1.5, color: V.muted }}>
         Dados disponíveis até {MESES_NOME[ultimo.mes]}/{ultimo.ano}{periodoEmAndamento(periodo) || ano === ultimo.ano ? " (em andamento)" : ""}; meses futuros aparecem como “—”. Os totais de cada mês coincidem com “Movimentações realizadas na competência” no Dashboard.
       </p>
+      {confirmandoEmissao && (
+        <div style={fundoModal} onMouseDown={(ev) => ev.target === ev.currentTarget && setConfirmandoEmissao(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="nupla-emitir" style={{ ...caixaModal, width: "min(480px, 100%)" }}>
+            <h2 id="nupla-emitir" style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Emitir relatório — {titulo}</h2>
+            <p style={{ fontSize: 13, margin: 0 }}>A emissão registra no histórico o conteúdo do período, com número sequencial, data e hora e responsável. O envio ao NUPLA permanece a cargo da GERDAB.</p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" style={botaoAcao} onClick={() => setConfirmandoEmissao(false)}>Cancelar</button>
+              <button type="button" style={{ ...botaoAcao, background: V.primary, color: "#fff", borderColor: V.primary }} onClick={emitir}>Confirmar emissão</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {historicoAberto && <HistoricoEmissoesNupla emissoes={emissoes as EmissaoNupla[]} onFechar={() => setHistoricoAberto(false)} />}
     </div>
   );
 }

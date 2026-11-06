@@ -7,7 +7,9 @@
  * ambiente demonstrativo nunca se mistura com dados operacionais. O MESMO código de identificação roda sobre as duas.
  */
 import type { BeneficiarioPagamento, StatusComprovante } from "./mock-data";
-import { calcularReembolso, servidoresList } from "./mock-data";
+import { calcularReembolso, dependentes, servidorAtual, servidoresList } from "./mock-data";
+import { getDataReferencia } from "./dias-uteis";
+import { estaVencida, getPendenciasDocumentaisDoServidor } from "./pendencias-documentais";
 import { getBeneficiariosPagamentoAtual, getComprovantesUnificados, loadHistoricoFechamentos } from "./prosaude-storage";
 import type { StatusRequerimentoAssociacao, TipoRequerimentoAssociacao } from "./prosaude-storage";
 import { statusDoBeneficiarioNoDocumento } from "./comprovante-status";
@@ -111,9 +113,22 @@ export interface MovimentoInformadoLite {
   data: string;
 }
 
+/** Pendência documental vencida de dependente, lida do cadastro (somente leitura). */
+export interface PendenciaDependenteLite {
+  id: string;
+  titular: { nome: string; matricula?: string; cpf?: string };
+  associacao?: string;
+  dependenteNome: string;
+  parentesco?: string;
+  documento: string;
+}
+
 export interface FontesAlteracao {
   /** `true` nas fontes fictícias do ambiente demonstrativo. */
   demonstracao: boolean;
+  /** Competência a que as movimentações sem data própria pertencem: o mês vigente (ou a competência demonstrativa). */
+  competenciaVigente(): string;
+  pendenciasDependentes(): PendenciaDependenteLite[];
   beneficiarios(): BeneficiarioPagamento[];
   comprovantes(): ComprovanteLite[];
   requerimentos(): RequerimentoLite[];
@@ -137,6 +152,23 @@ export function fontesReais(): FontesAlteracao {
   const cacheFechamento = new Map<string, ReturnType<typeof getRegistrosFechamento>>();
   return {
     demonstracao: false,
+    competenciaVigente: () => {
+      const ref = getDataReferencia();
+      return `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
+    },
+    pendenciasDependentes: () => {
+      const hoje = getDataReferencia();
+      return getPendenciasDocumentaisDoServidor(servidorAtual.matricula, servidorAtual.associacao !== "—" ? "associacao" : "servidor", hoje)
+        .filter((p) => p.dependenteId && p.tipo !== "limite_idade" && p.prazo !== null && estaVencida(p as Parameters<typeof estaVencida>[0], hoje))
+        .map((p) => ({
+          id: p.id,
+          titular: { nome: servidorAtual.nome, matricula: servidorAtual.matricula, cpf: servidorAtual.cpf },
+          associacao: servidorAtual.associacao,
+          dependenteNome: p.dependenteNome ?? "(dependente)",
+          parentesco: dependentes.find((d) => d.id === p.dependenteId)?.parentesco,
+          documento: p.documento,
+        }));
+    },
     beneficiarios: getBeneficiariosPagamentoAtual,
     comprovantes: () =>
       getComprovantesUnificados().map((c) => ({
@@ -373,7 +405,7 @@ const FECHAMENTO_DEMO: LinhaFechamentoLite[] = [linhaFech(P.joana, "2026-08", "i
 
 /**
  * RESSARCIMENTO FINAL do grupo familiar por titular e competência — o que o Fechamento apura (`valorRessarcir`). Os valores fictícios do grupo são
- * passados pela PRÓPRIA `calcularReembolso` do sistema (base limitada ao teto × 90%), nunca por fórmula paralela nem por valor fixo desvinculado.
+ * passados pela PRÓPRIA `calcularReembolso` do sistema (90% do valor elegível, limitado ao teto), nunca por fórmula paralela nem por valor fixo desvinculado.
  */
 const rg = (p: PessoaDemo, competencia: string, valorGrupo: number, classificacao: RessarcimentoLite["classificacao"] = "adimplente", origem: RessarcimentoLite["origem"] = "individual"): RessarcimentoLite => ({
   matricula: p.matricula,
@@ -392,7 +424,7 @@ const RESSARCIMENTO_ATUAL_DEMO: RessarcimentoLite[] = [
   rg(P.cecilia, mes, 1500, "adimplente", "associacao"),
   rg(P.davi, mes, 2600, "adimplente", "associacao"),
   rg(P.elisa, mes, 2200, "adimplente", "associacao"),
-  rg(P.fabio, mes, 4800), // acima do teto: R$ 3.600,00 nos dois meses → sem impacto
+  rg(P.fabio, mes, 4800), // acima do teto: R$ 4.000,00 nos dois meses → sem impacto
   rg(P.giovana, mes, 2500),
   rg(P.henrique, mes, 1800, "adimplente", "associacao"),
   rg(P.isadora, mes, 900, "adimplente", "associacao"), // atual R$ 810,00 × histórico R$ 855,00 → divergente
@@ -401,7 +433,7 @@ const RESSARCIMENTO_ATUAL_DEMO: RessarcimentoLite[] = [
   rg(P.lucia, mes, 2300),
   // Marta: sem resultado de Fechamento → valor não disponível.
   rg(P.nelson, mes, 2400),
-  rg(P.olivia, mes, 4800), // R$ 3.600,00 nos dois meses (teto familiar)
+  rg(P.olivia, mes, 4800), // R$ 4.000,00 nos dois meses (teto familiar)
   rg(P.paulo, mes, 2000), // reinclusão sem reajuste: mesmo valor final
   rg(P.quiteria, mes, 2200, "adimplente", "associacao"), // mudança de plano sem reajuste: mesmo valor final
   rg(P.rita, mes, 2300),
@@ -425,10 +457,17 @@ const RESSARCIMENTO_HISTORICO_DEMO: RessarcimentoHistoricoLite[] = [
   hg(P.isadora, mes, 950), // histórico de set/2026 difere do Fechamento atual
 ];
 
+/** Pendência documental de dependente: gera sugestão de alteração de valor na linha do titular, sem suspender o grupo. */
+const PENDENCIAS_DEPENDENTES_DEMO: PendenciaDependenteLite[] = [
+  { id: "demo-alt-pend-lucia-dep", titular: { nome: P.lucia.nome, matricula: P.lucia.matricula, cpf: P.lucia.cpf }, associacao: P.lucia.associacao, dependenteNome: "Tomás Exemplo", parentesco: "Filho", documento: "Comprovante de Matrícula" },
+];
+
 /** Fontes fictícias isoladas (sem acesso a armazenamento algum). */
 export function fontesDemonstracaoAlteracoes(): FontesAlteracao {
   return {
     demonstracao: true,
+    competenciaVigente: () => COMPETENCIA_DEMONSTRATIVA_ALTERACOES,
+    pendenciasDependentes: () => PENDENCIAS_DEPENDENTES_DEMO,
     beneficiarios: () => BENEFICIARIOS_DEMO,
     comprovantes: () => COMPROVANTES_DEMO,
     requerimentos: () => REQUERIMENTOS_DEMO,

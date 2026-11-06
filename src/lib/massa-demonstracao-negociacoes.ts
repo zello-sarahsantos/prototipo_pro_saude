@@ -9,7 +9,7 @@
  *  1. Maria Oliveira — 2 meses de R$ 2.500,00 → auxílio R$ 2.250,00 cada; total R$ 4.500,00; 10 parcelas de R$ 450,00.
  *  2. Carlos Pereira — auxílio de um mês AJUSTADO manualmente + uma parcela de ressarcimento ajustada.
  *  3. Fernanda Lima — 3 meses de R$ 3.500,00; total R$ 9.450,00; 6 parcelas de R$ 1.575,00.
- *  4. Ana Beatriz Ferreira — parcela acima do teto (R$ 4.300,00 → base R$ 4.000,00 → auxílio R$ 3.600,00) e entrada
+ *  4. Ana Beatriz Ferreira — parcela de R$ 4.300,00 → 90% = R$ 3.870,00 de auxílio (abaixo do teto de R$ 4.000,00) e entrada
  *     diferenciada: ressarcimento preenchido manualmente (regra não validada, P01).
  *  5. João da Silva — total R$ 1.000,00 em 3 parcelas: truncamento (R$ 333,33; resíduo R$ 0,01).
  *  6. Patrícia Costa — 2 meses de R$ 2.000,00; total R$ 3.600,00; 4 parcelas de R$ 900,00.
@@ -25,7 +25,7 @@ import { removerArquivo } from "./armazenamento-arquivos";
 import { loadEmissoes, removerEmissoes } from "./negociacoes-ressarcimento";
 import { confirmarQuitacao, criarNegociacao, loadNegociacoes, removerNegociacoes, somarMesesISO, type NovaNegociacaoInput, type NovoDocumentoInput } from "./negociacoes";
 
-const VERSAO_MASSA = "5";
+const VERSAO_MASSA = "6";
 
 const vencimentos = (primeiro: string, n: number) => Array.from({ length: n }, (_, i) => somarMesesISO(primeiro, i));
 const doc = (nome: string, tipo: NovoDocumentoInput["tipo"], finalidade: NovoDocumentoInput["finalidade"], descricao?: string): NovoDocumentoInput => ({ nome, tipo, finalidade, descricao });
@@ -76,14 +76,14 @@ const CENARIOS: NovaNegociacaoInput[] = [
   {
     matricula: "89012",
     dataFormalizacao: "2026-09-15",
-    observacoes: "Entrada de 50% e restante em três parcelas — regra de distribuição pendente de validação (P01).",
+    observacoes: "Entrada de 50% e restante em três parcelas.",
     competencias: [
       { competencia: "2025-03", valorParcelaCents: 430000 },
       { competencia: "2025-04", valorParcelaCents: 430000 },
     ],
     parcelas: parcelas(vencimentos("2026-09-20", 4), (() => {
-      const j = "Entrada diferenciada: valor preenchido manualmente conforme o acordo anexado (regra de distribuição ainda não validada).";
-      return { 1: { valorCents: 360000, justificativa: j }, 2: { valorCents: 120000, justificativa: j }, 3: { valorCents: 120000, justificativa: j }, 4: { valorCents: 120000, justificativa: j } };
+      const j = "Entrada diferenciada: valor preenchido manualmente conforme o acordo anexado.";
+      return { 1: { valorCents: 387000, justificativa: j }, 2: { valorCents: 129000, justificativa: j }, 3: { valorCents: 129000, justificativa: j }, 4: { valorCents: 129000, justificativa: j } };
     })()),
     documentos: [doc("acordo_assinado_demo.pdf", "acordo_assinado", "fundamenta", "Acordo com entrada diferenciada.")],
     responsavel: analistaReferencia,

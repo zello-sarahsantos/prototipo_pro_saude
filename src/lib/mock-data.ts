@@ -49,10 +49,9 @@ export const regrasProSaude = {
   ],
 };
 
-export const calcularReembolso = (valorPlano: number, teto = regrasProSaude.tetoFamiliar) => {
-  const base = Math.min(valorPlano, teto);
-  return base * regrasProSaude.percentualReembolso;
-};
+/** Ressarcimento = percentual × valor elegível, limitado ao teto por grupo familiar. O teto limita o valor ressarcido, e não o valor do plano. */
+export const calcularReembolso = (valorElegivel: number, teto = regrasProSaude.tetoFamiliar) =>
+  Math.min(valorElegivel * regrasProSaude.percentualReembolso, teto);
 
 export const servidorAtual = {
   id: "12345678",

@@ -23,6 +23,7 @@ import { listarRequerimentosAssociacao, statusAtualRequerimento, tipoRequeriment
 import { getEstadoCompetencia, getSolicitacoesRetroativas } from "./ressarcimento-retroativo";
 import { getCompetenciaReferencia, getFilaConfirmacoes } from "./negociacoes";
 import { enviosAguardandoConferencia } from "./negociacoes-envios";
+import { getParcelasDisponiveis } from "./negociacoes-ressarcimento";
 
 export interface NotificacaoAdmin {
   id: string;
@@ -69,6 +70,7 @@ export const EVENTO_NOTIFICACOES_ADMIN = "prosaude-notificacoes-admin";
 /** Id fixo da notificação da fila de Negociações; "lida" vale para a contagem em que foi lida (nova contagem = pendente de leitura de novo). */
 export const ID_NEGOCIACOES = "real-negociacoes-fila";
 export const ID_ENVIOS = "real-negociacoes-envios";
+export const ID_RESSARCIMENTO_NEGOCIACOES = "real-negociacoes-ressarcimento";
 const CHAVE_LIDAS = "prosaude_notificacoes_admin_lidas";
 
 /** Exemplos do protótipo aprovado (Dashboard GERDAB). Não representam eventos reais. */
@@ -214,7 +216,7 @@ function getNotificacoesReais(): Omit<NotificacaoAdmin, "lida">[] {
     });
   }
   const porRecencia = (a: { dataHora?: string }, b: { dataHora?: string }) => (b.dataHora ?? "").localeCompare(a.dataHora ?? "");
-  return [...getNotificacaoNegociacoes(), ...getNotificacaoEnvios(), ...[...reqs, ...comps, ...ress].sort(porRecencia)];
+  return [...getNotificacaoNegociacoes(), ...getNotificacaoEnvios(), ...getNotificacaoRessarcimentoNegociacoes(), ...[...reqs, ...comps, ...ress].sort(porRecencia)];
 }
 
 /** Notificação DINÂMICA e única da fila de confirmações de pagamento das Negociações (tarefa de conferência — não indica
@@ -265,10 +267,70 @@ function getNotificacaoEnvios(): Omit<NotificacaoAdmin, "lida">[] {
   ];
 }
 
+/** Parcelas quitadas ainda não incluídas no Relatório de Ressarcimento (Q17) — notificação única e consolidada; some quando não há parcelas. */
+function getNotificacaoRessarcimentoNegociacoes(): Omit<NotificacaoAdmin, "lida">[] {
+  if (typeof window === "undefined") return [];
+  const perfil = localStorage.getItem("prosaude_role") || "gerencia";
+  if (perfil !== "analista" && perfil !== "gerencia") return [];
+  const disponiveis = getParcelasDisponiveis();
+  if (disponiveis.length === 0) return [];
+  return [
+    {
+      id: ID_RESSARCIMENTO_NEGOCIACOES,
+      origem: "real",
+      titulo: "Negociações — Parcelas aguardando ressarcimento",
+      descricao: `${disponiveis.length} ${disponiveis.length === 1 ? "parcela quitada aguarda" : "parcelas quitadas aguardam"} inclusão no Relatório de Ressarcimento.`,
+      quando: `Competência ${getCompetenciaReferencia().split("-").reverse().join("/")}`,
+      href: "/admin/negociacoes/ressarcimento",
+      chaveLeitura: `${ID_RESSARCIMENTO_NEGOCIACOES}:${disponiveis.length}`,
+      modulo: "negociacoes",
+      indicadores: [],
+    },
+  ];
+}
+
+/* ── Histórico (Q06): resolvida a pendência, a notificação deixa de ser pendente e permanece consultável ── */
+
+const CHAVE_ABERTAS = "prosaude_notificacoes_abertas";
+const CHAVE_RESOLVIDAS = "prosaude_notificacoes_resolvidas";
+
+export interface NotificacaoResolvida {
+  id: string;
+  titulo: string;
+  descricao: string;
+  modulo?: ModuloNotificacao;
+  resolvidaEm: string;
+}
+
+function lerLista<T>(chave: string): T[] {
+  try {
+    return JSON.parse(localStorage.getItem(chave) ?? "[]") as T[];
+  } catch {
+    return [];
+  }
+}
+
+function sincronizarHistorico(reais: Omit<NotificacaoAdmin, "lida">[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const atuais = new Set(reais.map((n) => n.id));
+    const anteriores = lerLista<NotificacaoResolvida>(CHAVE_ABERTAS);
+    const resolvidas = anteriores.filter((n) => !atuais.has(n.id)).map((n) => ({ ...n, resolvidaEm: new Date().toISOString() }));
+    if (resolvidas.length) localStorage.setItem(CHAVE_RESOLVIDAS, JSON.stringify([...resolvidas, ...lerLista<NotificacaoResolvida>(CHAVE_RESOLVIDAS)].slice(0, 100)));
+    localStorage.setItem(CHAVE_ABERTAS, JSON.stringify(reais.map((n) => ({ id: n.id, titulo: n.titulo, descricao: n.descricao, modulo: n.modulo }))));
+  } catch {
+    /* sem armazenamento: o histórico vale só enquanto a pendência existir */
+  }
+}
+
+export const getNotificacoesResolvidas = () => (typeof window === "undefined" ? [] : lerLista<NotificacaoResolvida>(CHAVE_RESOLVIDAS));
+
 /** Reais primeiro (mais acionáveis), depois as demonstrativas. */
 export function getNotificacoesAdmin(): NotificacaoAdmin[] {
   const lidos = lerIdsLidos();
-  const reais = getNotificacoesReais().map((n) => ({ ...n, lida: lidos.has(n.chaveLeitura ?? n.id) }));
+  const atuais = getNotificacoesReais();
+  sincronizarHistorico(atuais);
+  const reais = atuais.map((n) => ({ ...n, lida: lidos.has(n.chaveLeitura ?? n.id) }));
   const demo = DEMONSTRATIVAS.map((n) => ({ ...n, origem: "demonstrativa" as const, lida: n.lida || lidos.has(n.id) }));
   return [...reais, ...demo];
 }

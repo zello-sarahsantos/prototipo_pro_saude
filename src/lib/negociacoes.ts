@@ -5,7 +5,7 @@
  * O ressarcimento do auxílio Pró-Saúde NÃO usa o valor das prestações do acordo (que podem ter juros, multas e
  * encargos): usa o **auxílio elegível dos meses negociados** (meses originais em atraso). Para cada mês o
  * analista informa o **valor da parcela** original e o sistema calcula o auxílio com a MESMA função da primeira
- * inclusão (`calcularReembolso`: base limitada ao teto × percentual), editável com justificativa. O que o
+ * inclusão (`calcularReembolso`: percentual × valor, limitado ao teto), editável com justificativa. O que o
  * acordo cobra por prestação (`valorCobradoCents`) é só informação complementar opcional.
  *
  * Princípios (decisões da stakeholder, plano v2 e revisão funcional):
@@ -15,14 +15,14 @@
  *    justificativa. Os parâmetros usados ficam gravados na negociação e ela nunca é recalculada depois.
  *  - Dinheiro em **centavos inteiros** (representação com duas casas decimais). Entradas com mais de duas
  *    casas são recusadas — nada é arredondado em silêncio.
- *  - **Truncamento administrativo** (critério SOLICITADO para o protótipo, ainda NÃO homologado pela GERDAB):
+ *  - **Truncamento administrativo** (Q09):
  *    para parcelas de mesmo valor, valor por parcela = divisão INTEIRA dos centavos elegíveis pela quantidade
  *    de parcelas (corte seco em duas casas — sem arredondamento matemático). A diferença residual
  *    (total elegível − soma calculada) é apenas EXIBIDA para conferência: nunca é distribuída, somada à última
- *    parcela nem compensada automaticamente. Entrada diferenciada/parcelas distintas (P01) continuam sendo
- *    preenchidas manualmente, com justificativa obrigatória e trilha de auditoria.
+ *    parcela nem compensada automaticamente. Ao alterar a entrada, as demais parcelas são redistribuídas pelo mesmo
+ *    critério sobre o valor remanescente (Q10) e seguem ajustáveis, com justificativa e trilha de auditoria.
  *  - Ajuste/preenchimento manual: justificativa obrigatória; o valor calculado original é preservado.
- *  - Confirmado o cadastro, valores ficam congelados (correção/retificação = pendência P02/P04).
+ *  - Confirmado o cadastro, os valores são preservados: correções são retificações, com registro no histórico (Q12, Q16).
  *  - **Quitação (Fase 2):** sempre MANUAL, confirmada pela GERDAB (data, responsável, histórico), parcela a parcela e
  *    em qualquer ordem. Vencimento passado ou documento anexado NUNCA quitam sozinhos. Só parcela quitada poderá compor
  *    o relatório de ressarcimento (Fase 4); relatórios e encaminhamento ainda não existem.
@@ -57,8 +57,7 @@ export const centavosParaTexto = (c: number) => (c / 100).toFixed(2).replace("."
 /* ── Tipos ─────────────────────────────────────────────────────────────────────────────────── */
 
 /** Tipo de parcelamento IDENTIFICADO pelos valores finais das parcelas (nunca escolhido): "uniforme" = todas iguais;
- *  "diferenciado" = entrada diferenciada ou parcelas distintas — regra de distribuição NÃO validada (P01), o sistema não
- *  distribui automaticamente: vale o que o analista ajustou. Não altera total elegível, cálculos nem ajustes. */
+ *  "diferenciado" = entrada diferenciada ou parcelas distintas: valem os valores finais registrados. Não altera total elegível, cálculos nem ajustes. */
 export type CriterioParcelamento = "uniforme" | "diferenciado";
 
 export interface CompetenciaOriginal {
@@ -71,8 +70,8 @@ export interface CompetenciaOriginal {
   /** Auxílio calculado pelo sistema com `calcularReembolso`. Ausente em negociações anteriores a esta regra,
    *  cujo auxílio foi informado pelo analista. */
   auxilioCalculadoCents?: number;
-  /** Base considerada no cálculo (valor da parcela limitado ao teto), em centavos. */
-  baseCalculoCents?: number;
+  /** Valor da parcela × percentual, antes do limite do teto, em centavos. */
+  percentualAplicadoCents?: number;
   /** Preenchido só quando o analista substituiu o auxílio calculado (valor anterior, novo, quem, quando, por quê). */
   ajusteAuxilio?: AjusteAuxilio;
   observacao?: string;
@@ -128,7 +127,10 @@ export interface Quitacao {
 }
 
 export interface ParcelaNegociada {
+  /** Número original no acordo: não muda quando outra parcela é excluída. */
   numero: number;
+  /** Parcela já emitida que foi alterada depois e aguarda inclusão atualizada em nova emissão (a emissão anterior é preservada). */
+  reemissaoPendente?: { motivo: string; dataHora: string };
   /** Valor cobrado pela operadora/associação (pode ter juros/multas) — informação complementar OPCIONAL,
    *  nunca base de cálculo. */
   valorCobradoCents?: number;
@@ -184,8 +186,15 @@ export interface EventoHistoricoNegociacao {
   id: string;
   dataHora: string;
   responsavel: string;
-  tipo: "cadastro" | "ajuste_financeiro" | "documento" | "quitacao";
+  tipo: "cadastro" | "ajuste_financeiro" | "documento" | "quitacao" | "retificacao" | "exclusao" | "emissao";
   descricao: string;
+}
+
+export interface ParcelaExcluida {
+  parcela: ParcelaNegociada;
+  excluidaEm: string;
+  excluidaPor: string;
+  observacao?: string;
 }
 
 export interface Negociacao {
@@ -206,6 +215,8 @@ export interface Negociacao {
   competenciasOriginais: CompetenciaOriginal[];
   totalElegivelCents: number;
   parcelas: ParcelaNegociada[];
+  /** Parcelas cadastradas que foram excluídas: saem dos cálculos e das filas e permanecem para rastreabilidade. */
+  parcelasExcluidas?: ParcelaExcluida[];
   documentos: DocumentoNegociacao[];
   historico: EventoHistoricoNegociacao[];
   criadaEm: string;
@@ -233,25 +244,27 @@ const paraCentavos = (reais: number) => parseInt(reais.toFixed(2).replace(".", "
 export interface CalculoAuxilio {
   /** Valor da parcela original informado. */
   valorParcelaCents: number;
-  /** Valor da parcela limitado ao teto familiar (base do cálculo). */
-  baseCents: number;
+  /** Valor da parcela × percentual, antes do limite do teto. */
+  percentualAplicadoCents: number;
   percentual: number;
   tetoCents: number;
-  acimaDoTeto: boolean;
+  /** O resultado do percentual alcançou ou ultrapassou o teto: o auxílio fica limitado a ele. */
+  limitadoAoTeto: boolean;
   /** Auxílio elegível calculado. */
   auxilioCents: number;
 }
 
 /** Auxílio elegível de UM mês a partir do valor da parcela original — mesma regra da primeira inclusão
- *  (`calcularReembolso`: base = min(valor, teto) × percentual), sem regra paralela. */
+ *  (`calcularReembolso`: mín(percentual × valor; teto)), sem regra paralela. */
 export function calcularAuxilioElegivel(valorParcelaCents: number): CalculoAuxilio {
   const tetoCents = paraCentavos(regrasProSaude.tetoFamiliar);
+  const percentualAplicadoCents = paraCentavos((valorParcelaCents / 100) * regrasProSaude.percentualReembolso);
   return {
     valorParcelaCents,
-    baseCents: Math.min(valorParcelaCents, tetoCents),
+    percentualAplicadoCents,
     percentual: regrasProSaude.percentualReembolso,
     tetoCents,
-    acimaDoTeto: valorParcelaCents > tetoCents,
+    limitadoAoTeto: percentualAplicadoCents > tetoCents,
     auxilioCents: paraCentavos(calcularReembolso(valorParcelaCents / 100)),
   };
 }
@@ -307,11 +320,11 @@ export type ResultadoCalculo =
 /**
  * TRUNCAMENTO ADMINISTRATIVO (parcelas de mesmo valor): valor por parcela = ⌊centavos elegíveis ÷ nº de parcelas⌋,
  * em aritmética de inteiros (corte seco, sem arredondamento matemático). O resto fica como diferença
- * residual exibida; não é redistribuído. Critério do protótipo, sujeito à validação da GERDAB.
+ * residual exibida; não é redistribuído (Q09).
  */
 export function calcularRessarcimento(totalElegivelCents: number, qtdParcelas: number, criterio: CriterioParcelamento): ResultadoCalculo {
   if (criterio === "diferenciado") {
-    return { disponivel: false, motivo: "Entrada diferenciada ou parcelas distintas: a regra de distribuição ainda não foi validada (P01). Preencha manualmente." };
+    return { disponivel: false, motivo: "Entrada diferenciada ou parcelas distintas: preencha manualmente." };
   }
   if (!Number.isInteger(qtdParcelas) || qtdParcelas < 1) return { disponivel: false, motivo: "Informe a quantidade de parcelas negociadas." };
   if (!Number.isInteger(totalElegivelCents) || totalElegivelCents <= 0) return { disponivel: false, motivo: "Informe os meses negociados e o valor da parcela de cada um." };
@@ -323,6 +336,25 @@ export function calcularRessarcimento(totalElegivelCents: number, qtdParcelas: n
     valoresCents: Array.from({ length: qtdParcelas }, () => valorPorParcelaCents),
     memoria: { totalElegivelCents, qtdParcelas, valorPorParcelaCents, somaCalculadaCents, residualCents: totalElegivelCents - somaCalculadaCents },
   };
+}
+
+/**
+ * Valores calculados de cada parcela. Sem entrada alterada: truncamento do total elegível. Com a parcela 1 (entrada)
+ * ajustada: as parcelas sem ajuste manual recebem o valor remanescente pelo mesmo truncamento (Q10); parcelas ajustadas são
+ * preservadas e, sem remanescente, mantém-se o cálculo original.
+ */
+export function valoresCalculadosParcelas(totalElegivelCents: number, qtdParcelas: number, manuaisCents: Record<number, number>): (number | null)[] {
+  const base = calcularRessarcimento(totalElegivelCents, qtdParcelas, "uniforme");
+  const valores: (number | null)[] = base.disponivel ? [...base.valoresCents] : Array.from({ length: Math.max(qtdParcelas, 0) }, () => null);
+  const entrada = manuaisCents[1];
+  if (entrada === undefined || qtdParcelas < 2 || !base.disponivel) return valores;
+  const demaisManuais = Object.entries(manuaisCents).filter(([n]) => Number(n) !== 1);
+  const remanescente = totalElegivelCents - entrada - demaisManuais.reduce((t, [, v]) => t + v, 0);
+  const automaticas = qtdParcelas - 1 - demaisManuais.length;
+  if (automaticas < 1) return valores;
+  const porParcela = Math.floor(remanescente / automaticas);
+  if (porParcela < 1) return valores;
+  return valores.map((v, i) => (i === 0 || manuaisCents[i + 1] !== undefined ? v : porParcela));
 }
 
 /* ── Persistência ──────────────────────────────────────────────────────────────────────────── */
@@ -481,7 +513,7 @@ export async function criarNegociacao(input: NovaNegociacaoInput): Promise<Negoc
   // Auxílio elegível de cada mês: `calcularReembolso` (regra da primeira inclusão); ajuste manual exige justificativa.
   const competencias: CompetenciaOriginal[] = input.competencias.map((m) => {
     const calc = calcularAuxilioElegivel(m.valorParcelaCents);
-    const base: CompetenciaOriginal = { competencia: m.competencia, valorOriginalCents: m.valorParcelaCents, valorElegivelCents: calc.auxilioCents, auxilioCalculadoCents: calc.auxilioCents, baseCalculoCents: calc.baseCents };
+    const base: CompetenciaOriginal = { competencia: m.competencia, valorOriginalCents: m.valorParcelaCents, valorElegivelCents: calc.auxilioCents, auxilioCalculadoCents: calc.auxilioCents, percentualAplicadoCents: calc.percentualAplicadoCents };
     if (!m.ajuste) return base;
     if (!m.ajuste.justificativa.trim()) throw new Error(`Informe a justificativa do auxílio elegível de ${m.competencia}.`);
     if (!(m.ajuste.valorCents >= 0)) throw new Error(`Auxílio elegível inválido em ${m.competencia}.`);
@@ -494,13 +526,13 @@ export async function criarNegociacao(input: NovaNegociacaoInput): Promise<Negoc
   const total = competencias.reduce((t, c) => t + c.valorElegivelCents, 0);
   if (total <= 0) throw new Error("O total elegível deve ser maior que zero.");
   // Cálculo automático (truncamento) sempre como base; o tipo de parcelamento é identificado pelos valores finais.
-  const calc = calcularRessarcimento(total, input.parcelas.length, "uniforme");
+  const calculados = valoresCalculadosParcelas(total, input.parcelas.length, Object.fromEntries(input.parcelas.flatMap((p) => (p.manual ? [[p.numero, p.manual.valorCents] as const] : []))));
 
   const parcelas: ParcelaNegociada[] = input.parcelas
     .slice()
     .sort((a, b) => a.numero - b.numero)
     .map((p, i) => {
-      const calculado = calc.disponivel ? calc.valoresCents[i] : null;
+      const calculado = calculados[i] ?? null;
       if (!p.vencimento) throw new Error(`Informe o vencimento da parcela ${p.numero}.`);
       if (p.manual) {
         if (!p.manual.justificativa.trim()) throw new Error(`Informe a justificativa do valor do ressarcimento da parcela ${p.numero}.`);
@@ -585,7 +617,7 @@ export async function criarNegociacao(input: NovaNegociacaoInput): Promise<Negoc
     ],
     criadaEm: agora,
     criadaPor: input.responsavel,
-    regraCalculo: calc.disponivel ? "truncamento_administrativo" : undefined,
+    regraCalculo: calculados.every((v) => v !== null) ? "truncamento_administrativo" : undefined,
     regraAuxilio: regraAuxilioVigente(),
     contextoCadastro: { associacao: serv.associacao, operadora: serv.operadora ?? "—", processoSEI: serv.processoSEI || undefined },
     demo: input.demo || undefined,
@@ -641,7 +673,7 @@ export interface ConfirmarQuitacaoInput {
 /**
  * Confirma MANUALMENTE a quitação de uma parcela. Regras: só parcela pendente; qualquer ordem (a parcela 3 pode ser
  * quitada com a 2 pendente); data válida e não futura; nada é inferido de vencimento ou de anexos. Registra data,
- * responsável e histórico. Parcelas quitadas não são desfeitas no protótipo (correção/retificação = P02/P04).
+ * responsável e histórico. Correções posteriores: `retificarConfirmacao` e `desfazerConfirmacao`.
  * Gravação atômica: se algo falhar, nem a quitação nem o comprovante são gravados.
  */
 export async function confirmarQuitacao(negociacaoId: string, input: ConfirmarQuitacaoInput): Promise<Negociacao> {
@@ -696,10 +728,160 @@ export async function confirmarQuitacao(negociacaoId: string, input: ConfirmarQu
   return atualizada;
 }
 
+/* ── Retificação, desfazimento e exclusão (Q12, Q16, PV-03, PV-04): tudo fica no histórico ──────── */
+
+/** Números dos relatórios de ressarcimento emitidos em que a parcela consta. Leitura direta das emissões gravadas (snapshots). */
+export function relatoriosDaParcela(negociacaoId: string, numeroParcela: number): number[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const emissoes = JSON.parse(localStorage.getItem(PROSAUDE_STORAGE_KEYS.negociacoesEmissoes) ?? "[]") as { sequencia: number; linhas: { negociacaoId: string; numeroParcela: number }[] }[];
+    return emissoes.filter((e) => e.linhas.some((l) => l.negociacaoId === negociacaoId && l.numeroParcela === numeroParcela)).map((e) => e.sequencia).sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+}
+
+function localizarParcela(negociacaoId: string, numero: number) {
+  const todas = loadNegociacoes();
+  const alvo = todas.find((n) => n.id === negociacaoId);
+  if (!alvo) throw new Error("Negociação não encontrada.");
+  const parcela = alvo.parcelas.find((p) => p.numero === numero);
+  if (!parcela) throw new Error("Parcela não encontrada.");
+  return { todas, alvo, parcela };
+}
+
+function gravarAlteracaoParcela(todas: Negociacao[], alvo: Negociacao, parcela: ParcelaNegociada, responsavel: string, tipo: EventoHistoricoNegociacao["tipo"], descricao: string): Negociacao {
+  const parcelas = alvo.parcelas.map((p) => (p.numero === parcela.numero ? parcela : p));
+  const atualizada: Negociacao = {
+    ...alvo,
+    parcelas,
+    criterio: new Set(parcelas.map((p) => p.ressarcimento.finalCents)).size > 1 ? "diferenciado" : "uniforme",
+    historico: [...alvo.historico, { id: novoId("ev"), dataHora: new Date().toISOString(), responsavel, tipo, descricao }],
+  };
+  saveNegociacoes(todas.map((n) => (n.id === alvo.id ? atualizada : n)));
+  return atualizada;
+}
+
+const exigirJustificativa = (j: string) => {
+  if (!j.trim()) throw new Error("Informe a justificativa.");
+  return j.trim();
+};
+
+/** Marca para nova emissão a parcela que já consta de relatório emitido; o relatório anterior não é tocado. */
+function comReemissao(negociacaoId: string, p: ParcelaNegociada, motivo: string): { parcela: ParcelaNegociada; aviso: string } {
+  const rels = relatoriosDaParcela(negociacaoId, p.numero);
+  if (rels.length === 0) return { parcela: p, aviso: "" };
+  return { parcela: { ...p, reemissaoPendente: { motivo, dataHora: new Date().toISOString() } }, aviso: ` Consta do relatório nº ${rels.join(", ")}, que é preservado; a parcela fica disponível, quando confirmada, para nova emissão.` };
+}
+
+export function retificarParcela(negociacaoId: string, numero: number, dados: { valorCents?: number; vencimento?: string }, justificativa: string, responsavel: string): Negociacao {
+  const just = exigirJustificativa(justificativa);
+  const { todas, alvo, parcela } = localizarParcela(negociacaoId, numero);
+  const mudaValor = dados.valorCents !== undefined && dados.valorCents !== parcela.ressarcimento.finalCents;
+  const mudaVenc = dados.vencimento !== undefined && dados.vencimento !== parcela.vencimento;
+  if (!mudaValor && !mudaVenc) throw new Error("Nenhuma alteração informada.");
+  if (mudaValor && !(dados.valorCents! > 0)) throw new Error("Informe um valor maior que zero.");
+  if (mudaVenc && !vencimentoValido(dados.vencimento!)) throw new Error("Informe um vencimento válido.");
+  const agora = new Date().toISOString();
+  const partes: string[] = [];
+  let nova: ParcelaNegociada = parcela;
+  if (mudaValor) {
+    partes.push(`ressarcimento de ${formatarCentavos(parcela.ressarcimento.finalCents)} para ${formatarCentavos(dados.valorCents!)}`);
+    nova = { ...nova, ressarcimento: { ...nova.ressarcimento, finalCents: dados.valorCents!, origem: "manual", ajustes: [...nova.ressarcimento.ajustes, { id: novoId("aj"), parcela: numero, calculadoCents: nova.ressarcimento.calculadoCents, valorInformadoCents: dados.valorCents!, responsavel, dataHora: agora, justificativa: just }] } };
+  }
+  if (mudaVenc) {
+    partes.push(`vencimento de ${parcela.vencimento.split("-").reverse().join("/")} para ${dados.vencimento!.split("-").reverse().join("/")}`);
+    nova = { ...nova, vencimento: dados.vencimento! };
+  }
+  const r = mudaValor ? comReemissao(alvo.id, nova, "Valor retificado") : { parcela: nova, aviso: "" };
+  return gravarAlteracaoParcela(todas, alvo, r.parcela, responsavel, "retificacao", `Parcela ${numero}/${alvo.qtdParcelas} retificada: ${partes.join("; ")}. Justificativa: ${just}.${r.aviso}`);
+}
+
+export function desfazerConfirmacao(negociacaoId: string, numero: number, justificativa: string, responsavel: string): Negociacao {
+  const just = exigirJustificativa(justificativa);
+  const { todas, alvo, parcela } = localizarParcela(negociacaoId, numero);
+  if (!parcela.quitacao) throw new Error("A parcela não tem confirmação de pagamento.");
+  const { quitacao, ...semQuitacao } = parcela;
+  const r = comReemissao(alvo.id, semQuitacao, "Confirmação desfeita");
+  return gravarAlteracaoParcela(todas, alvo, r.parcela, responsavel, "retificacao", `Confirmação de pagamento desfeita: parcela ${numero}/${alvo.qtdParcelas}, antes confirmada em ${quitacao.data.split("-").reverse().join("/")} por ${quitacao.responsavel}. Justificativa: ${just}.${r.aviso}`);
+}
+
+export function retificarConfirmacao(negociacaoId: string, numero: number, data: string, justificativa: string, responsavel: string): Negociacao {
+  const just = exigirJustificativa(justificativa);
+  const { todas, alvo, parcela } = localizarParcela(negociacaoId, numero);
+  if (!parcela.quitacao) throw new Error("A parcela não tem confirmação de pagamento.");
+  if (!vencimentoValido(data)) throw new Error("Informe uma data de quitação válida.");
+  const ref = getDataReferencia();
+  const hoje = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}-${String(ref.getDate()).padStart(2, "0")}`;
+  if (data > hoje) throw new Error("A data de quitação não pode ser futura.");
+  if (data === parcela.quitacao.data) throw new Error("Nenhuma alteração informada.");
+  const r = comReemissao(alvo.id, { ...parcela, quitacao: { ...parcela.quitacao, data } }, "Confirmação retificada");
+  return gravarAlteracaoParcela(todas, alvo, r.parcela, responsavel, "retificacao", `Confirmação de pagamento retificada: parcela ${numero}/${alvo.qtdParcelas}, data de ${parcela.quitacao.data.split("-").reverse().join("/")} para ${data.split("-").reverse().join("/")}. Justificativa: ${just}.${r.aviso}`);
+}
+
+/**
+ * Exclui a parcela cadastrada (PV-04), preservando-a em `parcelasExcluidas` e no histórico, com servidor e data. Não recalcula as
+ * demais nem o total elegível. Parcela confirmada ou já emitida não é excluída: o efeito não foi definido pela GERDAB.
+ */
+export function excluirParcela(negociacaoId: string, numero: number, observacao: string, responsavel: string): Negociacao {
+  const { todas, alvo, parcela } = localizarParcela(negociacaoId, numero);
+  if (parcela.quitacao) throw new Error("Desfaça a confirmação de pagamento antes de excluir a parcela.");
+  const rels = relatoriosDaParcela(alvo.id, numero);
+  if (rels.length > 0) throw new Error(`A parcela consta do relatório nº ${rels.join(", ")} e não pode ser excluída.`);
+  if (alvo.parcelas.length === 1) throw new Error("A negociação precisa manter ao menos uma parcela.");
+  const agora = new Date().toISOString();
+  const obs = observacao.trim();
+  const atualizada: Negociacao = {
+    ...alvo,
+    parcelas: alvo.parcelas.filter((p) => p.numero !== numero),
+    parcelasExcluidas: [...(alvo.parcelasExcluidas ?? []), { parcela, excluidaEm: agora, excluidaPor: responsavel, observacao: obs || undefined }],
+    historico: [...alvo.historico, { id: novoId("ev"), dataHora: agora, responsavel, tipo: "exclusao", descricao: `Parcela ${numero}/${alvo.qtdParcelas} excluída — servidor ${alvo.nomeServidor} (matrícula ${alvo.matricula}), vencimento ${parcela.vencimento.split("-").reverse().join("/")}, ressarcimento ${formatarCentavos(parcela.ressarcimento.finalCents)}.${obs ? ` Observação: ${obs}.` : ""}` }],
+  };
+  saveNegociacoes(todas.map((n) => (n.id === alvo.id ? atualizada : n)));
+  return atualizada;
+}
+
+/** Registra nas negociações a inclusão atualizada das parcelas em nova emissão e encerra a marcação de reemissão. */
+export function registrarNovaEmissaoParcelas(chaves: { negociacaoId: string; numeroParcela: number }[], sequencia: number, responsavel: string) {
+  if (chaves.length === 0) return;
+  const agora = new Date().toISOString();
+  saveNegociacoes(loadNegociacoes().map((n) => {
+    const daNeg = chaves.filter((c) => c.negociacaoId === n.id).map((c) => c.numeroParcela);
+    if (daNeg.length === 0) return n;
+    return {
+      ...n,
+      parcelas: n.parcelas.map((p) => {
+        if (!daNeg.includes(p.numero)) return p;
+        const { reemissaoPendente: _r, ...resto } = p;
+        return resto;
+      }),
+      historico: [...n.historico, { id: novoId("ev"), dataHora: agora, responsavel, tipo: "emissao" as const, descricao: `Relatório nº ${sequencia}: inclusão atualizada da(s) parcela(s) ${daNeg.join(", ")}. Os relatórios anteriores foram preservados.` }],
+    };
+  }));
+}
+
 /* ── Rotina mensal: fila de confirmações de pagamento pendentes ────────────────────────────── */
 
 export type ClassificacaoVencimento = "vence_no_mes" | "em_atraso";
-export const ROTULO_CLASSIFICACAO: Record<ClassificacaoVencimento, string> = { vence_no_mes: "Vence neste mês", em_atraso: "Em atraso" };
+export const ROTULO_CLASSIFICACAO: Record<ClassificacaoVencimento, string> = { vence_no_mes: "Vence no mês", em_atraso: "Em atraso" };
+
+/** Situação apresentada da parcela (Q14). Vencimento em mês posterior ao de referência segue como Pendente (fora da rotina mensal). */
+export type SituacaoParcela = ClassificacaoVencimento | "confirmada" | "pendente";
+export const ROTULO_SITUACAO_PARCELA: Record<SituacaoParcela, string> = { ...ROTULO_CLASSIFICACAO, confirmada: "Confirmada", pendente: "Pendente" };
+
+export function getSituacaoParcela(p: ParcelaNegociada, ref: Date = getDataReferencia()): SituacaoParcela {
+  if (p.quitacao) return "confirmada";
+  const comp = getCompetenciaReferencia(ref);
+  const mes = p.vencimento.slice(0, 7);
+  if (mes === comp) return "vence_no_mes";
+  return mes < comp ? "em_atraso" : "pendente";
+}
+
+export function contarSituacoesParcelas(n: Negociacao, ref: Date = getDataReferencia()): Record<SituacaoParcela, number> {
+  const c: Record<SituacaoParcela, number> = { em_atraso: 0, vence_no_mes: 0, confirmada: 0, pendente: 0 };
+  n.parcelas.forEach((p) => (c[getSituacaoParcela(p, ref)] += 1));
+  return c;
+}
 
 export interface ItemFila {
   negociacao: Negociacao;

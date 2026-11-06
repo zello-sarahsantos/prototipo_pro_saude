@@ -19,7 +19,6 @@ import {
   restaurarAmbienteDemonstrativoAlteracoes,
   useAmbienteDemoAlteracoes,
   COMPETENCIA_DEMONSTRATIVA_ALTERACOES,
-  PAGAMENTO_DEMONSTRATIVO_ALTERACOES,
   type DiagnosticoRestauracaoAlteracoes,
 } from "@/lib/massa-demonstracao-alteracoes";
 import { pessoasDemonstrativasAlteracoes } from "@/lib/fontes-alteracoes";
@@ -83,6 +82,7 @@ const ROTULO_FONTE_MODULO: Record<string, string> = {
   planilhas_associacao: "Planilhas das associações",
   ressarcimentos: "Ressarcimentos de meses anteriores",
   fechamento: "Histórico de Fechamento",
+  pendencias_dependentes: "Pendências documentais de dependentes",
   cadastro: "Cadastro",
   manual: "Inclusão manual",
   demonstrativo: "Massa demonstrativa",
@@ -158,8 +158,7 @@ function RelatorioAlteracoes() {
   const registros = useRegistrosAlteracoes();
   const emissoes = useEmissoesAlteracoes();
   const responsavel = responsavelCadastro(getAdminRole());
-  const { lista: meses, atual } = useMemo(() => mesesDisponiveis(registros), [registros]);
-  const [competencia, setCompetencia] = useState<string | null>(null);
+  const { atual } = useMemo(() => mesesDisponiveis(registros), [registros]);
   const [aba, setAba] = useState<Aba>("ativo");
   const [origem, setOrigem] = useState<FiltroOrigem>("todas");
   const [busca, setBusca] = useState("");
@@ -171,34 +170,17 @@ function RelatorioAlteracoes() {
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [confirmarRemocao, setConfirmarRemocao] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [pagamentoSel, setPagamentoSel] = useState<string | null>(null);
+  const ambienteDemo = useAmbienteDemoAlteracoes();
 
-  // Competência inicial: a mais recente que já tem registros; senão, o mês anterior à data de referência.
-  useEffect(() => {
-    if (competencia !== null || meses.length === 0) return;
-    const comRegistro = registros.length ? [...registros].map((r) => r.competenciaReferencia).sort().reverse()[0] : undefined;
-    const [a, m] = atual.split("-").map(Number);
-    setCompetencia(comRegistro ?? (m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`));
-  }, [competencia, meses, registros, atual]);
-
-  const competenciaSel = competencia ?? atual;
+  // Competências determinadas automaticamente (PV-11): o mês vigente, destinado ao pagamento do mês seguinte.
+  const competenciaSel = ambienteDemo ? COMPETENCIA_DEMONSTRATIVA_ALTERACOES : atual;
+  const pagamentoSel = somarMeses(competenciaSel, 1);
   const daCompetencia = useMemo(() => registros.filter((r) => r.competenciaReferencia === competenciaSel), [registros, competenciaSel]);
   const ativos = daCompetencia.filter((r) => r.situacao !== "descartada");
   const prontas = ativos.filter(prontoDoRegistro).length;
-  const pagamentosDaCompetencia = useMemo(() => [...new Set(ativos.map((r) => r.competenciaPagamento))].sort(), [ativos]);
-  // Competência de pagamento do RELATÓRIO: escolhida pelo analista junto com a de referência; nunca presumida como "mês seguinte".
-  const pagamentoDemoRef = useRef<string | null>(null);
-  useEffect(() => {
-    setPagamentoSel(pagamentoDemoRef.current ?? (pagamentosDaCompetencia.length === 1 ? pagamentosDaCompetencia[0] : null));
-    pagamentoDemoRef.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competenciaSel]);
-  const opcoesPagamento = useMemo(() => [...new Set([...Array.from({ length: 6 }, (_, i) => somarMeses(competenciaSel, i + 1)), ...pagamentosDaCompetencia])].sort(), [competenciaSel, pagamentosDaCompetencia]);
-  const divergentes = useMemo(() => (pagamentoSel ? ativos.filter((r) => r.competenciaPagamento !== pagamentoSel) : []), [ativos, pagamentoSel]);
-  const exigirPagamento = (acao: string) => setAviso(`Selecione a competência de pagamento do relatório antes de ${acao}.`);
+  const divergentes = useMemo(() => ativos.filter((r) => r.competenciaPagamento !== pagamentoSel), [ativos, pagamentoSel]);
   const emitidos = useMemo(() => numerosEmitidosPorRegistro("alteracoes", competenciaSel), [competenciaSel, emissoes]);
   const contagemAba = { ativo: daCompetencia.filter((r) => r.vinculo === "ativo").length, inativo: daCompetencia.filter((r) => r.vinculo === "inativo").length, sem_vinculo: daCompetencia.filter((r) => !r.vinculo).length };
-  const ambienteDemo = useAmbienteDemoAlteracoes();
   const diagnosticoRestauracao = useMemo(() => diagnosticarRestauracaoAlteracoes(registros, listarEmissoes("alteracoes")), [registros, emissoes]);
 
   const filtrados = useMemo(() => {
@@ -213,7 +195,6 @@ function RelatorioAlteracoes() {
   function gerarSituacoes() {
     setBusy(true);
     try {
-      if (!pagamentoSel) return exigirPagamento("buscar e preencher os registros");
       // No ambiente demonstrativo as fontes consultadas são as FICTÍCIAS isoladas; fora dele, as reais (somente leitura).
       const fontes = lerTodasAsFontes(fontesDoAmbiente(ambienteDemo));
       const sync = sincronizarSugestoes(responsavel, { competenciaReferencia: competenciaSel, competenciaPagamento: pagamentoSel }, { demonstracao: ambienteDemo });
@@ -225,14 +206,10 @@ function RelatorioAlteracoes() {
     }
   }
 
-  /** "Restaurar demonstração": limpa SÓ o que é demonstrativo, liga o ambiente e seleciona referência set/2026 e pagamento out/2026 (só aqui). A tabela fica vazia. */
+  /** "Restaurar demonstração": limpa SÓ o que é demonstrativo, liga o ambiente, que usa a competência demonstrativa. A tabela fica vazia. */
   function restaurarDemonstracao() {
     const r = restaurarAmbienteDemonstrativoAlteracoes(registros);
     setConfirmarRemocao(false);
-    // O efeito de troca de referência só dispara se a referência mudar; o marcador não pode sobrar para uma troca posterior.
-    pagamentoDemoRef.current = competenciaSel === COMPETENCIA_DEMONSTRATIVA_ALTERACOES ? null : PAGAMENTO_DEMONSTRATIVO_ALTERACOES;
-    setCompetencia(COMPETENCIA_DEMONSTRATIVA_ALTERACOES);
-    setPagamentoSel(PAGAMENTO_DEMONSTRATIVO_ALTERACOES);
     setResultadoBusca(null);
     setAba("ativo");
     setOrigem("todas");
@@ -258,7 +235,7 @@ function RelatorioAlteracoes() {
             <p className="text-sm text-foreground/75 mt-1">Confira as movimentações da competência e prepare o relatório para envio ao NURFI.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => (pagamentoSel ? setAlteracao({ id: null }) : exigirPagamento("incluir uma alteração"))} className={BTN_PRIMARIO}>
+            <button type="button" onClick={() => setAlteracao({ id: null })} className={BTN_PRIMARIO}>
               <Plus className="h-4 w-4" /> Incluir alteração
             </button>
             <button type="button" onClick={gerarSituacoes} disabled={busy} className={BTN_PRIMARIO} title="Consulta os dados da competência selecionada e preenche a tabela com os registros identificados para conferência pela GERDAB.">
@@ -270,41 +247,20 @@ function RelatorioAlteracoes() {
             <button type="button" onClick={() => setHistoricoAberto(true)} className={`${BTN_SECUNDARIO} text-primary`}>
               Histórico
             </button>
-            <button type="button" onClick={() => (pagamentoSel ? setFluxoAberto(true) : exigirPagamento("emitir"))} className={BTN_PRIMARIO}>
+            <button type="button" onClick={() => setFluxoAberto(true)} className={BTN_PRIMARIO}>
               Exportar relatório
             </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-b border-border pb-4">
-          <label className="flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
-            Competência
-            <select value={competenciaSel} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência de referência" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              {meses.map((m) => (
-                <option key={m} value={m}>
-                  {formatCompetencia(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-xs font-bold tracking-wider uppercase text-foreground/70">
-            Pagamento
-            <select value={pagamentoSel ?? ""} onChange={(e) => setPagamentoSel(e.target.value || null)} aria-label="Competência de pagamento" className="rounded-xl border border-border bg-white dark:bg-card px-3 py-2 text-sm font-medium normal-case tracking-normal text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              <option value="">Selecione…</option>
-              {opcoesPagamento.map((m) => (
-                <option key={m} value={m}>
-                  {formatCompetencia(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="text-xs text-foreground/75 max-w-md">
-            {pagamentoSel ? (
-              <>
-                Relatório: <strong className="text-foreground">referência {formatCompetencia(competenciaSel)}</strong> · <strong className="text-foreground">pagamento {formatCompetencia(pagamentoSel)}</strong>. Gerar, incluir e emitir usam estas duas competências.
-              </>
-            ) : (
-              "Selecione a competência de pagamento para buscar e preencher registros, incluir alterações e emitir o relatório."
-            )}
+          <p className="text-xs font-bold tracking-wider uppercase text-foreground/70">
+            Competência <span className="ml-1 text-foreground">{formatCompetencia(competenciaSel)}</span>
+          </p>
+          <p className="text-xs font-bold tracking-wider uppercase text-foreground/70">
+            Pagamento <span className="ml-1 text-foreground">{formatCompetencia(pagamentoSel)}</span>
+          </p>
+          <p className="text-xs text-foreground/75 max-w-2xl">
+            Competências determinadas automaticamente: movimentações de {formatCompetencia(competenciaSel)} integram o relatório de {formatCompetencia(competenciaSel)}, destinado ao pagamento de {formatCompetencia(pagamentoSel)}. Competências anteriores não são incluídas; valores retroativos seguem pelo módulo próprio.
           </p>
         </div>
       </header>
@@ -322,7 +278,7 @@ function RelatorioAlteracoes() {
 
       {divergentes.length > 0 && (
         <p role="alert" className="rounded-xl border border-status-pendente-fg/40 bg-status-pendente-bg px-4 py-3 text-sm">
-          <strong>Competências divergentes:</strong> {divergentes.length} registro(s) desta referência têm pagamento diferente de {formatCompetencia(pagamentoSel!)} ({[...new Set(divergentes.map((r) => formatCompetencia(r.competenciaPagamento)))].join(", ")}). Eles <strong>não entram</strong> na emissão de {formatCompetencia(pagamentoSel!)} e não foram corrigidos automaticamente: selecione aquela competência de pagamento para emiti-los em um relatório separado.
+          <strong>Competências divergentes:</strong> {divergentes.length} registro(s) desta referência têm pagamento diferente de {formatCompetencia(pagamentoSel)} ({[...new Set(divergentes.map((r) => formatCompetencia(r.competenciaPagamento)))].join(", ")}). Eles <strong>não entram</strong> na emissão de {formatCompetencia(pagamentoSel)} e não foram corrigidos automaticamente: selecione aquela competência de pagamento para emiti-los em um relatório separado.
         </p>
       )}
 
@@ -389,7 +345,7 @@ function RelatorioAlteracoes() {
           <span className="text-right">Ação</span>
         </div>
         {filtrados.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? `Nenhuma movimentação registrada para ${formatCompetencia(competenciaSel)}. Confira as competências de referência e de pagamento e clique em “Buscar e preencher registros” (ou use “Incluir alteração”).` : "Nenhum registro com os filtros atuais."}</p>
+          <p className="px-6 py-10 text-center text-sm text-foreground/75 border-t border-border">{daCompetencia.length === 0 ? `Nenhuma movimentação registrada para ${formatCompetencia(competenciaSel)}. Clique em “Buscar e preencher registros” (ou use “Incluir alteração”).` : "Nenhum registro com os filtros atuais."}</p>
         ) : (
           <ul className="divide-y divide-border border-t border-border">
             {filtrados.map((r) => (
@@ -402,7 +358,7 @@ function RelatorioAlteracoes() {
       </section>
 
       {alteracao && <DialogoAlteracao key={alteracao.id ?? "novo"} registro={alteracao.id ? registros.find((r) => r.id === alteracao.id) ?? null : null} competenciaInicial={competenciaSel} pagamentoRelatorio={pagamentoSel} ambienteDemo={ambienteDemo} responsavel={responsavel} onFechar={(msg) => { setAlteracao(null); if (msg) setAviso(msg); }} />}
-      {fluxoAberto && <FluxoEmissao competencia={competenciaSel} pagamento={pagamentoSel ?? undefined} responsavel={responsavel} onFechar={() => setFluxoAberto(false)} onAbrirHistorico={() => setHistoricoAberto(true)} />}
+      {fluxoAberto && <FluxoEmissao competencia={competenciaSel} pagamento={pagamentoSel} responsavel={responsavel} onFechar={() => setFluxoAberto(false)} onAbrirHistorico={() => setHistoricoAberto(true)} />}
       {historicoAberto && <HistoricoEmissoes competencia={competenciaSel} onFechar={() => setHistoricoAberto(false)} />}
       {confirmarRemocao && <DialogConfirmaRemocao diagnostico={diagnosticoRestauracao} onFechar={() => setConfirmarRemocao(false)} onConfirmar={restaurarDemonstracao} />}
     </div>

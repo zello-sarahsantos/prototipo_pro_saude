@@ -145,9 +145,13 @@ export function getResumoFilaRessarcimentos(origem: "individual" | "associacao")
       contagem.total += 1;
       const st = getStatusRetroativo(s.origem, c);
       if (!EM_FILA.includes(st)) continue;
+      // Q01: aguardando complementação depende do servidor ou da associação e não compõe o bloco Requer ação.
+      if (st === "aguardando_complementacao") {
+        contagem.aguardandoComplementacao += 1;
+        continue;
+      }
       contagem.aguardando += 1;
       if (st === "em_analise") contagem.emAnalise += 1;
-      if (st === "aguardando_complementacao") contagem.aguardandoComplementacao += 1;
       if (st === "complementacao_recebida") contagem.complementacaoRecebida += 1;
       if (origem === "associacao") assoc.set(s.associacao ?? "Associação", (assoc.get(s.associacao ?? "Associação") ?? 0) + 1);
     }
@@ -179,7 +183,7 @@ export function getLinhasRessarcimentos(origem: "individual" | "associacao"): Li
         nome: s.nomeTitular,
         referencia: formatCompetencia(c.competenciaReferencia),
         statusRotulo: origem === "associacao" && st === "autorizada" ? "Habilitada" : origem === "associacao" && st === "nao_autorizada" ? "Desabilitada" : ROTULO_STATUS[st],
-        aguardando: EM_FILA.includes(st),
+        aguardando: EM_FILA.includes(st) && st !== "aguardando_complementacao",
         origemRotulo: origem === "individual" ? "Servidor" : (s.associacao ?? "Associação"),
         responsavel: ultimo?.responsavel,
       });

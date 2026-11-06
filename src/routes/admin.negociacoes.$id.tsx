@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Check, Download, Eye, Loader2, Plus } from "lucide-react";
 import { Campo, GuardaPerfilAdmin, MarcadorAjuste, MemoriaAuxilioView, AjudaArquivo, MemoriaRessarcimentoView, SeletorArquivo, SeloOrigemValor, SeloSituacao, abrirDocumentoNegociacao, botaoPrimario, formatarData, formatarDataHora, inputEstilo, rotuloDocumento } from "@/components/negociacoes/ui";
 import { ConfirmarQuitacaoModal } from "@/components/negociacoes/ConfirmarQuitacaoModal";
+import { RetificarParcelaModal, type ModoAlteracaoParcela } from "@/components/negociacoes/RetificarParcelaModal";
 import { V, cardBase, num } from "@/components/dashboard-gerdab/gd-ui";
 import { SecaoExpansivel as Secao } from "@/components/SecaoExpansivel";
 import { getAdminRole } from "@/components/AdminLayout";
@@ -17,6 +18,9 @@ import {
   formatarCentavos,
   getNegociacao,
   getSituacaoNegociacao,
+  getSituacaoParcela,
+  ROTULO_SITUACAO_PARCELA,
+  type SituacaoParcela,
   parcelasQuitadas,
   responsavelAtual,
   type FinalidadeDocumento,
@@ -35,6 +39,15 @@ export const Route = createFileRoute("/admin/negociacoes/$id")({
 
 const th = (dir: "left" | "right" = "left"): React.CSSProperties => ({ padding: "6px 8px", borderBottom: `1px solid ${V.border}`, fontWeight: 600, textAlign: dir, color: V.muted, fontSize: 12 });
 const td = (dir: "left" | "right" = "left"): React.CSSProperties => ({ padding: "8px", borderBottom: `1px solid ${V.border}`, textAlign: dir });
+const CORES_SITUACAO_PARCELA: Record<SituacaoParcela, { color: string; background: string }> = {
+  confirmada: { color: V.green, background: V.greenSoft },
+  em_atraso: { color: V.red, background: V.redSoft },
+  vence_no_mes: { color: V.amber, background: V.amberSoft },
+  pendente: { color: V.muted, background: V.track },
+};
+const ROTULO_EVENTO: Record<string, string> = { cadastro: "Cadastro", ajuste_financeiro: "Valor financeiro", quitacao: "Quitação", documento: "Documento", retificacao: "Retificação", exclusao: "Exclusão", emissao: "Emissão" };
+const botaoAcaoParcela: React.CSSProperties = { background: "none", border: "none", padding: 0, color: V.primary, fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer" };
+
 const Tabela = ({ children }: { children: React.ReactNode }) => (
   <div style={{ overflowX: "auto", paddingTop: 14 }}>
     <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{children}</table>
@@ -57,6 +70,7 @@ function DetalheNegociacao() {
   const [msg, setMsg] = useState("");
   const [quitando, setQuitando] = useState<number | null>(null);
   const [avisoQuitacao, setAvisoQuitacao] = useState("");
+  const [alterando, setAlterando] = useState<{ numero: number; modo: ModoAlteracaoParcela } | null>(null);
 
   useEffect(() => {
     garantirMassaDemonstracaoNegociacoes().finally(() => setNeg(getNegociacao(id) ?? null));
@@ -142,7 +156,7 @@ function DetalheNegociacao() {
 
       {novo && (
         <div role="status" style={{ display: "flex", gap: 8, alignItems: "center", background: V.greenSoft, color: V.green, borderRadius: 8, padding: "10px 14px", fontSize: 14, fontWeight: 600 }}>
-          <Check size={16} /> Negociação cadastrada. Os valores confirmados estão congelados e o histórico foi registrado.
+          <Check size={16} /> Negociação cadastrada. Os valores confirmados foram preservados e o histórico foi registrado.
         </div>
       )}
 
@@ -212,7 +226,7 @@ function DetalheNegociacao() {
               formatarMes={formatCompetencia}
               percentual={n.regraAuxilio?.percentual}
               tetoCents={n.regraAuxilio?.tetoCents}
-              meses={n.competenciasOriginais.map((c) => ({ competencia: c.competencia, valorParcelaCents: c.valorOriginalCents, baseCents: c.baseCalculoCents, calculadoCents: c.auxilioCalculadoCents, finalCents: c.valorElegivelCents }))}
+              meses={n.competenciasOriginais.map((c) => ({ competencia: c.competencia, valorParcelaCents: c.valorOriginalCents, percentualAplicadoCents: c.percentualAplicadoCents, calculadoCents: c.auxilioCalculadoCents, finalCents: c.valorElegivelCents }))}
             />
           </div>
           <div>
@@ -221,14 +235,14 @@ function DetalheNegociacao() {
               const calc = n.parcelas.map((p) => p.ressarcimento.calculadoCents);
               const todas = calc.every((c) => c !== null);
               const soma = todas ? (calc as number[]).reduce((t, c) => t + c, 0) : 0;
-              const memoria = todas ? { totalElegivelCents: n.totalElegivelCents, qtdParcelas: n.qtdParcelas, valorPorParcelaCents: calc[0] as number, somaCalculadaCents: soma, residualCents: n.totalElegivelCents - soma } : null;
+              const memoria = todas && new Set(calc).size === 1 && n.parcelas.length === n.qtdParcelas ? { totalElegivelCents: n.totalElegivelCents, qtdParcelas: n.qtdParcelas, valorPorParcelaCents: calc[0] as number, somaCalculadaCents: soma, residualCents: n.totalElegivelCents - soma } : null;
               return (
                 <MemoriaRessarcimentoView
                   totalCents={n.totalElegivelCents}
                   qtd={n.qtdParcelas}
                   criterio={n.criterio}
                   memoria={memoria}
-                  semCalculo={!todas ? (n.criterio === "uniforme" ? "Cadastro anterior ao critério de truncamento administrativo: valores preenchidos manualmente, sem cálculo automático registrado." : "Entrada diferenciada ou parcelas distintas (cadastro anterior): valores preenchidos manualmente, sem cálculo automático.") : undefined}
+                  semCalculo={todas && !memoria ? "Parcelas com entrada alterada ou excluídas: os valores calculados de cada parcela estão no histórico e na tabela de parcelas." : !todas ? (n.criterio === "uniforme" ? "Cadastro anterior ao critério de truncamento administrativo: valores preenchidos manualmente, sem cálculo automático registrado." : "Entrada diferenciada ou parcelas distintas (cadastro anterior): valores preenchidos manualmente, sem cálculo automático.") : undefined}
                   somaFinaisCents={totalFinal}
                   ajustes={n.parcelas.filter((p) => p.ressarcimento.origem === "manual").map((p) => ({ parcela: p.numero, calculadoCents: p.ressarcimento.calculadoCents, valorInformadoCents: p.ressarcimento.finalCents }))}
                 />
@@ -259,14 +273,14 @@ function DetalheNegociacao() {
 
       <Secao id="parcelas" numero={4} titulo="Parcelas e pagamentos" resumo={`${parcelasQuitadas(n)} quitada(s) · ${pendentes} pendente(s)`} aberta={abertas.parcelas} onAlternar={() => alternar("parcelas")}>
         <Tabela>
-          <thead><tr><th style={th()}>Parcela</th><th style={th()}>Vencimento</th><th style={th("right")}>Valor do ressarcimento</th><th style={th()}>Situação</th><th style={th()}>Quitação</th></tr></thead>
+          <thead><tr><th style={th()}>Parcela</th><th style={th()}>Vencimento</th><th style={th("right")}>Valor do ressarcimento</th><th style={th()}>Situação</th><th style={th()}>Quitação</th><th style={th()}>Correções</th></tr></thead>
           <tbody>
             {n.parcelas.map((p) => (
               <tr key={p.numero} className="gd-row">
-                <td style={td()}>{p.numero}/{n.parcelas.length}</td>
+                <td style={td()}>{p.numero}/{n.qtdParcelas}{p.reemissaoPendente && <span style={{ display: "block", fontSize: 11, color: V.amber }}>Aguarda nova emissão</span>}</td>
                 <td style={td()}>{formatarData(p.vencimento)}</td>
                 <td style={{ ...td("right"), fontWeight: 700 }}>{formatarCentavos(p.ressarcimento.finalCents)}<MarcadorAjuste manual={p.ressarcimento.origem === "manual"} /></td>
-                <td style={td()}><span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, color: p.quitacao ? V.green : V.muted, background: p.quitacao ? V.greenSoft : V.track }}>{p.quitacao ? "Quitada" : "Pendente"}</span></td>
+                <td style={td()}><span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap", ...CORES_SITUACAO_PARCELA[getSituacaoParcela(p)] }}>{ROTULO_SITUACAO_PARCELA[getSituacaoParcela(p)]}</span></td>
                 <td style={td()}>
                   {p.quitacao ? (
                     <span style={{ fontSize: 12, color: V.muted }}>
@@ -280,10 +294,28 @@ function DetalheNegociacao() {
                     </button>
                   )}
                 </td>
+                <td style={td()}>
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+                    <button type="button" style={botaoAcaoParcela} onClick={() => { setAvisoQuitacao(""); setAlterando({ numero: p.numero, modo: "parcela" }); }}>Retificar parcela</button>
+                    {p.quitacao ? (
+                      <>
+                        <button type="button" style={botaoAcaoParcela} onClick={() => { setAvisoQuitacao(""); setAlterando({ numero: p.numero, modo: "confirmacao" }); }}>Retificar confirmação</button>
+                        <button type="button" style={botaoAcaoParcela} onClick={() => { setAvisoQuitacao(""); setAlterando({ numero: p.numero, modo: "desfazer" }); }}>Desfazer confirmação</button>
+                      </>
+                    ) : (
+                      <button type="button" style={{ ...botaoAcaoParcela, color: V.red }} onClick={() => { setAvisoQuitacao(""); setAlterando({ numero: p.numero, modo: "excluir" }); }}>Excluir parcela</button>
+                    )}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
         </Tabela>
+        {(n.parcelasExcluidas?.length ?? 0) > 0 && (
+          <p style={{ fontSize: 12, color: V.muted, margin: "10px 0 0" }}>
+            Parcelas excluídas: {n.parcelasExcluidas!.map((e) => `${e.parcela.numero}/${n.qtdParcelas} (${formatarData(e.parcela.vencimento)}, ${formatarCentavos(e.parcela.ressarcimento.finalCents)}, excluída por ${e.excluidaPor} em ${formatarDataHora(e.excluidaEm)})`).join("; ")}.
+          </p>
+        )}
         {avisoQuitacao && <p role="status" style={{ fontSize: 13, fontWeight: 600, color: V.green, margin: "10px 0 0" }}>{avisoQuitacao}</p>}
         {n.parcelas.some((p) => p.valorCobradoCents !== undefined) && (
           <p style={{ fontSize: 12, color: V.muted, margin: "10px 0 0" }}>
@@ -346,7 +378,7 @@ function DetalheNegociacao() {
           {[...n.historico].reverse().map((e) => (
             <li key={e.id} style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${V.border}` }}>
               <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, height: "fit-content", whiteSpace: "nowrap", color: e.tipo === "ajuste_financeiro" ? V.amber : e.tipo === "quitacao" ? V.green : V.primary, background: e.tipo === "ajuste_financeiro" ? V.amberSoft : e.tipo === "quitacao" ? V.greenSoft : V.primarySoft }}>
-                {e.tipo === "cadastro" ? "Cadastro" : e.tipo === "ajuste_financeiro" ? "Valor financeiro" : e.tipo === "quitacao" ? "Quitação" : "Documento"}
+                {ROTULO_EVENTO[e.tipo]}
               </span>
               <span style={{ minWidth: 0, fontSize: 13 }}>
                 {e.descricao}
@@ -357,6 +389,20 @@ function DetalheNegociacao() {
         </ol>
       </Secao>
       </section>
+      {alterando && n.parcelas.find((p) => p.numero === alterando.numero) && (
+        <RetificarParcelaModal
+          negociacao={n}
+          parcela={n.parcelas.find((p) => p.numero === alterando.numero)!}
+          modo={alterando.modo}
+          responsavel={responsavelAtual(getAdminRole())}
+          onFechar={() => setAlterando(null)}
+          onConcluido={(nova, aviso) => {
+            setNeg(nova);
+            setAlterando(null);
+            setAvisoQuitacao(aviso);
+          }}
+        />
+      )}
       {quitando !== null && n.parcelas.find((p) => p.numero === quitando) && (
         <ConfirmarQuitacaoModal
           negociacao={n}

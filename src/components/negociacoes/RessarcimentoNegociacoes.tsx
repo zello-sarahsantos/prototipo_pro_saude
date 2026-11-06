@@ -7,7 +7,7 @@ import { V, cardBase, num } from "@/components/dashboard-gerdab/gd-ui";
 import { NegociacoesNav, botaoPrimario, botaoSecundario, formatarData, formatarDataHora, inputEstilo } from "@/components/negociacoes/ui";
 import { diagnosticarRestauracaoDemo, garantirMassaDemonstracaoNegociacoes, haCenarioDemo, restaurarCenarioDemoRessarcimento, type DiagnosticoRestauracaoDemo } from "@/lib/massa-demonstracao-negociacoes";
 import { formatarCentavos, responsavelAtual } from "@/lib/negociacoes";
-import { associacaoOuOperadora, emitirRelatorio, getEmissao, getParcelasDisponiveis, listarEmissoes, previaLinhas, somarCents, specEmissao, type EmissaoRessarcimento, type LinhaEmissaoRessarcimento, type ParcelaDisponivel } from "@/lib/negociacoes-ressarcimento";
+import { associacaoOuOperadora, emitirRelatorio, getEmissao, getParcelasDisponiveis, listarEmissoes, previaLinhas, somarCents, emissaoComplementar, relatoriosAtualizados, specEmissao, type EmissaoRessarcimento, type LinhaEmissaoRessarcimento, type ParcelaDisponivel } from "@/lib/negociacoes-ressarcimento";
 
 const PASSO = 10;
 const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -15,7 +15,7 @@ const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLo
 /**
  * Relatório de Ressarcimento de Negociações (Fase 4). UMA implementação e UMA fonte de dados, usada pelas duas entradas:
  * Negociações (aba) e Central de Relatórios. Seleção de parcelas → pré-visualização (não grava) → confirmação → emissão
- * (snapshot imutável no histórico) → consulta/exportação PDF e Excel. Nada altera negociações, quitações ou cálculos.
+ * (snapshot imutável no histórico) → consulta/exportação PDF e Excel. Emissões anteriores nunca são alteradas; parcela alterada depois de emitida volta para nova emissão.
  */
 export function RessarcimentoNegociacoes({ contexto }: { contexto: "negociacoes" | "relatorios" }) {
   const [disponiveis, setDisponiveis] = useState<ParcelaDisponivel[] | null>(null);
@@ -167,13 +167,13 @@ export function RessarcimentoNegociacoes({ contexto }: { contexto: "negociacoes"
                 const n = d.negociacao;
                 return (
                   <label key={d.chave} className="neg-res-row gd-row" style={{ cursor: "pointer", background: marcada ? undefined : V.bg }}>
-                    <input type="checkbox" checked={marcada} onChange={() => alternar(d.chave)} aria-label={`Incluir ${n.nomeServidor}, negociação ${n.numero}, parcela ${d.parcela.numero} de ${n.parcelas.length}`} />
+                    <input type="checkbox" checked={marcada} onChange={() => alternar(d.chave)} aria-label={`Incluir ${n.nomeServidor}, negociação ${n.numero}, parcela ${d.parcela.numero} de ${n.qtdParcelas}`} />
                     <span style={{ minWidth: 0 }}>
                       <strong style={{ fontWeight: 600, overflowWrap: "anywhere" }}>{n.nomeServidor}</strong>
                       <span style={{ display: "block", fontSize: 12, color: V.muted }}>Matrícula {n.matricula}</span>
                     </span>
                     <span style={{ overflowWrap: "anywhere" }}><span className="neg-lbl">Associação/Operadora</span>{associacaoOuOperadora(n)}</span>
-                    <span><span className="neg-lbl">Negociação</span>Nº {n.numero} · parcela {d.parcela.numero}/{n.parcelas.length}</span>
+                    <span><span className="neg-lbl">Negociação</span>Nº {n.numero} · parcela {d.parcela.numero}/{n.qtdParcelas}{d.parcela.reemissaoPendente && <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: V.amber }}>Atualizada após relatório emitido: {d.parcela.reemissaoPendente.motivo}</span>}</span>
                     <span><span className="neg-lbl">Quitação</span>{formatarData(d.parcela.quitacao!.data)}</span>
                     <span style={{ textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
                       <span className="neg-lbl">Valor a ressarcir</span>{formatarCentavos(d.parcela.ressarcimento.finalCents)}
@@ -218,7 +218,7 @@ export function RessarcimentoNegociacoes({ contexto }: { contexto: "negociacoes"
             </div>
             {emissoes.map((e) => (
               <div key={e.id} className="neg-hist-row gd-row">
-                <strong>Relatório nº {e.sequencia}</strong>
+                <strong>Relatório nº {e.sequencia}{emissaoComplementar(e) && <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: V.amber }}>Complementar: atualiza o relatório nº {relatoriosAtualizados(e).join(", ")}</span>}</strong>
                 <span><span className="neg-lbl">Emitido em</span>{formatarDataHora(e.emitidaEm)}</span>
                 <span><span className="neg-lbl">Responsável</span>{e.responsavel}</span>
                 <span style={{ textAlign: "right" }}><span className="neg-lbl">Parcelas</span>{num(e.linhas.length)}</span>
@@ -294,6 +294,7 @@ function TabelaLinhas({ linhas, totalCents }: { linhas: LinhaEmissaoRessarciment
           <span style={{ textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
             <span className="neg-lbl">Valor a ressarcir</span>{formatarCentavos(l.valorCents)}
             {l.ajusteManual && <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: V.amber }}>Preenchido manualmente</span>}
+            {l.atualizaRelatorios?.length ? <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: V.amber }}>Atualiza o relatório nº {l.atualizaRelatorios.join(", ")} ({l.motivoAtualizacao})</span> : null}
           </span>
         </div>
       ))}

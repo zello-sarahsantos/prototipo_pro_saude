@@ -1,3 +1,4 @@
+import { registrarSolicitacaoRequerimentoServidor } from "@/lib/acompanhamento-documental";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { requerimentos, analistaReferencia, gerenteReferencia, formatCompetencia } from "@/lib/mock-data";
@@ -58,6 +59,7 @@ function DocPreview({ filename }: { filename: string }) {
 function Fila() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [mode, setMode] = useState<ModalMode>(null);
+  const [documentoSolicitado, setDocumentoSolicitado] = useState("");
   const search = Route.useSearch();
   const [filtroTipo, setFiltroTipo] = useState(search.tipo ?? "");
   const [filtroStatus, setFiltroStatus] = useState(search.status ?? "");
@@ -388,6 +390,8 @@ function Fila() {
                     <label className="block text-sm font-medium mb-1.5">Qual documento está faltando?</label>
                     <textarea
                       rows={3}
+                      value={documentoSolicitado}
+                      onChange={(e) => setDocumentoSolicitado(e.target.value)}
                       placeholder="Descreva o documento comprobatório necessário (ex: Certidão de óbito, Divórcio, etc.)"
                       className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                     />
@@ -409,7 +413,11 @@ function Fila() {
               {mode !== "visualizar" && (
                 <button
                   onClick={() => { 
-                    if (mode === "solicitar_doc") toast.success("Notificação enviada ao beneficiário.");
+                    if (mode === "solicitar_doc") {
+                      registrarSolicitacaoRequerimentoServidor({ requerimentoId: cur.id, numero: cur.numero, tipo: cur.tipo, servidor: cur.servidor, documento: documentoSolicitado.trim() || "Documento comprobatório" });
+                      setDocumentoSolicitado("");
+                      toast.success("Notificação enviada ao beneficiário.");
+                    }
                     else if (mode === "aprovar") {
                       toast.success("Requerimento aprovado com sucesso.");
                       if (cur.tipo.includes("Inclusão")) {

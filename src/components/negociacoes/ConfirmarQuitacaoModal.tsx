@@ -56,7 +56,7 @@ export function ConfirmarQuitacaoModal({ negociacao, parcela, onFechar, onConfir
       <div role="dialog" aria-modal="true" aria-labelledby="quit-titulo" style={{ ...cardBase, width: "min(560px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <h2 id="quit-titulo" style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Confirmar quitação — parcela {parcela.numero}/{negociacao.parcelas.length}</h2>
+            <h2 id="quit-titulo" style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Confirmar quitação — parcela {parcela.numero}/{negociacao.qtdParcelas}</h2>
             <p style={{ fontSize: 13, color: V.muted, margin: "4px 0 0" }}>{negociacao.nomeServidor} · vencimento {formatarData(parcela.vencimento)} · ressarcimento {formatarCentavos(parcela.ressarcimento.finalCents)}</p>
           </div>
           <button type="button" onClick={onFechar} disabled={salvando} aria-label="Fechar" style={{ background: "none", border: "none", color: V.muted, cursor: "pointer", height: 32, width: 32 }}><X size={18} /></button>

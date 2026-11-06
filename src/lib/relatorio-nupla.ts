@@ -7,6 +7,7 @@
  * modalidade) e o detalhamento por bimestre (um bimestre ou todos).
  */
 import type { RelatorioExportSpec } from "./relatorio-export";
+import { registrarEmissao, type EmissaoRelatorio } from "./emissoes-relatorio";
 import {
   CATEGORIAS_MOVIMENTACAO,
   GRUPOS_MOVIMENTACAO,
@@ -28,16 +29,46 @@ function slugPeriodo(p: PeriodoMovimentacao): string {
   return `anual_${p.ano}`;
 }
 
+export const TIPO_EMISSAO_NUPLA = "nupla";
+export type EmissaoNupla = EmissaoRelatorio<LinhaMovimentacao>;
+export const ROTULO_PERIODICIDADE = { mensal: "Mensal", semestral: "Semestral", anual: "Anual" } as const;
+
+/** Emissão com histórico (Q40): snapshot do período, número sequencial no período, data e hora e responsável. Exportar não registra emissão. */
+export function emitirRelatorioNupla(p: PeriodoMovimentacao, responsavel: string): EmissaoNupla {
+  return registrarEmissao<LinhaMovimentacao>({
+    tipoRelatorio: TIPO_EMISSAO_NUPLA,
+    competenciaReferencia: slugPeriodo(p),
+    competenciaPagamento: "",
+    responsavel,
+    linhas: getMovimentacoesDoPeriodo(p),
+    registroIds: [],
+    demonstrativo: true,
+    parametros: { titulo: tituloDoPeriodo(p), periodicidade: p.periodicidade },
+  });
+}
+
+/** Exportação de uma emissão: usa somente o conteúdo registrado, sem recalcular. */
+export const specNuplaEmissao = (e: EmissaoNupla) =>
+  montarSpecPrincipal(e.linhas, e.parametros?.titulo ?? e.competenciaReferencia, ROTULO_PERIODICIDADE[(e.parametros?.periodicidade ?? "mensal") as keyof typeof ROTULO_PERIODICIDADE], `${e.competenciaReferencia}_emissao_${e.numero}`, [
+    { label: "Relatório", valor: `Nº ${e.numero}` },
+    { label: "Emitido em", valor: new Date(e.geradoEm).toLocaleString("pt-BR") },
+    { label: "Responsável pela emissão", valor: e.responsavel },
+  ]);
+
 export function specNuplaPrincipal(p: PeriodoMovimentacao): RelatorioExportSpec<LinhaMovimentacao> {
-  const linhas = getMovimentacoesDoPeriodo(p);
+  return montarSpecPrincipal(getMovimentacoesDoPeriodo(p), tituloDoPeriodo(p), ROTULO_PERIODICIDADE[p.periodicidade], slugPeriodo(p));
+}
+
+function montarSpecPrincipal(linhas: LinhaMovimentacao[], titulo: string, periodicidade: string, slug: string, identificacao?: { label: string; valor: string }[]): RelatorioExportSpec<LinhaMovimentacao> {
   const tot = totalGeral(linhas);
   return {
     titulo: "Movimentações do Pró-Saúde — NUPLA",
     origem: "Relatórios — NUPLA",
     nomeAba: "NUPLA",
-    competencia: tituloDoPeriodo(p),
+    competencia: titulo,
     rotuloCompetencia: "Período",
-    filtrosAplicados: [`Periodicidade: ${p.periodicidade === "mensal" ? "Mensal" : p.periodicidade === "semestral" ? "Semestral" : "Anual"}`],
+    ...(identificacao ? { identificacao } : {}),
+    filtrosAplicados: [`Periodicidade: ${periodicidade}`],
     gruposCabecalho: [
       { rotulo: "", span: 1 },
       { rotulo: "Boletos", span: 2 },
@@ -53,7 +84,7 @@ export function specNuplaPrincipal(p: PeriodoMovimentacao): RelatorioExportSpec<
     linhas,
     linhaTotal: { label: "Total de movimentações", valores: [...GRUPOS_MOVIMENTACAO.map((g) => tot[g.chave]), tot.total] },
     notas: [NOTA_MOVIMENTACOES, NOTA_DEMONSTRATIVO],
-    nomeArquivoBase: `pro-saude_nupla_${slugPeriodo(p)}`,
+    nomeArquivoBase: `pro-saude_nupla_${slug}`,
     orientacaoPdf: "landscape",
   };
 }

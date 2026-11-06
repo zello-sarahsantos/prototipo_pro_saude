@@ -440,7 +440,7 @@ export function RequerAcao({ dados, competencia, competenciaRotulo, vigente }: P
             <NadaPendente />
           ) : (
             <div style={{ fontSize: 13, color: V.muted, lineHeight: 1.4 }}>
-              {ressServidor.resumo.emAnalise} em análise · {ressServidor.resumo.complementacaoRecebida} complementação recebida · {ressServidor.resumo.aguardandoComplementacao} aguardando complementação
+              {ressServidor.resumo.emAnalise} em análise · {ressServidor.resumo.complementacaoRecebida} complementação recebida
             </div>
           )}
           <Rodape>
